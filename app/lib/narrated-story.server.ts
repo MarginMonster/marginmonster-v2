@@ -53,6 +53,8 @@ import { joinList } from "./acted-staging";
 // NIGHT IS NIGHT (2026-11-25): the acted engine's own night rule and night sentence — story-picture.ts → storyNight
 import { NIGHT_LINE, nightSetting } from "./acted-staging";
 import { NIGHT_STYLE_LIGHT, parseStoryNight, storyNight } from "./story-picture";
+// THE RUN-DOWN LOOK LISTENS TO THE STORY (2026-11-26 — story-picture.ts → wornAsked: a worn place its words ask for is no fault)
+import { wornAsked } from "./story-picture";
 import { streamSeconds } from "./film-join.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
 import { episodeOwnName, type ShowMeta } from "./character-series";
@@ -248,6 +250,10 @@ export async function narratedSceneSeeds(o: {
   // (the job is at work — said whenever a picture comes back: see `beat`, above. A beat that fails is skipped.)
   const alive = async (): Promise<void> => { try { await o.beat?.(); } catch { /* skipped */ } };
   await alive();
+  // (everything the story says of its places — its idea, every scene's picture and narration, its places' own words:
+  //  "The old roller rink had been closed for hours…" in the first scene's narration is the rink of every scene after it —
+  //  story-picture.ts → wornAsked)
+  const storyWords = [idea, ...scenes.map((s) => `${s?.visual || ""} ${s?.caption || ""}`), ...placeList].join(" ");
   let next = 0;
   const worker = async () => {
     while (next < todo.length) {
@@ -306,6 +312,11 @@ export async function narratedSceneSeeds(o: {
       // (…and told to take only the night's light from its style: the Mystery's offers "flat grey daylight through rain" —
       //  story-picture.ts → NIGHT_STYLE_LIGHT, review of S11)
       const night = storyNight({ words: visual, said: scene.caption, place: setAt ? `${setAt.name}: ${setAt.look}` : "", idea, childSafe: tmpl.childSafe, cartoon: tmpl.cartoon }, nightSetting);
+      // A WORN PLACE THE STORY ASKS FOR IS NO FAULT (2026-11-26, the live log: 29 redraws for "run-down" — an old roller
+      // rink, a worn concrete pier, boot-prints in dust): the look is still asked, and its answer not counted here
+      // (story-picture.ts → wornAsked). The ordinary home and the working hospital room, whose words never call them old, are
+      // looked at as before.
+      const wornHere = wornAsked(`${written} ${scene.caption || ""} ${setAt ? `${setAt.name}: ${setAt.look}` : ""}`, storyWords);
       // (a genre whose world is its OWN — Fantasy, film-genres.ts → ownWorld — is told everybody is clothed, and not that
       //  its places look the way they look TODAY: "no cottage and no castle unless they name one", 2026-11-25)
       const promptOf = (withPlace: boolean): string => `${safe}${visual.slice(0, 600)}${/[.!?]$/.test(visual) ? "" : "."}${night ? ` ${NIGHT_LINE} ${NIGHT_STYLE_LIGHT}` : ""} Style: ${tmpl.sceneHint}.${tmpl.faceMood ? ` ${tmpl.faceMood}` : ""}${cam ? ` ${cameraLine(cam, aspect)}` : ""} ${[...notes, ...(withPlace ? placeNotes : [])].join(" ")}${(withPlace ? refs : people).length ? ` ${CAST_LOCK}` : ""} ${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : ""}${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT} ${TRUE_SIZE}` : ""}${tmpl.childSafe || tmpl.ownWorld ? ` ${DRESSED}` : ` ${TODAY_LOOK}`}${!tmpl.childSafe && shadowNote(visual) ? ` ${SHADOW_SHAPE}` : ""} ${STORY_SOUND} ${NOTHING_WRITTEN}`;
@@ -342,7 +353,7 @@ export async function narratedSceneSeeds(o: {
           const outside = parseStoryOutside(String(extrasRaw || ""));
           // (…and whoever stares into the lens: story-picture.ts → parseStoryLens)
           const lens = parseStoryLens(String(extrasRaw || ""));
-          const grimy = tmpl.childSafe ? null : parseStoryGrime(String(grimeRaw || ""));
+          const grimy = tmpl.childSafe || wornHere ? null : parseStoryGrime(String(grimeRaw || ""));
           const inset = parseStoryInset(String(grimeRaw || ""));
           // (…and anybody UNCLOTHED — any story's, a children's too: story-picture.ts → parseStoryUnclothed)
           const bare = parseStoryUnclothed(String(extrasRaw || ""));

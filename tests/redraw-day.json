@@ -1,0 +1,86 @@
+{
+  "_": "The live log of 2026-11-25 04:00Z → 2026-11-26 03:40Z, '[narrated] scene N try K: …' lines, for the eleven one-press told TEST stories the operator's Archive lists in that window (their scene words from ?timing=<id>). Per go: L = stared into the lens, G = the place came out run-down, C = cast not in it, X = somebody the words do not put there, O = whoever looks out stood outside, B = came back letterboxed; [] = the go passed (the scene stopped there). A go marked with * was before the log's window and is read from the next one (scene 4 of the first story).",
+  "stories": [
+    { "title": "Horror Story — Three Knocks, Then Three More", "scenes": [
+      { "v": "At the house: CLOSE: Dashti's face fills the frame, eyes wide in the dark of his bedroom, listening toward the window glass beside him as three slow knocks land unseen.", "goes": [[]] },
+      { "v": "FROM BELOW: outside beneath the old tree, the camera looks up as the Shadow stands flat and black against the branches, no face, utterly still in the cold moonlight.", "goes": [[]] },
+      { "v": "WIDE: inside the house, every window goes black at once, the pale grey siding swallowed in darkness while, through the glass, the Shadow under the old tree stays fixed in place.", "goes": [[]] },
+      { "v": "At the house: OVER DASHTI'S SHOULDER: from behind him in the dark hallway, he runs toward a half-open door where Mother and Father sit up in bed, barely visible in the gloom.", "goes": [["L*"], ["L"], ["L"]] },
+      { "v": "At the house: CLOSE: Dashti's face, frozen mid-step just inside his parents' doorway, eyes darting toward the closed closet door behind Mother and Father as three slow knocks sound from within it.", "goes": [["L"], ["L"], []] }
+    ] },
+    { "title": "Horror Story — What the Lake Learned", "scenes": [
+      { "v": "FROM BELOW: inside the tent, Oksana and Reza lie rigid in their sleeping bags, looking up at the sagging orange nylon ceiling, moonlight faint through the fabric, both wide awake and still.", "goes": [[]] },
+      { "v": "OVER REZA'S SHOULDER: from the shoreline, his flashlight beam cuts across the lake, catching the smiling woman standing waist-deep, soaked gray dress, perfectly still, her wide smile fixed in the mist", "goes": [["L"], ["L"], ["L"]] },
+      { "v": "At the lake: A DETAIL: the flashlight in Oksana's hand, her knuckles pale and trembling around it, the beam shaking across dark rippleless water where the smiling woman's gray dress floats motionless", "goes": [["C"], []] },
+      { "v": "WALKING: the smiling woman strides toward camera through shallow water, soaked gray dress dragging, candle-wax skin, her too-wide smile never faltering, lake water sheeting off her slow advancing legs", "goes": [["L"], ["L"], ["L"]] },
+      { "v": "NEAR AND FAR: inside the tent, Oksana's hand grips the zipper pull in the foreground; far beyond the thin orange nylon wall, the smiling woman's pale silhouette stands motionless, impossibly already t", "goes": [["O"], []] }
+    ] },
+    { "title": "Horror Story — Walking Out of the Shallows", "scenes": [
+      { "v": "CLOSE: Jacinta's face fills the frame, eyes wide open in the dark tent, startled awake, listening hard as a soft voice seems to drift in from outside through the thin nylon wall.", "goes": [["C", "X", "L"], ["L"], ["B"]] },
+      { "v": "OVER THE SHOULDER: over Dunstan's shoulder, inside the tent looking out through the mesh window at the lake, his silver flashlight beam cutting across the still black water toward the mist.", "goes": [["L"], ["L"], ["L"]] },
+      { "v": "CLOSE: the woman's face, waist-deep in the lake, pale skin wet in the flashlight beam, her smile far too wide and crowded with thin teeth, perfectly still.", "goes": [[]] },
+      { "v": "WALKING: the woman walks toward the camera through the shallow water, arms loose at her sides, grey nightgown dripping, her wide smile unchanged, the tent glowing faintly behind her in the dark.", "goes": [["L"], ["L", "G"], ["L", "G"]] },
+      { "v": "CLOSE: inside the tent, Jacinta's face pressed near the zippered flap, eyes wide with terror, as a second soft voice calls her name from directly behind her inside the tent.", "goes": [["L"], ["L"], []] }
+    ] },
+    { "title": "Horror Story — The Dent in the Pillow", "scenes": [
+      { "v": "At the hallway: CLOSE: Ottilie's face lit from below by her phone screen in a dim corridor, eyes fixed on a glowing call light above a closed door, her jaw tight with dread.", "goes": [["C", "L"], ["C"], ["C"]] },
+      { "v": "WALKING: Ottilie strides down the pale green hallway toward the camera, phone light raised, the closed door of Room 14 waiting ahead, shadows stretching long behind her.", "goes": [["B"], ["L"], ["B"]] },
+      { "v": "WIDE: inside Room 14, Ottilie stands near the doorway sweeping her phone light across the empty steel-framed bed, its blanket smooth, the vertical blinds closed over the window.", "goes": [["G"], ["X"], ["G"]] },
+      { "v": "At Room 14: CLOSE: Ottilie's hand presses flat into the pillow's fresh dent, her face lit by phone light, eyes widening as she registers warmth where no one should be.", "goes": [["L", "G"], ["C", "G"], []] },
+      { "v": "OVER THE SHOULDER: over Ottilie's shoulder, inside Room 14, the narrow bathroom door stands ajar, its call button panel glowing red in the dark beyond, nobody visible in the gap.", "goes": [["C", "G"], ["G"], ["C"]] }
+    ] },
+    { "title": "Horror Story — Warm Pillow, Empty Room", "scenes": [
+      { "v": "CLOSE: Verity's face lit by the glow of the call-button panel, eyes fixed on one small red light flickering on among the dark ones, her breath caught, the corridor behind her pitch black.", "goes": [["L"], []] },
+      { "v": "OVER THE SHOULDER: over Thibault's shoulder, down the dim corridor, the same red light above a closed door glows again while Verity stands rigid beside him, phone light trembling in her hand.", "goes": [["L", "G"], []] },
+      { "v": "WIDE: inside Room 14, Verity stands just past the doorway holding up her phone light, the made bed small in the pale green room, the bathroom door shut in the far corner, shadows pooling at the edges.", "goes": [[]] },
+      { "v": "At Room 14: CLOSE: Verity's face close to the pillow on the bare bed, lit by her phone, her hand hovering just above a fresh human-shaped dent pressed into the fabric, her eyes wide with disbelief.", "goes": [[]] },
+      { "v": "NEAR AND FAR: Thibault close at the open doorway of Room 14, his flashlight raised, while far across the room the bathroom door stands shut, its small call-button light glowing red above the frame", "goes": [["L"], ["B"], ["L"]] }
+    ] },
+    { "title": "Mystery Story — Eleven Went Aboard", "scenes": [
+      { "v": "CLOSE: Halina's face, lamplight catching her eyes as she looks down at her satchel, counting. Her lips press tight, concentrating, the fog pressing close behind her at the harbour dock.", "goes": [[]] },
+      { "v": "WIDE: the harbour dock, the ferry crowded with passengers along its rail, Signe at the bow coiling rope, Radek small near the ticket booth, the tall lamppost glowing faint through drifting fog.", "goes": [[]] },
+      { "v": "NEAR AND FAR: Signe close at the bow coiling rope over her shoulder, passengers far off and small along the rail and benches behind her, the harbour dock's lamppost glow faint through fog.", "goes": [["L"], []] },
+      { "v": "WIDE: the ferry deck, passengers huddled along the low rail and benches, fog thick and pale around them, the harbour dock's lamppost reduced to a dim smear of light far behind in the grey.", "goes": [["L", "G"], []] },
+      { "v": "At the ferry: CLOSE: Signe's weathered face, lantern raised beside her, eyes wide and certain, staring off toward the rail she has been watching, her jaw set hard against the surrounding fog.", "goes": [["G"], []] },
+      { "v": "WALKING: Radek striding toward the camera along the harbour dock, clipboard clutched to his chest, the ferry docked behind him, its low shape half-swallowed by fog, passengers disembarking in his wake", "goes": [["L"], []] },
+      { "v": "CLOSE: Halina's face at the harbour dock, lamplight flickering across her stunned expression, her eyes fixed on the passengers standing before her, counting again in silence.", "goes": [["L"], ["L"], ["L"]] },
+      { "v": "TOGETHER: at the harbour dock, Radek and Halina face each other under the lamppost's fog-wrapped light, his clipboard raised, her satchel open, both frowning at the empty mooring space beside the pier", "goes": [["G"], []] },
+      { "v": "A DETAIL: close on Halina's hands at the harbour dock, fingers sorting eleven passenger slips spread across the satchel's open flap, the worn concrete pier damp beneath her boots.", "goes": [["G"], ["G"], ["G"]] },
+      { "v": "OVER THE SHOULDER: over Signe's shoulder at the harbour dock, her lantern raised, Radek standing a few steps off near the mooring cleats, listening as she shakes her head firmly.", "goes": [["L"], ["L"], ["X", "L"]] },
+      { "v": "WIDE: the ferry's worn plank deck seen whole, empty now, low rail and bow lantern hook visible, Halina, Signe and Radek small figures retracing steps near the benches in fog-softened light.", "goes": [[]] },
+      { "v": "CLOSE: Halina's face at the harbour dock, eyes widening in the lamppost's glow, satchel clutched to her chest, Radek and Signe blurred behind her in the drifting fog.", "goes": [["L"], []] },
+      { "v": "TOGETHER: Halina and Radek facing each other at the harbour dock, her satchel open between them, Signe standing close behind Radek, all three lit by the lamppost through the fog.", "goes": [[]] }
+    ] },
+    { "title": "Mystery Story — Two Sets of Footprints", "scenes": [
+      { "v": "At the lighthouse's stairwell: WALKING: Petra climbs the lighthouse's spiral iron staircase toward the camera, lantern raised, her own boot-prints dark in dust behind her, and beside them a second, smaller wet print she has not made.", "c": "Every morning Petra finds a second set of footprints on the stairs, though she has lived in the lighthouse quite alone for eleven years.", "goes": [["L", "G"], ["L", "G"], ["L", "G"]] },
+      { "v": "CLOSE: inside the lighthouse's stairwell, Petra crouches low over the iron steps, lantern close to the dust, studying a bootprint identical to her own beside the smaller wet print, her face uncertain.", "c": "She wonders, at first, if her own boots are tricking her, damp twice over from the climb.", "goes": [["G"], ["L", "G"], ["L", "G"]] },
+      { "v": "WIDE: inside the lantern room at the top of the lighthouse, Petra stands small before the great glass lens, morning light pouring through, the wet print glistening on the floor below the dripping lamp glass.", "c": "The answer was always above her: condensation from the old lamp glass, dripping down each night.", "goes": [["L", "G"], []] }
+    ] },
+    { "title": "Mystery Story — The Hour It Arrives", "scenes": [
+      { "v": "CLOSE: Aldo's face fills the frame, deep shadows under his eyes, in the museum hallway, his gaze fixed past us toward the brass elevator doors as a faint chime sounds.", "c": "They told him the museum elevator had not run in years, its power cut, its shaft sealed.", "goes": [[]] },
+      { "v": "OVER THE SHOULDER: over Hedda's shoulder in the museum hallway, she faces the museum elevator's brass doors, flashlight raised, while unseen pipes behind the walls seem the obvious source of the sound.", "c": "Hedda insisted it was only old pipes groaning behind the plaster, nothing more.", "goes": [[]] },
+      { "v": "FROM BELOW: looking up at the museum elevator's brass doors in the museum hallway, Aldo stands close, flashlight raised, as the dusty velvet rope lies fallen at his feet, untouched for years.", "c": "Then Aldo remembered the rope, fallen that very first week, never retied, never touched again.", "goes": [["G"], []] }
+    ] },
+    { "title": "Drama Story — What His Hands Remember", "scenes": [
+      { "v": "WIDE: inside the bakery, Humphrey stands small before the cast-iron oven, snow pressing pale light through the steamed window, flour sacks stacked behind him, the room silent and still.", "goes": [[]] },
+      { "v": "CLOSE: Ottavia's face, eyes fixed downward in concentration, flour dust on her cheek, warm oven light flickering across her features inside the bakery.", "goes": [[]] },
+      { "v": "At the bakery: A DETAIL: Humphrey's weathered, flour-covered hands pressing into pale dough on the wooden counter, knuckles trembling slightly, steam rising faintly behind.", "goes": [["C"], ["C"], []] },
+      { "v": "At the bakery: OVER THE SHOULDER: over Humphrey's shoulder, Ottavia shapes a loaf alone at the counter, his blurred hand resting still beside hers, the oven glowing faintly ahead.", "goes": [[]] },
+      { "v": "At the bakery: FROM BELOW: looking up at Humphrey and Ottavia standing together before the tall oven, steam curling upward, snowlight glowing faint behind the steamed window above them.", "goes": [[]] },
+      { "v": "WALKING: Ottavia carries a warm loaf toward the camera through the bakery, Humphrey seated behind her near the oven, watching, his hands quiet and folded in his lap.", "goes": [["L"], ["L"], ["L"]] }
+    ] },
+    { "title": "Horror Story — Circling in the Dark", "scenes": [
+      { "v": "WALKING: Delphine strides toward the camera through the dark rink lobby, flashlight beam cutting ahead, keyring jangling at her belt, the shadowed rink floor stretching away behind her through open double doors.", "c": "The old roller rink had been closed for hours when Delphine began her rounds, flashlight slicing the dark. Every night she checked the locks, the lights, the silent, empty floor.", "goes": [["L", "G"], ["L"], ["L", "G"]], "looked": "go 1 faces us walking; go 2 stares, walking at us (kept in the film); go 3 looks well off to one side; the rink worn in 1 and 3 (a stain, peeling paint) — an old rink" },
+      { "v": "CLOSE: Delphine's face fills the frame, lit from below by her flashlight, eyes wide and fixed toward the dark rink floor off-screen, listening hard, sweat catching the cold light.", "c": "That was when she heard it — the unmistakable hiss and rumble of wheels, circling somewhere out on the wood floor. But the rink was locked. No one else was inside.", "goes": [[]] },
+      { "v": "NEAR AND FAR: Delphine stands close at the edge of the frame, flashlight raised, while far across the dark rink floor the skater glides low and small, half-lost in shadow near the still disco ball.", "c": "She swept her light across the floor and there it was — a thin pale shape skating slow, graceful circles in the blackness, never once looking her way.", "goes": [["L", "G"], ["G"], ["L", "G"]], "looked": "go 1 and go 3 stare down the lens at the frame's edge (right); go 2 looks aside, the skater behind her (kept in the film); the floor is worn wood, nothing run-down" },
+      { "v": "CLOSE: Delphine's face, frozen mid-breath, flashlight beam trembling, her eyes locked on something just past the camera's edge — the skater's bare feet, not skates, skimming silent above the floor.", "c": "Delphine ran the beam down to the sound of the wheels — and found no skates at all, only bare feet, gliding an inch above the scarred old floor.", "goes": [["L", "G"], ["L"], ["C", "X"]], "looked": "go 1 and go 2 look just past the lens as the words ask (go 2 kept in the film); go 3 is the skater holding the flashlight, Delphine gone (right)" }
+    ] },
+    { "title": "Drama Story — The Warmth by the Oven", "scenes": [
+      { "v": "FROM BELOW: outside, snow banked against the bakery's whitewashed wall under a pale grey dawn sky, Fergus's dark silhouette approaching the glass-paned front door, keys raised, breath visible in the cold.", "goes": [[]] },
+      { "v": "WIDE: inside the bakery, Fergus stands frozen in the doorway, the glowing brick oven lighting the room, and near it on the floor Imelda lies curled asleep in her worn green coat.", "goes": [["L"], []], "looked": "go 1: Fergus small in the doorway, facing in" },
+      { "v": "CLOSE: Fergus's face, lit by the oven's glow, eyes fixed downward with worry and wariness, his breath still visible, standing just inside the bakery near the sleeping stranger.", "goes": [[]] },
+      { "v": "At the bakery: OVER THE SHOULDER: over Fergus's shoulder, Imelda stirs awake by the oven, blinking up at him, her canvas travel bag clutched close, firelight flickering across her tired face.", "goes": [["L"], ["L"], ["L"]], "looked": "all three: Imelda looks up at Fergus, over his shoulder (go 3 kept)" },
+      { "v": "At the bakery: NEAR AND FAR: near the camera, Fergus's weathered hand sets a warm loaf on the counter beside Imelda, who sits close to the oven; far off, snow presses white against the glass-paned door.", "goes": [[]] }
+    ] }
+  ]
+}
