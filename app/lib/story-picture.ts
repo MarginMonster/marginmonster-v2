@@ -17,7 +17,7 @@
  */
 import { firstJson } from "./first-json.ts";
 // EVERY PICTURE FILLS ITS FRAME (2026-11-26, the bakery with an empty cream band under it): measured, not asked — full-frame.ts
-import { bandFault, bandFix, type FrameBand } from "./full-frame.ts";
+import { bandCuttable, bandFault, bandFix, type FrameBand } from "./full-frame.ts";
 
 /** Words that start a SECOND moment in a picture's description. */
 const NEXT_MOMENT = /[\s,;—–-]+(?:and then|then|until|moments? later|seconds? later|minutes? later|a (?:moment|beat|second) later|soon after|shortly after|afterwards?|later on|later|before (?:finally|eventually))\b/i;
@@ -301,8 +301,14 @@ export function storyCastPrompt(refs: number): string {
 export function storyExtrasPrompt(visual: string, who: ReadonlyArray<string> = []): string {
   const words = String(visual || "").replace(/\s+/g, " ").replace(/"/g, "'").trim().replace(/[.\s]+$/, "").slice(0, 600);
   const names = (who || []).map((w) => String(w || "").replace(/\s+/g, " ").replace(/"/g, "'").trim().slice(0, 160)).filter(Boolean).slice(0, 4);
-  return `The image is a picture from an illustrated story. It was asked to show exactly this: "${words}".${names.length ? ` Who is who: ${names.join("; ")}.` : ""} First list every person or creature you can see in it (not a reflection, not a picture on a wall, not a statue), each in a few words with where it is. Then say whether ANY of them is somebody those words do not put there — a stranger, a passer-by, somebody sitting, standing or watching who is not described. Next, only if those words have somebody INSIDE looking OUT — peering out, looking or watching through a window, a glass pane or a door — at somebody or something out there (on a porch, in a yard, in the street, in the dark): that person is the LOOKER (otherwise there is none). Find the looker in the picture by how they look, and say where THEY are — the looker, not what they look at — judged only by what you SEE, not by what the words wanted. "outdoors": you can see the looker STANDING out on the porch boards, its steps, a yard or a street — the same open floor or ground as what they look at, nothing but open air between. "indoors": anything else — in a room or a hallway, behind a window's glass, or seen in a window's frame behind its sill (glass or no glass). Last: does any PERSON in it — not a creature, a ghost or a shadow — look straight into the camera, eyes on the lens as if posing for a photograph? Somebody looking at something to one side of the camera, or seen from the side or from behind, does not. ${UNCLOTHED_ASKED} Reply with ONLY this JSON: {"people": ["…" for each], "uninvited": true or false, "looker": "the looker's name, or an empty string", "lookerIs": "what the looker stands on and what is around the looker, in a few words", "lookerStands": "indoors" or "outdoors" or "", "intoLens": ["the name of each person looking straight into the camera — an empty list when nobody does"], "unclothed": true or false, "unclothedWho": "where that one is, in a few words — an empty string when nobody is"}.`;
+  return `The image is a picture from an illustrated story. It was asked to show exactly this: "${words}".${names.length ? ` Who is who: ${names.join("; ")}.` : ""} First list every person or creature you can see in it (not a reflection, not a picture on a wall, not a statue), each in a few words with where it is. Then say whether ANY of them is somebody those words do not put there — a stranger, a passer-by, somebody sitting, standing or watching who is not described. Next, only if those words have somebody INSIDE looking OUT — peering out, looking or watching through a window, a glass pane or a door — at somebody or something out there (on a porch, in a yard, in the street, in the dark): that person is the LOOKER (otherwise there is none). Find the looker in the picture by how they look, and say where THEY are — the looker, not what they look at — judged only by what you SEE, not by what the words wanted. "outdoors": you can see the looker STANDING out on the porch boards, its steps, a yard or a street — the same open floor or ground as what they look at, nothing but open air between. "indoors": anything else — in a room or a hallway, behind a window's glass, or seen in a window's frame behind its sill (glass or no glass). Last: does any PERSON in it — not a creature, a ghost or a shadow — look straight into the camera, eyes on the lens as if posing for a photograph? Somebody looking at something to one side of the camera, or seen from the side or from behind, does not. ${EYES_FIRST} ${UNCLOTHED_ASKED} Reply with ONLY this JSON: {"people": ["…" for each], "uninvited": true or false, "looker": "the looker's name, or an empty string", "lookerIs": "what the looker stands on and what is around the looker, in a few words", "lookerStands": "indoors" or "outdoors" or "", "eyes": ["whose face, and where its eyes point, in a few words — for each face you can see"], "intoLens": ["the name of each person looking straight into the camera — an empty list when nobody does"], "unclothed": true or false, "unclothedWho": "where that one is, in a few words — an empty string when nobody is"}.`;
 }
+/** …AND WHERE THE EYES POINT IS WRITTEN DOWN BEFORE THE STARE IS ANSWERED (2026-11-26, the live log's rejected pictures,
+ *  LOOKED at: Delphine walking at us with her eyes well off to one side, and Delphine "frozen mid-breath, her eyes locked on
+ *  something just past the camera's edge" — both answered "stared into the lens"). The reader writes down what it sees
+ *  before it answers, as the cast question has since 2026-11-22. Not re-asked here (no reader credit on this desk): its
+ *  rate is read on the live log — "[narrated] scene N try K: … stared into the lens". */
+export const EYES_FIRST = "Before you answer, write down for each face you can see where its eyes point (\"eyes\"): only eyes that meet the lens itself count — eyes on something just beside the camera or past its edge, or a face turned even a little away, do not.";
 /** …AND, IN THE SAME ANSWER, ANYBODY UNCLOTHED (2026-11-25: three acted lake films in a row drew the woman "standing
  *  waist-deep in the lake" bare; a told story is drawn by the same picture models from the same kind of words, and was
  *  never looked at for it). Asked in the question that already lists every person in the picture — one question
@@ -336,6 +342,74 @@ export function parseStoryGrime(raw: string): boolean | null {
   const g = jsonIn(raw)?.grimy;
   return typeof g === "boolean" ? g : null;
 }
+
+/* A WORN PLACE THE STORY ASKS FOR IS NOT A FAULT (2026-11-26). Read off the live log of a day of told stories (eleven of
+ * them, 59 scenes): 29 pictures were drawn again for "the place came out run-down" — and the story had asked for worn in
+ * most of them. "Circling in the Dark" is a night guard's rounds at an OLD roller rink ("The old roller rink had been
+ * closed for hours…", "…gliding an inch above the scarred old floor"): six of its pictures were drawn again for it, the
+ * one kept the same rink. "Eleven Went Aboard" was redrawn three times for "the worn concrete pier" its own words put
+ * there; "Two Sets of Footprints" for the "boot-prints dark in dust" of its; "The Hour It Arrives" for "the dusty velvet
+ * rope". The look is told the place may be old only when the VISUAL it is shown says so — the narration, the place's own
+ * words and the rest of the story were never shown to it. So the run-down look COUNTS only where no words of the story
+ * ask for a worn place; and it goes on doing the job it was made for — the ordinary home (LIVED_IN: "why are the walls
+ * dingy and not just a regular household?") and the working hospital room ("The Dent in the Pillow"), whose words never
+ * call them old. Of that day's 29, the story's own words answer 19; the ten still counted are the two hospital stories'
+ * seven, the lake's two and a lighthouse's lantern room. */
+/** A place, or a part of one, that words can call worn. */
+const WORN_PLACE = "(?:rinks?|floors?|floorboards|boards|planks?|walls?|wallpaper|paint|plaster|ceilings?|beams|rafters|roofs?|stairs|staircases?|stairwells?|steps|doors?|doorways?|windows?|shutters|carpets?|curtains|furniture|rooms?|halls?|hallways?|corridors?|lobby|lobbies|kitchens?|bedrooms?|bathrooms?|attics?|cellars?|basements?|houses?|homes?|cottages?|cabins?|farmhouses?|barns?|sheds?|mills?|factory|factories|warehouses?|garages?|workshops?|bakery|shops?|stores?|diners?|bars?|pubs?|inns?|hotels?|motels?|hospitals?|asylums?|sanatoriums?|wards?|schools?|classrooms?|churche?s?|chapels?|theat(?:re|er)s?|cinemas?|arcades?|malls?|stations?|platforms?|depots?|piers?|docks?|jett(?:y|ies)|wharf|wharves|harbou?rs?|boats?|ships?|ferr(?:y|ies)|decks?|lighthouses?|towers?|manors?|mansions?|castles?|forts?|ruins|mines?|tunnels?|bridges?|museums?|librar(?:y|ies)|offices?|apartments?|flats?|buildings?|places?|streets?|alley(?:way)?s?|trailers?|caravans?|carriages?|trains?|buses|bus|vans?|elevators?|lifts?|porch(?:es)?|fences?|gates?|greenhouses?|playgrounds?|fairgrounds?|carnivals?|motor ?homes?|counters?|pews|benches|railings?|rails?)";
+/** Words that make a place worn on their own, whatever they are said of: dirt, ruin, neglect. */
+const WORN_ALONE = "(?:abandoned|derelict|ruined|crumbling|decaying|decayed|rotting|dilapidated|disused|condemned|boarded[- ]up|run[- ]down|rundown|ramshackle|(?<!flour[- ]|snow[- ]|star)dust(?:y|-covered|-coated)?|cobweb(?:s|bed)?|grime|grimy|grubby|filthy|rust(?:ed|ing|y)?(?![- ]colou?red)|peeling|mou?ldy|mou?ldering|mildew(?:ed)?|sooty|water-stained|overgrown)";
+/** Words that make a place worn when they are said OF a place ("the old roller rink", "the worn concrete pier"). */
+const WORN_OF = `(?:old|older|aging|ageing|ancient|age-worn|worn|worn-out|weathered|battered|scarred|scuffed|faded|shabby|dingy|neglected|forgotten|deserted|shuttered|closed-down|long-closed|rickety|sagging|${WORN_ALONE})`;
+/** …the small words a worn word never reaches across to its place ("an old photo ON THE wall" is not an old wall). */
+const NOT_BETWEEN = "(?:on|in|at|of|by|with|from|to|into|onto|over|under|the|a|an|his|her|their|its|our|my|your|and|or|but|beside|near|behind|across|through|against|toward|towards|while|as|is|was|are|were)";
+// (…word by word, a hyphened word whole: "a faded pastel roller-rink dress" is a dress, not a rink)
+const WORN_OF_PLACE = new RegExp(`\\b${WORN_OF}(?:\\s+(?!${NOT_BETWEEN}\\b)[\\p{L}'’-]+){0,3}\\s+(${WORN_PLACE})(?![\\p{L}'’-])`, "giu");
+const A_PLACE = new RegExp(`^${WORN_PLACE}$`, "iu");
+/** …whose place it is, said just before it: "the FERRY's worn plank deck". */
+const OWNER_BEFORE = new RegExp(`(${WORN_PLACE})['’]s\\s+$`, "iu");
+const PLACE_IS_WORN = new RegExp(`\\b(${WORN_PLACE})\\s+(?:is|was|has been|had been|stood|stands|sat|sits|lay|lies|looks|looked)\\s+(?:long\\s+|now\\s+|still\\s+|half\\s+|all\\s+)?(?:${WORN_ALONE}|old|worn|weathered|empty for (?:years|decades)|closed (?:down|for (?:years|decades|months|good))|shut down|falling apart|in ruins)\\b`, "giu");
+const WORN_ANYWHERE = new RegExp(`\\b${WORN_ALONE}\\b`, "giu");
+/** "no dust", "never peeling", "not old": said NOT to be worn. */
+const DENIED = /\b(?:no|not|never|without|nothing|free of|spotless|clean of)\s+(?:[\p{L}'’-]+\s+)?$/iu;
+const unDenied = (text: string, re: RegExp): RegExpExecArray[] => [...text.matchAll(re)].filter((m) => !DENIED.test(text.slice(Math.max(0, (m.index || 0) - 24), m.index)));
+/** One of a place word: "ferries" → "ferry", "benches" → "bench", "stairs" → "stair", "bus" stays. */
+const oneOf = (w: string): string => {
+  const p = w.toLowerCase();
+  if (/ies$/.test(p)) return p.replace(/ies$/, "y");
+  if (/(?:ch|sh|ss|x|us)es$/.test(p)) return p.replace(/es$/, "");
+  return /[^su]s$/.test(p) ? p.slice(0, -1) : p;
+};
+/** The places these words call worn — "the old roller rink" → ["rink"], "the ferry's worn plank deck" → ["plank", "deck",
+ *  "ferry"]. */
+export function wornPlaces(text: string | null | undefined): string[] {
+  const t = String(text || "").replace(/\s+/g, " ");
+  const found: string[] = [];
+  // (every place word in the phrase — "the worn plank deck" is the deck's planks: both — and whose it is, said before it)
+  for (const m of unDenied(t, WORN_OF_PLACE)) {
+    for (const w of m[0].split(" ").slice(1)) if (A_PLACE.test(w)) found.push(oneOf(w));
+    const owner = OWNER_BEFORE.exec(t.slice(Math.max(0, (m.index || 0) - 40), m.index));
+    if (owner) found.push(oneOf(owner[1]));
+  }
+  for (const m of unDenied(t, PLACE_IS_WORN)) found.push(oneOf(m[1]));
+  return found.filter((p, k) => found.indexOf(p) === k);
+}
+/** Do these words — a scene's own: its VISUAL, its narration, the place it is set at — ask for a worn place? */
+export function wornSaid(text: string | null | undefined): boolean {
+  const t = String(text || "").replace(/\s+/g, " ");
+  return wornPlaces(t).length > 0 || unDenied(t, WORN_ANYWHERE).length > 0;
+}
+/** IS A WORN PLACE ASKED FOR HERE? The scene's own words say so — or the STORY's words (its idea, its other scenes, its
+ *  places) call a place worn that this scene's words name: "The old roller rink…" in the first scene's narration makes
+ *  "far across the dark rink floor" in the third worn too. Then a picture the look calls run-down is not drawn again. */
+export function wornAsked(scene: string | null | undefined, story: string | null | undefined = ""): boolean {
+  const s = String(scene || "").replace(/\s+/g, " ");
+  if (wornSaid(s)) return true;
+  const words = ` ${s.toLowerCase().replace(/[^\p{L}\p{N}'’ -]/gu, " ")} `;
+  // (the place's word as the scene writes it: one or many, or its own — "the ferry's wheel")
+  const named = (p: string): RegExp => new RegExp(`[\\s-]${p.endsWith("y") ? `${p.slice(0, -1)}(?:y|ies)` : `${p}(?:s|es)?`}(?:['’]s?)?[\\s-]`, "u");
+  return wornPlaces(story).some((p) => named(p).test(words));
+}
 /** …and whether a smaller picture was pasted into it — null when the answer does not say. */
 export function parseStoryInset(raw: string): boolean | null {
   const i = jsonIn(raw)?.inset;
@@ -353,6 +427,34 @@ export function parseStoryLens(raw: string): string[] | null {
   const l = jsonIn(raw)?.intoLens;
   if (!Array.isArray(l)) return null;
   return l.map((n) => String(n ?? "").replace(/\s+/g, " ").trim().slice(0, 40)).filter(Boolean);
+}
+
+/* A STARE IS A FAULT ONLY WHERE THE SHOT IS NOT FACING US (2026-11-26). Read off the live log of a day of told stories
+ * (eleven of them, 59 scenes): 58 pictures were called "stared into the lens" — the most of any check — and of
+ * the eleven of them that could be LOOKED at (the rejected goes of "Circling in the Dark" and "The Warmth by the Oven"),
+ * two were stares. The other nine were the shot itself:
+ *   · WALKING — "Delphine strides toward the camera through the dark rink lobby": walking at us, she faces us, three goes
+ *     running (the third looking well off to one side, called a stare all the same);
+ *   · OVER THE SHOULDER — over Fergus's shoulder, Imelda looks up at HIM, three goes: whoever faces the shoulder looks
+ *     just past the lens, which is how every film shoots two people;
+ *   · WIDE — Fergus small in the bakery doorway, facing in;
+ *   · a close-up whose own words have them look our way — "her eyes locked on something just past the camera's edge":
+ *     two goes of Delphine drawn exactly so.
+ * The log's own words say the same of the stories that could not be looked at: Ottavia carrying the loaf "toward the
+ * camera", three goes; the woman from the lake walking at us out of the water — the horror itself — three; over a
+ * shoulder, twelve more. Of the 58, the rule below leaves 20: close-ups and a face near the lens.
+ * The two that WERE stares: "NEAR AND FAR: Delphine stands close at the edge of the frame…" — a face near the lens
+ * looking straight down it while the moment is the skater far behind her. So: a face that fills the frame, or stands
+ * near the lens, looking straight down it in a moment about something else is still drawn again; in a WALKING, an
+ * OVER THE SHOULDER or a WIDE shot, or where the words have them look toward the camera, it is not a fault. (The look
+ * is still asked — one question among several — and its answer is not counted there.) */
+const FACING_SHOTS: ReadonlySet<string> = new Set(["walk", "over", "wide"]);
+const LOOKS_OUR_WAY = /\b(?:toward|towards|into|at|past|beside)\s+(?:the\s+)?(?:camera|lens|viewer)\b|\b(?:toward|towards|at|past)\s+us\b|\bcamera['’]s\s+edge\b|\bfac(?:e|es|ing)\s+(?:the\s+)?(?:camera|lens|viewer|us)\b/i;
+/** Does a stare into the lens count as a fault in this picture? `shot`: how the scene is seen (story-shots.ts →
+ *  sceneShot), `words`: its VISUAL. */
+export function stareCounts(shot: string | null | undefined, words: string | null | undefined): boolean {
+  if (shot && FACING_SHOTS.has(shot)) return false;
+  return !LOOKS_OUR_WAY.test(String(words || "").replace(/\s+/g, " "));
 }
 /** …its answer: true / false, or null when it cannot be read (the picture is then kept as it is). */
 export function parseStoryExtras(raw: string): boolean | null {
@@ -453,6 +555,50 @@ export function storyFix(c: StoryCheck, names: string[], kinds: ReadonlyArray<st
   const beasts = missing.filter((k) => kinds[k] === "monster" || kinds[k] === "cartoon").map((k) => names[k]).filter(Boolean);
   if (beasts.length) out.push(`${beasts.join(" and ")} must have the reference image's own BODY — the same build, standing the same way, covered in the same fur or skin, in the same clothing in the same state: not an ordinary animal, and not a human being with that head`);
   return out.length ? ` ${out.join(". ")}.` : "";
+}
+
+/* A STORY'S REDRAWS ARE COUNTED (2026-11-26). Read off the live log of a day of told stories — eleven of them, 59 scenes —
+ * they drew 122 scene pictures: 2.07 a scene, at $0.15 a picture and about $0.035 of looks at each. "Circling in the
+ * Dark" drew 10 for its 4 scenes (13 with its two portraits and its rink's sheet); three of its scenes took every go there
+ * was, and kept the SECOND — a check that is wrong does not make the kept picture better, it keeps the best of three. The
+ * still tier's 1 token a second holds the owner's 20% only to about 1.6 draws a scene (film-length.ts). So a story — each
+ * drawing of its scenes: a storyboard, one press of the Movie Maker, a re-roll — may spend at most HALF ITS SCENES, rounded
+ * up, on redraws beyond the first draw each (redrawCap: 4 scenes 2, 5 scenes 3, 13 scenes 7, one re-rolled scene 1): at
+ * most 1.5 draws a scene, 1.6 at five. Past the cap a picture keeps its best try, and its fault is written down for the
+ * storyboard and the operator's record as it always was. (The same day replayed with the checks that listen to the story
+ * and this cap — tests/redraw-economy.test.ts: 79 pictures, 1.34 a scene.)
+ * The WORST faults are drawn again first: a fault that breaks the story or cannot be shown — somebody unclothed, a split
+ * picture, a band no crop puts right, a smaller picture pasted in, somebody missing or drawn twice, a stranger, the looker
+ * stood outside, a night drawn as day, a picture letterboxed or framed on a sheet's ground — may spend the whole cap; a
+ * SOFT one — a stare, a run-down room — only the first half of it (rounded up), so the other half is always there for the
+ * hard ones, whichever scene comes back first. (Four scenes are drawn at a time: there is no waiting to see them all.) */
+export type FaultTier = "hard" | "soft" | "";
+/** How bad the worst thing wrong with a picture is. A band a crop cuts off is no fault to draw again for (coverNow). */
+export function faultTier(c: StoryCheck | null | undefined): FaultTier {
+  if (!c) return "";
+  const { lens: _lens, grimy: _grimy, band, ...rest } = c;
+  if (storyFaults({ ...rest, ...(band && !bandCuttable(band) ? { band } : {}) })) return "hard";
+  return c.lens?.length || c.grimy ? "soft" : "";
+}
+/** A BAND A CROP PUTS RIGHT, AND NOTHING ELSE WRONG, IS COVERED AT ONCE — never drawn again (review of S14: it paid for up to
+ *  two redraws, about $0.15 and four looks each, before it was covered for nothing at the end). */
+export const coverNow = (c: StoryCheck | null | undefined): boolean => !!c?.band && bandCuttable(c.band) && faultTier(c) === "";
+/** The most redraws a drawing of `scenes` scenes may spend. */
+export const redrawCap = (scenes: number): number => Math.ceil(Math.max(0, Math.floor(Number(scenes) || 0)) / 2);
+/** What one drawing of a story has spent, and may: `cap` redraws in all, `soft` of them at most for a soft fault. */
+export type RedrawPurse = { cap: number; soft: number; spent: number; spentSoft: number };
+export function redrawPurse(scenes: number, capped = true): RedrawPurse {
+  // (uncapped — STORY_REDRAW_CAP=off — every scene has its three goes, as before 2026-11-26)
+  const cap = capped ? redrawCap(scenes) : 2 * Math.max(0, Math.floor(Number(scenes) || 0));
+  return { cap, soft: capped ? Math.ceil(cap / 2) : cap, spent: 0, spentSoft: 0 };
+}
+/** May a scene whose last go came back with a fault of this tier be drawn again? Yes spends one from the purse.
+ *  (Called and answered at once — the four scenes drawing side by side never spend the same redraw twice.) */
+export function spendRedraw(p: RedrawPurse, tier: FaultTier): boolean {
+  if (!tier || p.spent >= p.cap || (tier === "soft" && p.spentSoft >= p.soft)) return false;
+  p.spent++;
+  if (tier === "soft") p.spentSoft++;
+  return true;
 }
 
 /* THE PLACES, ASKED FOR ON THEIR OWN. The story's writer is asked for them with everything else, and may

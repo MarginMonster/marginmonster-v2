@@ -128,7 +128,8 @@ test("where the pictures are drawn: a portrait each, the reference in every scen
   assert.ok(fn.includes("castPics.length ? anthropicVision(storyCastPrompt(castPics.length), [pic, ...castPics], { maxTokens: 500, model: \"claude-sonnet-4-6\" }) : Promise.resolve(\"\"),"));
   assert.ok(fn.includes("fix = storyFix(seenAs!, here.map((c) => c.name), here.map((c) => c.kind || \"person\"));"), "the fix says what a creature must be");
   // what goes back: the pictures, the token, and the cards to show (an older storyboard keeps its sheet)
-  assert.ok(fn.includes("return { sceneImgs: out.map((u) => abs(u)), castRef: carried.sheet || castToken(cards, placeCards) || null, castCards: cards, placeCards, sceneFaults: faultsOut, sceneChecks: checksOut };"), "…and the story's places travel in the same token (tests/story-places.test.ts)");
+  // (…and what the drawing spent, since 2026-11-26 — tests/redraw-economy.test.ts)
+  assert.ok(fn.includes("return { sceneImgs: out.map((u) => abs(u)), castRef: carried.sheet || castToken(cards, placeCards) || null, castCards: cards, placeCards, sceneFaults: faultsOut, sceneChecks: checksOut, draws: { scenes: todo.length, pictures: drawnPictures, cap: purse.cap, spent: purse.spent } };"), "…and the story's places travel in the same token (tests/story-places.test.ts)");
   assert.ok(fn.includes("const sheet = who[k].others.length && sheetRef ? sheetRef : null;"));
 });
 
