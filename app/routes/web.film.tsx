@@ -6125,7 +6125,10 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-cam-hand img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 30%;}
 .mm-cam-chk{position:absolute;z-index:2;top:4px;inset-inline-end:4px;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;background:var(--green,#0C7A46);box-shadow:0 0 0 2px #fff;}
 .mm-cam-chk svg{stroke:#fff;stroke-width:2.8;fill:none;stroke-linecap:round;stroke-linejoin:round;}
-.mm-cam-nm{display:flex;align-items:center;justify-content:center;min-height:2.4em;font-size:10.5px;font-weight:800;line-height:1.2;overflow-wrap:break-word;-webkit-hyphens:auto;hyphens:auto;}
+.mm-cam-nm{display:flex;align-items:center;justify-content:center;min-height:2.4em;font-size:10.5px;font-weight:800;line-height:1.2;overflow-wrap:anywhere;-webkit-hyphens:auto;hyphens:auto;}
+/* (anywhere, not break-word — review of S13b: the name is the flex box's own text, and a flex item never shrinks below
+   its longest word unless that word may break; French "Panoramique" and "Tremblement", German "Handkamera" ran out past
+   the tile's border on a phone. A browser that knows the language breaks it at a syllable first.) */
 .mm-cam.on .mm-cam-nm{color:var(--green,#0C7A46);}
 .mm-cam.is-gentle img{animation:mmCamGentle 9s ease-in-out infinite alternate;}
 .mm-cam.is-zoomin img{animation:mmCamIn 3.6s ease-in-out infinite;}
@@ -6147,8 +6150,12 @@ a.mm-pace-auto{text-decoration:none;}
 /* …and ON A STORYBOARD PICTURE: a small chip, bottom left — the story's camera quietly, a picture's own in green. It
    stands above the re-roll button's corner (a flagged picture's note takes the bottom: the chip goes up under the
    number), and reaches 44 px to the finger. */
-.mm-sc-cam{position:absolute;z-index:3;left:7px;bottom:7px;display:inline-flex;align-items:center;gap:3px;max-width:calc(100% - 44px);height:24px;padding:0 7px 0 6px;border:0;border-radius:999px;background:rgba(10,20,15,.66);color:#fff;font-family:Poppins,sans-serif;font-size:10px;font-weight:800;line-height:1;cursor:pointer;box-shadow:0 4px 12px -6px rgba(0,0,0,.6);transition:background .14s;}.mm-sc-cam::after{content:"";position:absolute;inset:-10px -4px;}
-.mm-sc-cam span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mm-sc-cam{position:absolute;z-index:3;left:7px;bottom:7px;display:inline-flex;align-items:center;gap:3px;max-width:calc(100% - 44px);min-height:24px;padding:3px 8px 3px 6px;border:0;border-radius:12px;background:rgba(10,20,15,.66);color:#fff;font-family:Poppins,sans-serif;font-size:10px;font-weight:800;line-height:1;cursor:pointer;box-shadow:0 4px 12px -6px rgba(0,0,0,.6);transition:background .14s;}.mm-sc-cam::after{content:"";position:absolute;inset:-10px -4px;}
+/* (a long name takes a second line, broken at a syllable where the browser knows the page's lang — review of S13b,
+   2026-11-26: on a phone's storyboard card the chip has 84 px, about 60 of them for the name, and it cut German
+   "Handkamera" and "Keine Bewegung" to "Handka…" and "Keine Be…", French "Sans mouvement" to "Sans mo…": a chip that
+   could not be read. No move is now said short — Fixe, Fija, Statisch — and anything longer wraps.) */
+.mm-sc-cam span{min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:normal;overflow-wrap:anywhere;-webkit-hyphens:auto;hyphens:auto;line-height:1.1;text-align:start;}
 .mm-sc-cam svg{flex:none;stroke:currentColor;stroke-width:2.2;fill:none;stroke-linecap:round;stroke-linejoin:round;}
 .mm-sc-cam:hover,.mm-sc-cam.open{background:rgba(10,20,15,.86);}
 .mm-sc-cam.is-own{background:var(--green,#0C7A46);box-shadow:0 0 0 1.5px rgba(255,255,255,.85),0 4px 12px -6px rgba(0,0,0,.6);}
