@@ -350,7 +350,11 @@ export async function narratedSceneSeeds(o: {
       // about clothes — a story dresses people for the part), and is it one picture. The cast is looked for
       // whenever the scene has any; panels only where the words described two moments (that is when a
       // picture model stacks two views). A look that cannot be made, or says nothing, keeps the picture.
-      const castPics = here.map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);
+      // (…except in a DETAIL, which shows no face by design — story-shots.ts → detail: one person's hand, a thing. Asked "is
+      //  she in it?" against her portrait, the look can only say no: a hard fault, and the redraw it paid for told to draw
+      //  her EXACTLY as in her reference image — a face in a picture planned to have none. The S14b review's measured day
+      //  had three such calls, all on DETAILs of hands. The other looks are asked as ever.)
+      const castPics = cam === "detail" ? [] : here.map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);
       // (who is who, by their looks — so the look can tell the girl at the window from the ghost on the porch)
       const whoIsWho = here.map((c) => (c.look ? `${c.name}: ${c.look.slice(0, 120)}` : c.name));
       const lookAt = async (got: string): Promise<StoryCheck | null> => {

@@ -123,7 +123,9 @@ test("the pipeline: words tidied, picture drawn, picture looked at, drawn again 
   assert.ok(s.includes("${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : \"\"}${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT} ${TRUE_SIZE}` : \"\"}${tmpl.childSafe || tmpl.ownWorld ? ` ${DRESSED}` : ` ${TODAY_LOOK}`}${!tmpl.childSafe && shadowNote(visual) ? ` ${SHADOW_SHAPE}` : \"\"} ${STORY_SOUND} ${NOTHING_WRITTEN}`;") && !s.includes("No readable text, captions or lettering anywhere."));
   assert.ok(ONE_PICTURE.includes("never a split screen, a collage, comic panels, a before-and-after or a grid") && NOTHING_WRITTEN.includes("no signs with words, labels, notices, numbers, letters or captions"));
   // WHO is looked for: the maker's own cast in this scene — by their own pictures, never the sheet of invented characters
-  assert.ok(s.includes("const castPics = here.map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);"));
+  // (…not in a DETAIL, which shows no face — its answer could only be "not in it", and its fix asked for a face: 2026-11-26)
+  assert.ok(s.includes("const castPics = cam === \"detail\" ? [] : here.map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);"));
+  assert.ok(s.indexOf("const cam = sceneShot(scene);") < s.indexOf("const castPics = cam === \"detail\""), "the shot is read before");
   assert.ok(s.includes("anthropicVision(storyCastPrompt(castPics.length), [pic, ...castPics], { maxTokens: 500, model: \"claude-sonnet-4-6\" })"));
   // panels are looked for only where the words described two moments
   assert.ok(s.includes("const twoMoments = oneMoment(written) !== written;") && s.includes("twoMoments ? anthropicVision(storyPanelsPrompt(), [pic], { maxTokens: 320, model: \"claude-sonnet-4-6\" })"));
