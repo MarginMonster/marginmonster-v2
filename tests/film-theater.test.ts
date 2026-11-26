@@ -637,15 +637,17 @@ test("each shelf is ONE row, swiped sideways, in both themes: 2.3 posters on a p
   // (2026-11-26: the STILL shelf is in the same list — the told heroes again, each poster opening its hero on its
   //  shelf's rung, its zoom key its shelf's (posterKey), chosen only while that rung is, "Still pictures" its note)
   for (const k of [
-    "{heroShelves(heroes, { still: d.storyMotion }).map((sh) => (",
+    // (2026-11-26, THE WAYS: one way's row at a time — the owner's "A")
+    "{shelves.filter((sh) => sh.key === wayOn).map((sh) => (",
     "<section key={sh.key} className={`fs-shelf is-${sh.key}`} aria-labelledby={`fs-shelf-${sh.key}`}>",
     "<div className={`fs-fmtgrid${anim === \"in\" ? \" throw\" : \"\"}`} role=\"tablist\" aria-label={t(sh.name)}>",
     "{sh.heroes.map((h) => (",
     "<button type=\"button\" role=\"tab\" key={h.id} className={`fs-fmt${zoomKey === posterKey(h.id, sh.rung) ? \" zoom\" : \"\"}${h.told === \"narrated\" ? \" is-told\" : \"\"}`}\n                aria-selected={heroId === h.id && (!sh.rung || pictures === sh.rung)} aria-label={[t(h.name), h.kick ? t(h.kick) : \"\", sh.rung === \"still\" ? t(\"Still pictures\") : h.meta ? t(h.meta) : \"\"].filter(Boolean).join(\" · \")} onClick={() => enterFormat(h.id, sh.rung)}>",
     "<span className=\"fs-fmt-label\"><b>{t(h.card)}</b></span>",
-    "{h.kick ? <span className=\"fs-fmt-sub\">{t(h.kick)}{sh.rung === \"still\" ? <em> · {t(\"Still pictures\")}</em> : h.meta ? <em> · {t(h.meta)}</em> : null}</span> : null}",
   ]) assert.equal(count(ui, k), 1, k);
-  const shelvesJsx = ui.slice(ui.indexOf("{heroShelves(heroes, { still: d.storyMotion }).map((sh) => ("), ui.indexOf("{entered && ("));
+  // (…and nothing under a poster: the way's card says how it is told, once — "This has become repetitive", the owner)
+  assert.equal(count(ui, "className=\"fs-fmt-sub\""), 0);
+  const shelvesJsx = ui.slice(ui.indexOf("{shelves.filter((sh) => sh.key === wayOn).map((sh) => ("), ui.indexOf("{entered && ("));
   // (2026-11-25: a wide screen's ARROWS sit beside a row that runs on — FS_SHELF_GO. They are for a mouse only:
   //  plain marks, hidden from a screen reader and out of the Tab order, and what moves a row is a CLICK on one —
   //  a function outside this markup. Nothing here moves a row by itself, and no poster leaves the Tab order.)
@@ -733,8 +735,9 @@ test("each shelf is ONE row, swiped sideways, in both themes: 2.3 posters on a p
   // (…and the six anime styles on their own shelf after it, the same day: "also would like to add an Anime maker with
   //  different styles" — six scroll too)
   const shelves = heroShelves(FILM_HEROES).map((s) => s.heroes.length);
-  assert.deepEqual(shelves, [9, 9, 6, 11, 2]);
-  assert.ok(shelves[0] > 4 && shelves[1] > 4 && shelves[2] > 4 && shelves[3] > 4 && shelves[4] <= 4, "Stories, Still Stories, Anime and Films scroll on a wide screen too; Music videos' two do not");
+  // (…and since 2026-11-26 THE WAYS: Picture Book 9, Story 9, Film 10, Anime 6 scroll; Kids' two and Music Video's one stand whole)
+  assert.deepEqual(shelves, [9, 9, 10, 6, 2, 1]);
+  assert.ok(shelves[0] > 4 && shelves[1] > 4 && shelves[2] > 4 && shelves[3] > 4 && shelves[4] <= 4 && shelves[5] <= 4, "Picture Book, Story, Film and Anime scroll on a wide screen too; Kids and Music Video do not");
 
   // THE PAGE NEVER SCROLLS SIDEWAYS. The tray runs to the screen's edge by taking back the page's own gutter
   // — the shell's .wb-main padding, width for width — and not a pixel more.
@@ -883,14 +886,14 @@ test("in the dark the Next-episode cards are tickets under a sign in gold — an
   const pseudo = T.filter((r) => /\.fs-(shelf|fmt)[^,]*::(before|after)/.test(r.sel));
   assert.deepEqual(pseudo.map((r) => r.sel), [".fs-theater .fs-shelf-h::before,.fs-theater .fs-shelf-h::after"]);
   assert.deepEqual(props(pseudo[0].body), ["background", "border-color"]);
-  // the shelves' words are not a theme's to change: five shelves (the still one and the anime one since 2026-11-26), their
-  // names, lines and tags
+  // the ways' words are not a theme's to change (2026-11-26, THE WAYS: the ladder, then Only on EasyMode)
   assert.deepEqual(heroShelves(FILM_HEROES).map((s) => [s.name, s.tag, s.line]), [
-    ["Stories", "Narrated", "A narrator tells it over moving pictures"],
-    ["Still Stories", "Cheapest", "A narrator tells it over still pictures that slowly move"],
-    ["Anime", "Narrated", "A narrator tells it over hand-drawn anime pictures"],
-    ["Films", "Acted", "Actors speak the lines on camera"],
-    ["Music videos", "Sung", "Your artist sings on camera"],
+    ["Picture Book", "Cheapest", "A narrator tells it over still pictures that slowly move"],
+    ["Story", "Most popular", "A narrator tells it over moving pictures"],
+    ["Film", "Premium", "Actors speak the lines on camera"],
+    ["Anime", "New", "A narrator tells it over hand-drawn anime pictures"],
+    ["Kids", "For little ones", "Cartoons and sing-alongs"],
+    ["Music Video", "Sung", "Your artist sings on camera"],
   ]);
   // no gradient of the dark's fades to the bare keyword (an old Safari greys it): every one ends in its own
   // colour at nothing — the word is not in either of its sheets
@@ -932,7 +935,8 @@ test("a shelf is a TICKET in both themes: the rosette engraved in its paper, a p
   assert.ok(!/fs-theater|data-theme/.test(ticket.replace(/\/\*[\s\S]*?\*\//g, "")));
   // ONE element was added for it — the engraving's layer, a picture only — the first thing in a shelf; the
   // shelf's heading, its row and every poster are the markup they were (the rows' test pins them)
-  assert.equal(count(ui, "fs-shelf-wm"), 1);
+  // (…and the same layer opens Caught on Cam's row of cameras, a shelf too, since 2026-11-26: two in the markup, one per kind of row)
+  assert.equal(count(ui, "fs-shelf-wm"), 2);
   assert.ok(ui.includes("<span className=\"fs-shelf-wm\" aria-hidden=\"true\" />\n              <header className=\"fs-shelf-h\">"));
   const body = (sel: string, media = "") => { const r = K.filter((x) => x.sel === sel && x.media === media); assert.equal(r.length, 1, `${media} ${sel}`); return r[0].body; };
   const MASKED = "@supports ((-webkit-mask-image:none) or (mask-image:none))";

@@ -9,6 +9,19 @@
 import type { UiLang } from "./ui-i18n";
 
 const es: Record<string, string> = {
+  // (2026-11-26) THE WAYS on the Movie Maker home — the ladder and "Only on EasyMode"
+  "Pick what to make": "Elige qué hacer",
+  "Only on EasyMode": "Solo en EasyMode",
+  "Picture Book": "Libro ilustrado",
+  "Premium": "Premium",
+  "Kids": "Niños",
+  "For little ones": "Para los más pequeños",
+  "Cartoons and sing-alongs": "Dibujos animados y canciones para cantar",
+  "Caught on Cam": "Captado en cámara",
+  "Pick a genre": "Elige un género",
+  "Pick one": "Elige uno",
+  "Pick the camera": "Elige la cámara",
+  "Tap it to start": "Tócalo para empezar",
   "Anime": "Anime",
   "A narrator tells it over hand-drawn anime pictures": "Un narrador la cuenta sobre imágenes de anime dibujadas a mano",
   "Anime stories draw their own cast, in the style.": "Las historias de anime dibujan su propio reparto, en su estilo.",
@@ -3612,6 +3625,19 @@ const es: Record<string, string> = {
 };
 
 const fr: Record<string, string> = {
+  // (2026-11-26) THE WAYS on the Movie Maker home — the ladder and "Only on EasyMode"
+  "Pick what to make": "Choisis quoi créer",
+  "Only on EasyMode": "Seulement sur EasyMode",
+  "Picture Book": "Livre illustré",
+  "Premium": "Premium",
+  "Kids": "Enfants",
+  "For little ones": "Pour les tout-petits",
+  "Cartoons and sing-alongs": "Dessins animés et chansons à chanter",
+  "Caught on Cam": "Pris sur le vif",
+  "Pick a genre": "Choisis un genre",
+  "Pick one": "Choisis-en un",
+  "Pick the camera": "Choisis la caméra",
+  "Tap it to start": "Touche pour commencer",
   "Anime": "Anime",
   "A narrator tells it over hand-drawn anime pictures": "Un narrateur la raconte sur des images d'anime dessinées à la main",
   "Anime stories draw their own cast, in the style.": "Les histoires d'anime dessinent leurs propres personnages, dans leur style.",
@@ -7196,6 +7222,19 @@ const fr: Record<string, string> = {
 };
 
 const de: Record<string, string> = {
+  // (2026-11-26) THE WAYS on the Movie Maker home — the ladder and "Only on EasyMode"
+  "Pick what to make": "Wähle, was du machst",
+  "Only on EasyMode": "Nur bei EasyMode",
+  "Picture Book": "Bilderbuch",
+  "Premium": "Premium",
+  "Kids": "Kinder",
+  "For little ones": "Für die Kleinen",
+  "Cartoons and sing-alongs": "Cartoons und Mitsing-Lieder",
+  "Caught on Cam": "Von der Kamera erwischt",
+  "Pick a genre": "Wähle ein Genre",
+  "Pick one": "Wähle eins",
+  "Pick the camera": "Wähle die Kamera",
+  "Tap it to start": "Zum Starten tippen",
   "Anime": "Anime",
   "A narrator tells it over hand-drawn anime pictures": "Ein Erzähler erzählt sie zu handgezeichneten Anime-Bildern",
   "Anime stories draw their own cast, in the style.": "Anime-Geschichten zeichnen ihre eigene Besetzung, in ihrem Stil.",
@@ -10790,6 +10829,19 @@ const de: Record<string, string> = {
 };
 
 const zh: Record<string, string> = {
+  // (2026-11-26) THE WAYS on the Movie Maker home — the ladder and "Only on EasyMode"
+  "Pick what to make": "选择要制作的内容",
+  "Only on EasyMode": "仅在 EasyMode",
+  "Picture Book": "图画书",
+  "Premium": "高级",
+  "Kids": "儿童",
+  "For little ones": "献给小朋友",
+  "Cartoons and sing-alongs": "动画片和跟唱歌曲",
+  "Caught on Cam": "被镜头拍下",
+  "Pick a genre": "选择类型",
+  "Pick one": "选一个",
+  "Pick the camera": "选择摄像头",
+  "Tap it to start": "点击开始",
   "A narrator tells it over hand-drawn anime pictures": "旁白配着手绘动漫画面讲述",
   "Anime stories draw their own cast, in the style.": "动漫故事会按故事的画风绘制自己的角色。",
   "Dream": "梦境",
@@ -14435,6 +14487,19 @@ const zh: Record<string, string> = {
 };
 
 const ur: Record<string, string> = {
+  // (2026-11-26) THE WAYS on the Movie Maker home — the ladder and "Only on EasyMode"
+  "Pick what to make": "منتخب کریں کیا بنانا ہے",
+  "Only on EasyMode": "صرف EasyMode پر",
+  "Picture Book": "تصویری کتاب",
+  "Premium": "پریمیم",
+  "Kids": "بچے",
+  "For little ones": "ننھے منوں کے لیے",
+  "Cartoons and sing-alongs": "کارٹون اور ساتھ گانے والے گیت",
+  "Caught on Cam": "کیمرے میں قید",
+  "Pick a genre": "صنف منتخب کریں",
+  "Pick one": "ایک منتخب کریں",
+  "Pick the camera": "کیمرہ منتخب کریں",
+  "Tap it to start": "شروع کرنے کے لیے ٹیپ کریں",
   "A narrator tells it over hand-drawn anime pictures": "ایک راوی اسے ہاتھ سے بنی اینیمے تصویروں پر سناتا ہے",
   "Anime stories draw their own cast, in the style.": "اینیمے کہانیاں اپنے کردار خود، اسی انداز میں بناتی ہیں۔",
   "Dream": "خواب",

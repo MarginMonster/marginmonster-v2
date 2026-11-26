@@ -46,9 +46,11 @@ test("one told hero per style, built FROM the table: id = template = poster = th
 
 test("the Anime shelf stands right after the Still Stories and lists exactly the six, in the table's order; the Stories list none", () => {
   const shelves = heroShelves(FILM_HEROES);
-  assert.deepEqual(shelves.map((s) => s.key), ["told", "still", "anime", "acted", "sung"]);
+  // (2026-11-26, THE WAYS — the owner's "A", then "Those need to be on display": Anime is a card of "Only on EasyMode",
+  //  tagged New, its row "Pick a style")
+  assert.deepEqual(shelves.map((s) => s.key), ["still", "told", "acted", "anime", "kids", "sung"]);
   const sh = shelves.find((s) => s.key === "anime")!;
-  assert.deepEqual([sh.name, sh.tag, sh.line], ["Anime", "Narrated", "A narrator tells it over hand-drawn anime pictures"]);
+  assert.deepEqual([sh.name, sh.tag, sh.line, sh.pick, sh.group], ["Anime", "New", "A narrator tells it over hand-drawn anime pictures", "Pick a style", "only"]);
   assert.deepEqual(sh.heroes.map((h) => h.id), KEYS);
   // (the Stories hold the movie categories; an anime story is picked by its look — and told over stills by picking Still
   //  in its Length panel, where every told story's rung is picked)
@@ -56,7 +58,8 @@ test("the Anime shelf stands right after the Still Stories and lists exactly the
   // NO RUNG: S15a's motion test brought Dream and Neon City to life on Seedance and both held flat and 2D ("holds") — so a
   // poster opens on moving pictures, as a Story's does. (Had they drifted toward 3D or a photograph, it would open on Still.)
   assert.equal(sh.rung, undefined);
-  assert.ok(read("app", "lib", "film-heroes.ts").includes("{ key: \"anime\", name: \"Anime\", tag: \"Narrated\", line: \"A narrator tells it over hand-drawn anime pictures\", has: (h) => h.shelf === \"anime\" },"));
+  const heroesSrc = read("app", "lib", "film-heroes.ts");
+  assert.ok(heroesSrc.includes("{ key: \"anime\", name: \"Anime\", tag: \"New\", line: \"A narrator tells it over hand-drawn anime pictures\", pick: \"Pick a style\", group: \"only\",") && heroesSrc.includes("has: (h) => h.shelf === \"anime\" },"));
   // (where pictures cannot move at all the shelf stays: its stories are told over stills there, like every story)
   assert.ok(heroShelves(FILM_HEROES, { still: false }).some((s) => s.key === "anime"));
   // each poster its own zoom key; a page that is not offered the anime templates has no Anime shelf, never an empty one
@@ -169,7 +172,8 @@ test("THE SHELF'S LOOK: a cherry-pink accent, a spark on its heading and on each
   const [r, g, b] = [1, 3, 5].map((i) => parseInt("#CA3254".slice(i, i + 2), 16));
   assert.ok(r > b && b > g && r - b > 100);
   for (const other of ["#A8741B", "#3E6A8E", "#0C7A46", "#6B4BC8"]) assert.ok(css.includes(`--shelf:${other};`), other);
-  assert.ok(page.includes("<Ico n={sh.key === \"told\" ? \"book\" : sh.key === \"still\" ? \"image\" : sh.key === \"anime\" ? \"sparkle\" : sh.key === \"acted\" ? \"film\" : \"music\"} size={18} />"));
+  // (2026-11-26: every way's heading icon from one map — the Anime row's is still the spark)
+  assert.ok(page.includes("<Ico n={WAY_ICON[sh.key]} size={18} />") && page.includes("anime: \"sparkle\""));
   assert.ok(read("app", "lib", "icons.tsx").includes("  sparkle: <>"));
   const fmt = page.slice(page.indexOf("  const fmtIcon = (key: string, told = false) => {"), page.indexOf("  const fmtIcon = (key: string, told = false) => {") + 900);
   assert.ok(fmt.indexOf("if (animeStyleOf(key)) return <svg") > 0 && fmt.indexOf("if (animeStyleOf(key)) return <svg") < fmt.indexOf("if (told) return"), "a style's spark before the told book");
@@ -222,6 +226,8 @@ test("every word of the shelf is in all five languages, at the top of each block
   for (const lang of ["es", "fr", "de", "zh", "ur"]) {
     const open = `const ${lang}: Record<string, string> = {\n`;
     // (zh and ur already said "Anime" — 动漫, اینیمے — so it was added to es, fr and de only: a second key is a TS error)
-    assert.ok(dict.includes(`${open}${lang === "zh" || lang === "ur" ? "" : "  \"Anime\": \"Anime\",\n"}  "A narrator tells it over hand-drawn anime pictures": `), `${lang}: inserted at the top of its block`);
+    // (…near the top: the Movie Maker's ways, 2026-11-26, added their lines above them since)
+    const at = dict.indexOf(open);
+    assert.ok(at >= 0 && dict.slice(at, at + 4000).includes(`${lang === "zh" || lang === "ur" ? "" : "  \"Anime\": \"Anime\",\n"}  "A narrator tells it over hand-drawn anime pictures": `), `${lang}: inserted at the top of its block`);
   }
 });

@@ -72,6 +72,10 @@ test("withMark / fitEntry: the body is cut, never the tag; an untagged entry is 
   const tag = "[always: a dented brass lantern on a long pole | move: the Long Reach — a lunge that hooks the lantern pole over a gap]";
   const entry = `${body} ${tag}`;
   assert.ok(entry.length > 400);
+  // (a part cut at its max ends on a whole clause — live 2026-11-26: "…arms flung wide to catch the")
+  assert.deepEqual(markOf({ move: "the kite-step, a running leap off a ledge onto a taut cord, arms flung wide to catch the wind" }), { move: "the kite-step, a running leap off a ledge onto a taut cord" });
+  assert.equal(markOf({ move: "the Long Reach — a lunge across the gap that ends with the lantern held out over the water to the" })?.move.endsWith(" the"), false);
+  assert.deepEqual(markOf({ has: "a long cobalt scarf" }), { has: "a long cobalt scarf" }, "a short part is untouched");
   const fit = fitEntry(entry, 200);
   assert.ok(fit.length <= 200, `${fit.length}`);
   assert.ok(fit.endsWith(` ${tag}`), "the whole tag, at the end");

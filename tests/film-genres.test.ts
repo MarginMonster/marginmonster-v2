@@ -369,7 +369,9 @@ test("every genre is on the shelves under its word: acted — and, but for Actio
   const shelves = heroShelves(FILM_HEROES);
   const told = shelves.find((s) => s.key === "told")!, acted = shelves.find((s) => s.key === "acted")!;
   assert.deepEqual(told.heroes.map((h) => h.tmpl), ["testmovie", "comedy", "horror", "thriller", "romance", "scifi", "fantasy", "mystery", "moral"]);
-  assert.deepEqual(acted.heroes.map((h) => h.tmpl), GENRES);
+  // (2026-11-26, THE WAYS: the Kids Cartoon stands on the Kids way — a different audience — so the Film row ends at Moral)
+  assert.deepEqual(acted.heroes.map((h) => h.tmpl), GENRES.filter((g) => g !== "kidstv"));
+  assert.deepEqual(shelves.find((s) => s.key === "kids")!.heroes.map((h) => h.tmpl), ["kidstv", "kidsmusicvideo"]);
 });
 
 /** A JPEG's width and height, from its own frame header. */

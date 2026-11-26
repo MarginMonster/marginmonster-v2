@@ -54,13 +54,15 @@ test("a poster says its movie category; the shelf says how it is told; a screen 
   // the words are the categories, the same on both shelves — and the two that share a word differ by their name
   // (2026-11-26: the told ones stand again on the still shelf — the same heroes, so the same names; and the Anime shelf's
   //  posters say their STYLE, a word of its own each: "an Anime maker with different styles", the owner)
+  // (2026-11-26, THE WAYS: Picture Book · Story · Film, then Anime · Kids · Music Video — the Kids' two on a way of their own)
   const shelves = heroShelves(FILM_HEROES);
   assert.deepEqual(shelves.map((s) => s.heroes.map((h) => h.card)), [
     ["Drama", "Comedy", "Horror", "Thriller", "Romance", "Sci-Fi", "Fantasy", "Mystery", "Moral"],
     ["Drama", "Comedy", "Horror", "Thriller", "Romance", "Sci-Fi", "Fantasy", "Mystery", "Moral"],
+    ["Drama", "Comedy", "Horror", "Thriller", "Action", "Romance", "Sci-Fi", "Fantasy", "Mystery", "Moral"],
     ["Dream", "Retro", "Neon City", "Skyglow", "Dark Ink", "Pastel Days"],
-    ["Drama", "Comedy", "Horror", "Thriller", "Action", "Romance", "Sci-Fi", "Fantasy", "Mystery", "Moral", "Kids Cartoon"],
-    ["Music Video", "Kids Music Video"],
+    ["Kids Cartoon", "Kids Music Video"],
+    ["Music Video"],
   ]);
   for (const h of FILM_HEROES) {
     const twin = FILM_HEROES.find((o) => o !== h && o.card === h.card);
@@ -108,7 +110,8 @@ test("a wide screen shows that a shelf runs on: the fifth poster peeks in, and a
   // the markup: on a shelf with more than four, two plain marks — hidden from a screen reader, out of the Tab
   // order (Tab walks every poster already) — and a click is what moves the row
   const jsx = ui.slice(ui.indexOf("{/* A WIDE SCREEN'S ARROWS (FS_SHELF_GO)"), ui.indexOf("</section>", ui.indexOf("{/* A WIDE SCREEN'S ARROWS (FS_SHELF_GO)")));
-  assert.ok(jsx.includes("{sh.heroes.length + (sh.key === \"sung\" && d.lyricVideo ? 1 : 0) + (sh.key === \"acted\" && d.foundFootage ? 1 : 0) > 4 && (<>"));
+  // (2026-11-26: Found Footage is no longer the Film row's last door — it is the Caught on Cam card — so it adds no poster here)
+  assert.ok(jsx.includes("{sh.heroes.length + (sh.key === \"sung\" && d.lyricVideo ? 1 : 0) > 4 && (<>"));
   assert.ok(jsx.includes("<span className=\"fs-shelf-arrow is-back\" aria-hidden=\"true\" onClick={(e) => stepShelf(e.currentTarget, -1)}>"));
   assert.ok(jsx.includes("<span className=\"fs-shelf-arrow is-on\" aria-hidden=\"true\" onClick={(e) => stepShelf(e.currentTarget, 1)}>"));
   assert.ok(!/<button|tabIndex/.test(jsx));
@@ -120,14 +123,16 @@ test("a wide screen shows that a shelf runs on: the fifth poster peeks in, and a
   assert.ok(step.includes("const reduce = !!window.matchMedia?.(\"(prefers-reduced-motion: reduce)\").matches;"));
   // the page tells each shelf where it is: on arrival, on every scroll of its row, and when the layout changes —
   // and it writes only attributes of the shelf: nothing there moves a row
-  const fx = ui.slice(ui.indexOf("/* A WIDE SCREEN'S ARROWS (FS_SHELF_GO, 2026-11-25)"), ui.indexOf("}, [entered, heroes.length, d.lyricVideo, d.foundFootage]);"));
+  // (…and it runs again as a way is picked: the row it reads is a new one — 2026-11-26)
+  const fx = ui.slice(ui.indexOf("/* A WIDE SCREEN'S ARROWS (FS_SHELF_GO, 2026-11-25)"), ui.indexOf("}, [entered, wayOn, heroes.length, d.lyricVideo, d.foundFootage]);"));
+  assert.ok(ui.includes("}, [entered, wayOn, heroes.length, d.lyricVideo, d.foundFootage]);"));
   assert.ok(fx.includes("shelf.toggleAttribute(\"data-moved\", x > 2);") && fx.includes("shelf.toggleAttribute(\"data-end\", x >= row.scrollWidth - row.clientWidth - 2);"));
   assert.ok(fx.includes("row.addEventListener(\"scroll\", onScroll, { passive: true })") && fx.includes("window.addEventListener(\"resize\", place);") && fx.includes("document.fonts?.ready.then("));
   assert.ok(fx.includes("rows.forEach((row) => row.removeEventListener(\"scroll\", onScroll)); window.removeEventListener(\"resize\", place);"), "and lets go of them when the shelves go");
   assert.ok(!/scrollBy|scrollTo|scrollLeft\s*=|scrollIntoView/.test(fx));
   // with today's shelves the long ones get arrows on a wide screen, Music videos does not (2026-11-26: Still Stories,
   // nine posters, is one of the long ones — and Anime, six, the same day)
-  assert.deepEqual(heroShelves(FILM_HEROES).map((s) => s.heroes.length > 4), [true, true, true, true, false]);
+  assert.deepEqual(heroShelves(FILM_HEROES).map((s) => s.heroes.length > 4), [true, true, true, true, false, false]);
 });
 
 /* ---- THE WRITER'S NUDGE ---------------------------------------------------------------------------------- */

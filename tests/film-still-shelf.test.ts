@@ -35,10 +35,12 @@ const between = (hay: string, a: string, b: string) => { const i = hay.indexOf(a
 
 test("the still shelf stands right after the Stories and re-lists exactly the told heroes, in their order", () => {
   const shelves = heroShelves(FILM_HEROES);
-  // (2026-11-26: the Anime shelf follows it — the owner's "an Anime maker with different styles": tests/anime-shelf.test.ts)
-  assert.deepEqual(shelves.map((s) => s.key), ["told", "still", "anime", "acted", "sung"]);
-  const [told, still] = shelves;
-  assert.deepEqual([still.name, still.tag, still.line, still.rung], ["Still Stories", "Cheapest", "A narrator tells it over still pictures that slowly move", "still"]);
+  // (2026-11-26, THE WAYS — the owner's "A": the still rung is PICTURE BOOK, the ladder's first card — cheapest to most
+  //  cinematic, Picture Book · Story · Film — then Only on EasyMode. One way's row shows at a time, so it never repeats)
+  assert.deepEqual(shelves.map((s) => s.key), ["still", "told", "acted", "anime", "kids", "sung"]);
+  const [still, told] = shelves;
+  assert.deepEqual([still.name, still.tag, still.line, still.rung], ["Picture Book", "Cheapest", "A narrator tells it over still pictures that slowly move", "still"]);
+  assert.deepEqual(still.heroes, told.heroes, "the Story's heroes, on the still rung");
   // the Stories open on moving pictures: that is what their line says now
   assert.equal(told.rung, "moving");
   assert.equal(told.line, "A narrator tells it over moving pictures");
@@ -48,7 +50,7 @@ test("the still shelf stands right after the Stories and re-lists exactly the to
   assert.deepEqual(still.heroes.map((h) => h.id), toldHeroes.map((h) => h.id));
   assert.deepEqual(still.heroes, told.heroes);
   // a way shelf carries no rung but the told one's
-  assert.deepEqual(shelves.filter((s) => s.rung).map((s) => [s.key, s.rung]), [["told", "moving"], ["still", "still"]]);
+  assert.deepEqual(shelves.filter((s) => s.rung).map((s) => [s.key, s.rung]), [["still", "still"], ["told", "moving"]]);
   // it re-lists whatever told heroes a page is offered (a page that cannot narrate a template has no Story of it)
   const fewer = heroesFor(["musicvideo", "kidstv", "kidsmusicvideo", "moral", "horror", "testmovie"], ["horror"]);
   assert.deepEqual(heroShelves(fewer).find((s) => s.key === "still")?.heroes.map((h) => h.id), ["horror"]);
@@ -69,19 +71,22 @@ test("the still posters are NOT heroes of their own: a piece made from one reads
 test("where a server's pictures cannot move, every story is told over stills already: no still shelf repeats the Stories", () => {
   assert.ok(!heroShelves(FILM_HEROES, { still: false }).some((s) => s.key === "still" || s.rung === "still"));
   // (the Anime shelf, 2026-11-26, carries no rung: it stays, its stories told over stills there too)
-  assert.deepEqual(heroShelves(FILM_HEROES, { still: false }).map((s) => s.key), ["told", "anime", "acted", "sung"]);
+  assert.deepEqual(heroShelves(FILM_HEROES, { still: false }).map((s) => s.key), ["told", "acted", "anime", "kids", "sung"]);
   // the Stories stay — and there they are told over stills (the builder's own words there are the still ones, S13:
   // lenStill), so their heading says so, in the still shelf's own words, never "moving pictures" (review of S13c: the
   // kill switch STORY_MOTION=off would have left the heading promising motion)
   const [toldOff] = heroShelves(FILM_HEROES, { still: false });
   assert.equal(toldOff.heroes.length, 9);
-  assert.deepEqual([toldOff.key, toldOff.name, toldOff.tag, toldOff.line], ["told", "Stories", "Narrated", "A narrator tells it over still pictures that slowly move"]);
-  assert.equal(heroShelves(FILM_HEROES)[0].line, "A narrator tells it over moving pictures", "…and only there");
-  assert.equal(heroShelves(FILM_HEROES, { still: true })[0].line, "A narrator tells it over moving pictures");
-  assert.deepEqual(heroShelves(FILM_HEROES, { still: true }).map((s) => s.key), ["told", "still", "anime", "acted", "sung"]);
-  assert.deepEqual(heroShelves(FILM_HEROES, {}).map((s) => s.key), ["told", "still", "anime", "acted", "sung"], "the shelf is there unless asked away");
+  // (2026-11-26, THE WAYS: the Story card's name and tag are "Story" / "Most popular" — and there it shows no motion:
+  //  Picture Book's art)
+  assert.deepEqual([toldOff.key, toldOff.name, toldOff.tag, toldOff.line], ["told", "Story", "Most popular", "A narrator tells it over still pictures that slowly move"]);
+  const toldOn = heroShelves(FILM_HEROES).find((sh) => sh.key === "told")!;
+  assert.equal(toldOn.line, "A narrator tells it over moving pictures", "…and only there");
+  assert.equal(heroShelves(FILM_HEROES, { still: true }).find((sh) => sh.key === "told")!.line, "A narrator tells it over moving pictures");
+  assert.deepEqual(heroShelves(FILM_HEROES, { still: true }).map((s) => s.key), ["still", "told", "acted", "anime", "kids", "sung"]);
+  assert.deepEqual(heroShelves(FILM_HEROES, {}).map((s) => s.key), ["still", "told", "acted", "anime", "kids", "sung"], "Picture Book is there unless asked away");
   // the page asks with the loader's own fact
-  assert.equal(count(page, "{heroShelves(heroes, { still: d.storyMotion }).map((sh) => ("), 1);
+  assert.equal(count(page, "const shelves = heroShelves(heroes, { still: d.storyMotion });"), 1);
   assert.ok(page.includes("    storyMotion: storyMotionOn(),\n"));
 });
 
@@ -98,14 +103,15 @@ test("a poster's key says which shelf it stands on, so the same hero pops only w
 });
 
 test("the page: one map draws every shelf; a still poster opens its hero on the still rung, plays no loop, and says so", () => {
-  const block = between(page, "{heroShelves(heroes, { still: d.storyMotion }).map((sh) => (", "{entered && (");
+  // (2026-11-26, THE WAYS: the one map draws the CHOSEN way's row — the page calls heroShelves once, up top)
+  const block = between(page, "{shelves.filter((sh) => sh.key === wayOn).map((sh) => (", "{entered && (");
   // the SAME single map — the still shelf is not a second block of markup
   assert.equal(count(page, "heroShelves("), 1);
   assert.equal(count(block, "{sh.heroes.map((h) => ("), 1);
   assert.equal(count(block, "className=\"fs-shelf-arrow "), 2);
   // its heading's icon: a picture
   // (2026-11-26: and the Anime shelf's, a spark — tests/anime-shelf.test.ts)
-  assert.ok(block.includes("<Ico n={sh.key === \"told\" ? \"book\" : sh.key === \"still\" ? \"image\" : sh.key === \"anime\" ? \"sparkle\" : sh.key === \"acted\" ? \"film\" : \"music\"} size={18} />"));
+  assert.ok(block.includes("<Ico n={WAY_ICON[sh.key]} size={18} />") && page.includes("const WAY_ICON: Record<WayKey, string> = { still: \"image\", told: \"book\", acted: \"film\", anime: \"sparkle\", kids: \"star\", sung: \"music\", cam: \"camera\" };"));
   // each poster: its zoom by its own key; chosen only while its rung is; opened on its shelf's rung
   assert.ok(block.includes("className={`fs-fmt${zoomKey === posterKey(h.id, sh.rung) ? \" zoom\" : \"\"}"));
   assert.ok(block.includes("aria-selected={heroId === h.id && (!sh.rung || pictures === sh.rung)}"));
@@ -114,7 +120,8 @@ test("the page: one map draws every shelf; a still poster opens its hero on the 
   assert.ok(block.includes("<LoopCover k={h.media} loop={sh.rung === \"still\" ? false : undefined} />"));
   assert.ok(page.includes("const has = !!clip || (loop ?? LOOP_KEYS.includes(k));") && page.includes("{has && <video ref={ref} className={`fs-fmt-vid"));
   // its note is "Still pictures" where a Story's says "narrated in minutes" — on the poster and to a screen reader
-  assert.ok(block.includes("{t(h.kick)}{sh.rung === \"still\" ? <em> · {t(\"Still pictures\")}</em> : h.meta ? <em> · {t(h.meta)}</em> : null}"));
+  // (2026-11-26: nothing under a poster now — the card above says it, once; a screen reader still hears "Still pictures")
+  assert.ok(!block.includes("className=\"fs-fmt-sub\""));
   assert.ok(block.includes("sh.rung === \"still\" ? t(\"Still pictures\") : h.meta ? t(h.meta) : \"\"].filter(Boolean).join(\" · \")}"));
   // its badge is the shelf's picture where a Story's is the told book (the row reads as pictures at a glance); its
   // word is the Story's. Its badge's COLOUR and its note's are the shelf's own blue, one across the row (the stylesheet,
