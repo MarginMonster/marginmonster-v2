@@ -326,3 +326,14 @@ test("the next episode says who comes back, before a word is written", () => {
   assert.ok(page.includes("{!pickedStars.length && seriesOwn.length > 1 && ("), "the maker's own picks take the card over");
   assert.equal(read("app", "lib", "ui-i18n-dict.ts").split(`${JSON.stringify("Back: {names}")}:`).length - 1, 5);
 });
+
+test("A STORY'S PICKED STARS REACH ITS WRITER WITH THEIR GENDERS (2026-11-26: three men picked, one written as the Duchess — \"she mused\")", () => {
+  const ui = fs.readFileSync(path.join(root, "app", "routes", "web.film.tsx"), "utf8");
+  // people only, from the roster's own gender; a music video keeps its co-stars' (castGenders)
+  assert.ok(ui.includes("const storyGenders = pickedStars.filter((r) => (r.kind || \"person\") === \"person\" && !!(r.name || \"\").trim())"));
+  const spread = "...(tmpl?.lipSyncSinger ? (castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}) : storyGenders.length ? { filmCastGenders: JSON.stringify(storyGenders) } : {})";
+  assert.equal(ui.split(spread).length - 1, 2, "the writer's ask and the storyboard's");
+  assert.ok(!ui.includes("...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {})"));
+  // …and the server hands them to the writer's CAST GENDERS line, whatever the template
+  assert.ok(ui.includes("castGenders: parseCastGenders(form.get(\"filmCastGenders\") as string)"));
+});
