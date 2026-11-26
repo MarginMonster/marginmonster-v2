@@ -105,8 +105,10 @@ test("the page: one map draws every shelf; a still poster opens its hero on the 
   // its note is "Still pictures" where a Story's says "narrated in minutes" — on the poster and to a screen reader
   assert.ok(block.includes("{t(h.kick)}{sh.rung === \"still\" ? <em> · {t(\"Still pictures\")}</em> : h.meta ? <em> · {t(h.meta)}</em> : null}"));
   assert.ok(block.includes("sh.rung === \"still\" ? t(\"Still pictures\") : h.meta ? t(h.meta) : \"\"].filter(Boolean).join(\" · \")}"));
-  // nothing else about the poster changed: its word, its tint and its told glyph are the Story's
-  assert.ok(block.includes("<span className=\"fs-fmt-label\"><b>{t(h.card)}</b></span>") && block.includes("{fmtIcon(h.tmpl, h.told === \"narrated\")}"));
+  // its badge is the shelf's picture where a Story's is the told book (the row reads as pictures at a glance); its
+  // word and its tint are the Story's
+  assert.ok(block.includes("<span className={`fs-fmt-ico ${h.tint}`} aria-hidden=\"true\">{sh.rung === \"still\" ? <Ico n=\"image\" size={15} /> : fmtIcon(h.tmpl, h.told === \"narrated\")}</span>"));
+  assert.ok(block.includes("<span className=\"fs-fmt-label\"><b>{t(h.card)}</b></span>"));
   assert.ok(page.includes("// (2026-11-26) …and the told heroes again on a shelf of their still rung: a poster's key says which shelf it stands on\nimport { posterKey } from \"../lib/film-heroes\";"));
 });
 
@@ -174,8 +176,8 @@ test("a still poster moves the way a still story moves: Gentle, slowly, a transf
   const before = FS_STYLE.slice(0, FS_STYLE.indexOf("/* ───────── THE ROWS — each shelf is ONE row of its posters, swiped sideways ─────────"));
   const rules = [
     ".fs-shelf.is-still .fs-fmt-cover img{animation:mmCamGentle 14s ease-in-out infinite alternate;}",
-    ".fs-shelf.is-still .fs-fmt:nth-child(3n+2) .fs-fmt-cover img{animation-delay:-4.7s;}",
-    ".fs-shelf.is-still .fs-fmt:nth-child(3n) .fs-fmt-cover img{animation-delay:-9.3s;}",
+    // on a touch screen neighbours start at other points of the move; where there is a mouse a row at rest is even
+    "@media not all and (hover:hover) and (pointer:fine){\n  .fs-shelf.is-still .fs-fmt:nth-child(3n+2) .fs-fmt-cover img{animation-delay:-4.7s;}\n  .fs-shelf.is-still .fs-fmt:nth-child(3n) .fs-fmt-cover img{animation-delay:-9.3s;}\n}",
     // where there is a mouse: while it is pointed at, or has the keyboard's focus (as a loop plays); on a touch screen, always
     "@media(hover:hover) and (pointer:fine){\n  .fs-shelf.is-still .fs-fmt-cover img{animation-play-state:paused;}\n  .fs-shelf.is-still .fs-fmt:hover .fs-fmt-cover img,.fs-shelf.is-still :focus-visible > .fs-fmt-cover img{animation-play-state:running;}\n}",
     // nothing moves for anyone who asks for less motion

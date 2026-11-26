@@ -4191,13 +4191,14 @@ export default function FilmStudio() {
                 name ("Comedy Film", "Comedy Story") with the line under it. */}
             {/* A RUNG SHELF (sh.rung — the still one) re-lists the told heroes: each poster opens its hero ON THAT RUNG,
                 is the one chosen only while that rung is, and never plays a moving loop — its picture drifts the way a
-                still story's does (THE STILL SHELF, in the stylesheet), and its note is "Still pictures". */}
+                still story's does (THE STILL SHELF, in the stylesheet), its badge is the shelf's picture where a
+                Story's is the book, and its note is "Still pictures". */}
             {sh.heroes.map((h) => (
               <button type="button" role="tab" key={h.id} className={`fs-fmt${zoomKey === posterKey(h.id, sh.rung) ? " zoom" : ""}${h.told === "narrated" ? " is-told" : ""}`}
                 aria-selected={heroId === h.id && (!sh.rung || pictures === sh.rung)} aria-label={[t(h.name), h.kick ? t(h.kick) : "", sh.rung === "still" ? t("Still pictures") : h.meta ? t(h.meta) : ""].filter(Boolean).join(" · ")} onClick={() => enterFormat(h.id, sh.rung)}>
                 <span className="fs-fmt-cover">
                   <LoopCover k={h.media} loop={sh.rung === "still" ? false : undefined} />
-                  <span className={`fs-fmt-ico ${h.tint}`} aria-hidden="true">{fmtIcon(h.tmpl, h.told === "narrated")}</span>
+                  <span className={`fs-fmt-ico ${h.tint}`} aria-hidden="true">{sh.rung === "still" ? <Ico n="image" size={15} /> : fmtIcon(h.tmpl, h.told === "narrated")}</span>
                   <span className="fs-fmt-label"><b>{t(h.card)}</b></span>
                 </span>
                 {h.kick ? <span className="fs-fmt-sub">{t(h.kick)}{sh.rung === "still" ? <em> · {t("Still pictures")}</em> : h.meta ? <em> · {t(h.meta)}</em> : null}</span> : null}
@@ -5701,14 +5702,18 @@ ${CAST_ID_CSS}
    just make it an additional tier on the actual movie maker (would look like more options)" — and nine posters the
    Stories shelf already shows, standing still, read as the same shelf twice. So a poster on it plays no loop: its
    picture drifts as the story's own default camera moves a picture — Gentle, S13b's mmCamGentle (push in, drift,
-   ease back) — slowly, 14 s a way and back again, a transform and nothing else (no video, no script). Its neighbours
-   start at another point of the move, so the row breathes rather than marching. Where there is a mouse it moves
-   while the poster is pointed at or has the keyboard's focus, as a loop plays; on a touch screen, always. Nothing
-   moves for anyone who asks for less motion. (Within the cover: at its widest the move shifts the picture 5.75% of
-   its width at 115% — 7.5% to spare on each side; at its end 3.2% at 107%, with 3.5% — no edge ever shows.) */
+   ease back) — slowly, 14 s a way and back again, a transform and nothing else (no video, no script). On a touch
+   screen it always moves, and its neighbours start at another point of the move, so the row breathes rather than
+   marching. Where there is a mouse it moves while the poster is pointed at or has the keyboard's focus, as a loop
+   plays — from the move's start, so a row at rest stands evenly framed (photographed at 1280: posters paused at
+   three points of the move read as three odd crops). Nothing moves for anyone who asks for less motion. (Within the
+   cover: at its widest the move shifts the picture 5.75% of its width at 115% — 7.5% to spare on each side; at its
+   end 3.2% at 107%, with 3.5% — no edge ever shows.) */
 .fs-shelf.is-still .fs-fmt-cover img{animation:mmCamGentle 14s ease-in-out infinite alternate;}
-.fs-shelf.is-still .fs-fmt:nth-child(3n+2) .fs-fmt-cover img{animation-delay:-4.7s;}
-.fs-shelf.is-still .fs-fmt:nth-child(3n) .fs-fmt-cover img{animation-delay:-9.3s;}
+@media not all and (hover:hover) and (pointer:fine){
+  .fs-shelf.is-still .fs-fmt:nth-child(3n+2) .fs-fmt-cover img{animation-delay:-4.7s;}
+  .fs-shelf.is-still .fs-fmt:nth-child(3n) .fs-fmt-cover img{animation-delay:-9.3s;}
+}
 @media(hover:hover) and (pointer:fine){
   .fs-shelf.is-still .fs-fmt-cover img{animation-play-state:paused;}
   .fs-shelf.is-still .fs-fmt:hover .fs-fmt-cover img,.fs-shelf.is-still :focus-visible > .fs-fmt-cover img{animation-play-state:running;}

@@ -10,7 +10,7 @@ import type { UiLang } from "./ui-i18n";
 
 const es: Record<string, string> = {
   "Still Stories": "Historias en imágenes fijas",
-  "A narrator tells it over still pictures that slowly move": "Un narrador la cuenta sobre imágenes fijas que se mueven despacio",
+  "A narrator tells it over still pictures that slowly move": "Narrada sobre imágenes fijas que se mueven despacio",
   "A narrator tells it over moving pictures": "Un narrador la cuenta sobre imágenes en movimiento",
   "Gentle": "Suave",
   "Pan": "Paneo",
