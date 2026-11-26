@@ -380,7 +380,8 @@ const oneOf = (w: string): string => {
   if (/(?:ch|sh|ss|x|us)es$/.test(p)) return p.replace(/es$/, "");
   return /[^su]s$/.test(p) ? p.slice(0, -1) : p;
 };
-/** The places these words call worn — "the old roller rink" → ["rink"], "the ferry's worn plank deck" → ["deck"]. */
+/** The places these words call worn — "the old roller rink" → ["rink"], "the ferry's worn plank deck" → ["plank", "deck",
+ *  "ferry"]. */
 export function wornPlaces(text: string | null | undefined): string[] {
   const t = String(text || "").replace(/\s+/g, " ");
   const found: string[] = [];
