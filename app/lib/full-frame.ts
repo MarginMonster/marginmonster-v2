@@ -38,6 +38,10 @@ export type FrameBand = {
   frame: "tall" | "wide" | "square";
   /** the picture's own size in pixels (the cover crop is cut from it) */
   size: { w: number; h: number };
+  /** the band is a light plain GROUND the picture sits on — on all four sides, or lining another side too where the
+   *  picture's own outline meets it at a slant (a scale model on a table): a design sheet's look, which no crop makes
+   *  into one right picture (absent: a band straight across the frame) */
+  ground?: true;
 };
 
 /** The size of the picture ffmpeg was given, from its own report of the input ("…Video: mjpeg …, 1536x2752 …"). */
@@ -193,8 +197,20 @@ export function coverKeeps(cw: number, ch: number, W: number, H: number): number
  *  `W` × `H` its real size. Null when there is no band and no doubled strip — or nothing to read. */
 export function frameBand(gray: Uint8Array, W: number, H: number, S = BAND_SIZE): FrameBand | null {
   if (!gray || gray.length < S * S || !(W > 0 && H > 0)) return null;
+  const all = ["top", "bottom", "left", "right"] as BandSide[];
   const depth = bandDepths(gray, S);
-  const sides = (["top", "bottom", "left", "right"] as BandSide[]).filter((s) => depth[s] > 0);
+  const sides = all.filter((s) => depth[s] > 0);
+  // THE SAME PLAIN GROUND ON ANOTHER SIDE (a test draw of the bakery, 2026-11-26: the room drawn as a cut-away model, a
+  // cream band straight across the top — and the same cream under the model's slanted base at the bottom, no straight
+  // edge to it, so no band of its own; cut to the top band alone it still stood on its ground). A light band's colour
+  // lining another side too, two lines deep and ending in a step, is the same ground: cut off with it, and the picture is
+  // a picture on a ground — never called right by a crop.
+  const m = Object.fromEntries(all.map((s) => [s, edgeMeasure(gray, s, S)])) as Record<BandSide, ReturnType<typeof edgeMeasure>>;
+  const light = sides.filter((s) => m[s].colour >= BAND_LIGHT);
+  const lined = all.filter((s) => !depth[s] && m[s].depth >= 2 && m[s].depth < S && m[s].step && light.some((b) => Math.abs(m[b].colour - m[s].colour) <= 2 * BAND_DRIFT));
+  for (const s of lined) { depth[s] = m[s].depth; sides.push(s); }
+  sides.sort((a, b) => all.indexOf(a) - all.indexOf(b));
+  const ground = lined.length > 0 || (light.length === 4);
   // what is left — a band's own edge line is half band, half picture: it is left out too
   let y0 = depth.top ? depth.top + 1 : 0, y1 = depth.bottom ? S - depth.bottom - 1 : S;
   let x0 = depth.left ? depth.left + 1 : 0, x1 = depth.right ? S - depth.right - 1 : S;
@@ -212,7 +228,7 @@ export function frameBand(gray: Uint8Array, W: number, H: number, S = BAND_SIZE)
   if (!sides.length && !doubled.length) return null;
   const box = { x: x0 / S, y: y0 / S, w: (x1 - x0) / S, h: (y1 - y0) / S };
   const r = W / H;
-  return { sides, doubled, box, keeps: coverKeeps(box.w * W, box.h * H, W, H), frame: r < 0.9 ? "tall" : r > 1.1 ? "wide" : "square", size: { w: W, h: H } };
+  return { sides, doubled, box, keeps: coverKeeps(box.w * W, box.h * H, W, H), frame: r < 0.9 ? "tall" : r > 1.1 ? "wide" : "square", size: { w: W, h: H }, ...(ground ? { ground: true as const } : {}) };
 }
 
 /* WHAT A BAND COSTS, AND WHAT IS DONE ABOUT IT.
@@ -230,9 +246,9 @@ export function frameBand(gray: Uint8Array, W: number, H: number, S = BAND_SIZE)
 export const COVER_MOST = 0.6;
 export const BAND_FAULT = 4;
 export const BAND_TRIM_FAULT = 1;
-/** Does cutting it off leave a right picture? — most of the content kept, and not a picture on a plain ground all round
- *  (that is a sheet's look: its middle is still views on a ground). */
-export const bandCuttable = (b: FrameBand | null | undefined): boolean => !!b && b.keeps >= COVER_MOST && b.sides.length < 4;
+/** Does cutting it off leave a right picture? — most of the content kept, and not a picture on a plain ground (that is a
+ *  sheet's look: its middle is still a model or views on a ground). */
+export const bandCuttable = (b: FrameBand | null | undefined): boolean => !!b && b.keeps >= COVER_MOST && !b.ground;
 export const bandFault = (b: FrameBand | null | undefined): number => (!b ? 0 : bandCuttable(b) ? BAND_TRIM_FAULT : BAND_FAULT);
 
 /** The crop that covers a `W` × `H` frame from the picture's own content: the middle of the content box at the frame's
@@ -258,7 +274,7 @@ export function bandFix(b: FrameBand | null | undefined): string {
     if (has("left") && has("right")) return band ? "down both sides" : "along both sides";
     return sides.map((s) => (s === "top" || s === "bottom" ? `${band ? "across" : "along"} the ${s}` : `down the ${s} side`)).join(" and ");
   };
-  const band = b.sides.length === 4 ? "set the picture on an empty plain ground all round, like a design sheet" : b.sides.length ? `left an empty band ${along(b.sides, true)}` : "";
+  const band = b.ground ? "set the picture on an empty plain ground, like a model on a design sheet" : b.sides.length ? `left an empty band ${along(b.sides, true)}` : "";
   const what = [band, b.doubled.length ? `drew a strip of the picture twice, ${along(b.doubled, false)}` : ""].filter(Boolean).join(" and ");
   const all = [...b.sides, ...b.doubled];
   const tb = all.some((s) => s === "top" || s === "bottom"), lr = all.some((s) => s === "left" || s === "right");

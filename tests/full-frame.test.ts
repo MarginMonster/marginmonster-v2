@@ -107,8 +107,20 @@ test("a PAIR needs one straight edge; a picture on a plain ground is banded on a
   const ground = pic((x, y) => (x >= 6 && x < 90 && ((y >= 14 && y < 40) || (y >= 46 && y < 82)) && (x + y) % 23 !== 0 ? scene(x, y) : 214));
   const g = frameBand(ground, TALL.w, TALL.h);
   assert.deepEqual(g?.sides, ["top", "bottom", "left", "right"]);
+  assert.equal(g?.ground, true);
   assert.equal(bandCuttable(g), false, "its middle is still views on a ground: never cut and called right");
   assert.equal(bandFault(g), BAND_FAULT);
+  // a room drawn as a MODEL ON A TABLE: a cream band straight across the top, and the same cream under the model's
+  // slanted base at the bottom — no straight edge there, the same ground all the same (a test draw of the bakery)
+  const model = pic((x, y) => (y < 26 ? 213 : y >= S - 6 - Math.round(Math.abs(x - 48) / 4) ? 213 : scene(x, y)));
+  const md = frameBand(model, TALL.w, TALL.h);
+  assert.deepEqual(md?.sides, ["top", "bottom"]);
+  assert.equal(md?.ground, true);
+  assert.equal(bandCuttable(md), false, "cut to its top band alone it would still stand on its ground");
+  // …but a band straight across, with nothing of its colour anywhere else, is just a band
+  const across = frameBand(banded("top", 14, 213), TALL.w, TALL.h);
+  assert.equal(across?.ground, undefined);
+  assert.equal(bandCuttable(across), true);
   // …but never a DARK ground: a night picture darkens toward all four edges
   const vignette = pic((x, y) => (x >= 6 && x < 90 && y >= 14 && y < 82 ? scene(x, y) : 8));
   assert.deepEqual(bandDepths(vignette).left, 0);
@@ -147,7 +159,8 @@ test("what a band weighs, and what the next go is told", () => {
   assert.equal(bandFix({ ...thin, sides: ["bottom"] }), "The last try left an empty band across the bottom — draw ONE picture that fills the whole tall frame, top to bottom");
   assert.equal(bandFix(bakery), "The last try left an empty band across the top and the bottom and drew a strip of the picture twice, along the top — draw ONE picture that fills the whole tall frame, top to bottom, nothing in it drawn twice");
   assert.equal(bandFix({ ...thin, sides: ["left", "right"], frame: "wide" }), "The last try left an empty band down both sides — draw ONE picture that fills the whole wide frame, side to side");
-  assert.equal(bandFix({ ...thin, sides: ["top", "bottom", "left", "right"] }), "The last try set the picture on an empty plain ground all round, like a design sheet — draw ONE picture that fills the whole tall frame, edge to edge");
+  assert.equal(bandFix({ ...thin, sides: ["top", "bottom", "left", "right"], ground: true }), "The last try set the picture on an empty plain ground, like a model on a design sheet — draw ONE picture that fills the whole tall frame, edge to edge");
+  assert.equal(bandFix({ ...thin, sides: ["top", "bottom"], ground: true }), "The last try set the picture on an empty plain ground, like a model on a design sheet — draw ONE picture that fills the whole tall frame, top to bottom");
   assert.equal(bandFix(null), "");
 });
 

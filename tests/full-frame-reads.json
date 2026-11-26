@@ -20,7 +20,8 @@
   "what": "test draw of the bakery WIDE, main's ask: the room as a cut-away model, an empty band above it",
   "want": {
    "sides": [
-    "top"
+    "top",
+    "bottom"
    ],
    "doubled": []
   },
@@ -86,7 +87,8 @@
   "want": {
    "sides": [
     "top",
-    "bottom"
+    "bottom",
+    "right"
    ],
    "doubled": []
   },
