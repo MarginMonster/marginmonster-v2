@@ -332,6 +332,9 @@ test("a genre is a promise about what happens and how it ends — and a look tha
   assert.ok(by.scifi.brief.includes("ONE speculative idea in an otherwise ordinary near-future world") && by.scifi.brief.includes("No space battles") && by.scifi.brief.includes("any screen in a shot shows nothing that can be read"));
   assert.ok(by.fantasy.brief.includes("ONE piece of magic") && by.fantasy.brief.includes("that magic has a PRICE") && by.fantasy.brief.includes("never as glow, sparks, beams or light"));
   assert.ok(by.mystery.brief.includes("the first line asks the QUESTION") && by.mystery.brief.includes("Every shot holds one clue") && by.mystery.brief.includes("The answer was in plain sight earlier"));
+  // (2026-11-26: a place is drawn ONCE, from its first VISUAL, and no clip may add an object — so an acted mystery's
+  //  clues are all in view from that first VISUAL, and none is written: the film cannot show writing)
+  assert.ok(by.mystery.brief.includes("named in the FIRST VISUAL there") && by.mystery.brief.includes("Nothing written is a clue"));
   // (a sci-fi set may have a screen in it — it shows nothing that can be read; every other set has none)
   assert.ok(by.scifi.sceneHint.includes("a device or a screen shows only soft abstract light, never words or numbers") && !by.scifi.sceneHint.includes("or screens visible"));
   for (const k of NEW.filter((x) => x !== "scifi")) assert.ok(by[k].sceneHint.endsWith("signage, posters or screens visible"), k);

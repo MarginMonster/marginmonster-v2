@@ -627,7 +627,7 @@ export const GENRE_FILMS: readonly GenreFilm[] = [
     name: "Mystery Film",
     defaultScenes: 4,
     minScenes: 2,
-    brief: "a short MYSTERY, acted: the first line asks the QUESTION the story answers. Every shot holds one clue — a physical thing that is seen or picked up — and the two reason it out aloud, getting it wrong before they get it right. The answer was in plain sight earlier: the last line names it, and a viewer can look back and find it. Nothing gory and no killing shown; the puzzle is the pleasure",
+    brief: "a short MYSTERY, acted: the first line asks the QUESTION the story answers. Every shot holds one clue — a big, ordinary thing already in view where the two are: every clue of a place is named in the FIRST VISUAL there (a stopped clock, a third cup, muddy boots), and in each later shot one of the two picks one up or points at it. They reason it out aloud, getting it wrong before they get it right. Nothing written is a clue. The answer was in plain sight earlier: the last line names it, and a viewer can look back and find it. Nothing gory and no killing shown; the puzzle is the pleasure",
     narrated: "a short NARRATED MYSTERY — a storyteller's voice that opens on the question: a clue in every scene, one wrong answer on the way, and a solution that was in plain sight in an earlier scene",
     sceneHint: `a photorealistic live-action film scene from a mystery — pools of lamplight in a dim room, or flat grey daylight through rain, a 40mm lens with the object that matters sharp in the foreground, muted greens, browns and brass, soft shadow; ${NOTHING_TO_READ}`,
     musicHint: "quiet, curious mystery score — plucked bass, vibraphone, brushed drums",
