@@ -36,7 +36,8 @@
  * Dream and Retro are the two anime recipes the cartoon AD pipeline has drawn in production (app/lib/cartoon-styles.json
  * `dreamanime` / `retroanime` = cartoon-ad-pipeline.server.ts CARTOON_RECIPES, which that file keeps in sync) — here
  * with the ad's own words taken out ("film still", "OVA", "stylish confident character poses", "big warm eyes",
- * "cinematic"). This table is a THIRD copy of those two looks: tune one of them there, and weigh tuning it here.
+ * "cinematic") and, for Retro, its sunset kept to the sky outdoors (below). This table is a THIRD copy of those two
+ * looks: tune one of them there, and weigh tuning it here.
  *
  * Pure: no imports. tests/anime-styles.test.ts. */
 
