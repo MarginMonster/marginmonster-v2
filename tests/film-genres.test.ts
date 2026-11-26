@@ -236,7 +236,8 @@ test("the fallback is in the one place every unwritten film comes through, and t
   assert.ok(eng.includes("import { DRAMA_BRIEF, GENRE_FILMS, genreTemplate, nudgeFor, startLine } from \"./film-genres\";"));
   const fn = eng.slice(eng.indexOf("export async function previewFilmTreatment("), eng.indexOf("// ---- Assembly"));
   // never an episode (a series decides what happens next from its own recap), and only a story genre has starters
-  assert.ok(fn.includes("const typedIdea = (opts.topic || \"\").trim();"));
+  // (…with nobody else's character in it, since 2026-11-26 — SPEC-S16, tests/character-mark.test.ts)
+  assert.ok(fn.includes("const typedIdea = scrubFranchise((opts.topic || \"\").trim());"));
   assert.ok(fn.includes("const nudged = series ? null : nudgeFor(tmpl.key, typedIdea, Math.floor(Math.random() * 0x7fffffff));"));
   assert.ok(fn.includes("const topic = nudged ? nudged.topic : typedIdea;"));
   assert.ok(fn.indexOf("const series = ") < fn.indexOf("const nudged = ") && fn.indexOf("const picked = ") < fn.indexOf("const nudged = "));

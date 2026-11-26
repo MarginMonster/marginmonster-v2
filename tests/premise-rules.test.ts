@@ -66,7 +66,9 @@ test("the writer is given all of it — the idea's rules right after the idea, a
   assert.ok(eng.includes("    ? HORROR_SAFETY\n    : STORY_SAFETY;") || eng.includes("    ? HORROR_SAFETY\r\n    : STORY_SAFETY;"));
   assert.ok(!eng.includes("CAST ONLY ADULTS") && !eng.includes("recast any such role as an adult"));
   // a chosen creature in a horror idea: by its look; an acted film's two are then the idea's own people
-  assert.ok(eng.includes("const threatNames = tmpl.key === \"horror\" ? picked.filter((c) => c.kind === \"monster\" || (!c.kind && keepGuess(c.desc).kind === \"monster\")).map((c) => c.name) : [];"));
+  // (…the look read WITHOUT the tag of what they always have, since 2026-11-26 — character-mark.ts: a hero's "mask with
+  //  glowing eyes" is not a creature's face; tests/character-mark.test.ts)
+  assert.ok(eng.includes("const threatNames = tmpl.key === \"horror\" ? picked.filter((c) => c.kind === \"monster\" || (!c.kind && keepGuess(peelMark(c.desc).text).kind === \"monster\")).map((c) => c.name) : [];"));
   // WHAT IT IS RIDES ALONG from the page (the third live preview: the werewolf's film look, "a huge, lean werewolf
   // that…", was guessed a person — cut at its comma — and kept in the cast)
   assert.ok(eng.includes("kind: c?.kind === \"monster\" || c?.kind === \"cartoon\" ? c.kind : undefined"));

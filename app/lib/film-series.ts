@@ -23,6 +23,8 @@ import { nameTok } from "./character-prompts.ts";
 import { cameraLookOf, type CameraLook } from "./camera-dress.ts";
 import { houseRoom } from "./house-cam.ts";
 import { placeStateAt, stateNow } from "./place-state.ts";
+// (a character's cast entry ends with what they always have — 2026-11-26, SPEC-S16: cut, it keeps its tag whole)
+import { fitEntry } from "./character-mark.ts";
 
 /** What a film in a series stores on its asset (metaJson.series). */
 export type FilmSeries = { id: string; title: string; episode: number };
@@ -201,12 +203,15 @@ export function buildRecap(bodyJson: unknown, max: number = RECAP_MAX): string {
   return `${head}${sep}${tail}`;
 }
 
-/** The series' characters, as the last episode's writer described them (each starts with the name). */
+/** The series' characters, as the last episode's writer described them (each starts with the name).
+ *  (…each with WHAT THEY ALWAYS HAVE whole — the tag at the end of the entry, character-mark.ts → fitEntry: cut at 200,
+ *  the body is cut and never the tag, so episode 2's writer is handed the thing word for word and told "the same looks".
+ *  An entry with no tag is cut exactly as it was.) */
 export function seriesCharacters(bodyJson: unknown): string[] {
   const body = safeParse(bodyJson);
   const tr = isObj(body.treatment) ? body.treatment : {};
   const cast = Array.isArray(tr.cast) ? tr.cast : [];
-  return cast.map((c) => oneLine(str(c)).replace(/<{3,}|>{3,}/g, " ").slice(0, 200)).filter(Boolean).slice(0, 5);
+  return cast.map((c) => fitEntry(oneLine(str(c)).replace(/<{3,}|>{3,}/g, " "), 200)).filter(Boolean).slice(0, 5);
 }
 
 /** The series' PLACES, as the last episode's writer listed them (each "name: look") — two at most. */
@@ -270,7 +275,8 @@ export function seriesFromPayload(v: unknown): SeriesBrief | null {
   const s = seriesOf({ series: v });
   if (!s || s.episode < 2 || !isObj(v)) return null;
   const recap = oneLine(str(v.recap)).replace(/<{3,}|>{3,}/g, " ").slice(0, RECAP_MAX + 20);
-  const characters = Array.isArray(v.characters) ? v.characters.map((c) => oneLine(str(c)).replace(/<{3,}|>{3,}/g, " ").slice(0, 200)).filter(Boolean).slice(0, 5) : [];
+  // (each with its tag whole — character-mark.ts → fitEntry, as seriesCharacters)
+  const characters = Array.isArray(v.characters) ? v.characters.map((c) => fitEntry(oneLine(str(c)).replace(/<{3,}|>{3,}/g, " "), 200)).filter(Boolean).slice(0, 5) : [];
   const places = Array.isArray(v.places) ? v.places.map((p) => oneLine(str(p)).replace(/<{3,}|>{3,}/g, " ").slice(0, 400)).filter((p) => p.length > 12).slice(0, 2) : [];
   // the last moment rides the queue too — and is checked again on the way out, like everything else here
   const last = lastMomentFrom(v.last);
