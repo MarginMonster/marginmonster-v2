@@ -93,7 +93,8 @@ test("the writer is given all of it — the idea's rules right after the idea, a
   // the Movie Maker sends the whole idea
   const page = read("app", "routes", "web.film.tsx");
   assert.ok(page.includes("const topic = ((form.get(\"filmTopic\") as string) || \"\").trim().slice(0, IDEA_MAX);"));
-  assert.equal(page.split("maxLength={IDEA_MAX}").length - 1, 2, "both idea boxes");
+  // (…and the guide box at the top of the Movie Maker, since 2026-11-26: the same idea, the same `topic`)
+  assert.equal(page.split("maxLength={IDEA_MAX}").length - 1, 3, "both idea boxes, and the guide box");
 });
 
 test("a told story's detail shot shows ONE person's hands — two people's hands on one thing melt together", () => {
