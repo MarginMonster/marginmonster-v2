@@ -388,6 +388,10 @@ test("named as the owner of something is not being there", () => {
   assert.equal(presentIn("Maren", "Maren's bare bluish foot rests on the ferry's deck"), true);
   assert.equal(presentIn("Maren", "Maren's long dark wet hair drips onto the planks"), true, "four words on");
   assert.equal(presentIn("Pip", "the kite lands on Pip's nose"), true);
+  // a VOICE is heard, never drawn (live 2026-11-26: the grandmother was looked for in her grandson's close-up)
+  const heard = "At the kitchen: CLOSE: Teodor's face, flour dusting his cheek, eyes down on his kneading hands, concentration and quiet delight as Philomena's voice drifts over him near the counter.";
+  assert.equal(presentIn("Philomena", heard), false, "her voice is not her");
+  assert.equal(presentIn("Teodor", heard), true);
   assert.equal(presentIn("Ode", "morning light golden on Ode's mossy shell"), true);
   // named as somebody once is enough, whatever else of theirs is mentioned
   assert.equal(presentIn("Edda", "Edda stands at the door of Edda's cottage"), true);
