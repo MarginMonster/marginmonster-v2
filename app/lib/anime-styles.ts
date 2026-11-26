@@ -70,14 +70,15 @@ export type AnimeStyle = {
  *     photographed on a table").
  *   · "every character an original design, not any existing anime, manga or game character": the IP rule above, said
  *     to the picture too — an anime model's favourite faces are famous ones.
- *   · "every grown-up drawn with an adult face and adult proportions, and everyone modestly dressed": anime models draw
- *     grown-ups young, and the unclothed look (story-picture.ts → UNCLOTHED_ASKED) sees bare skin, not a revealing
- *     outfit — so the modesty is said in every picture, not only looked for.
+ *   · "every grown-up drawn with an adult face, adult proportions and a grown-up's full height, and everyone modestly
+ *     dressed": anime models draw grown-ups young, and the unclothed look (story-picture.ts → UNCLOTHED_ASKED) sees bare
+ *     skin, not a revealing outfit — so the modesty is said in every picture, not only looked for. (The full height since
+ *     2026-11-26: a woman in her twenties, in a café, came back the height of a child beside the man she was with.)
  *   · "one single full frame of the film — never a manga page, panels, speech bubbles, sound effects or lettering":
  *     "anime" pulls in its printed cousin; a told story is one picture a scene (story-picture.ts → ONE_PICTURE).
  *   · "nothing readable anywhere": the app's rule for every picture (NOTHING_WRITTEN) — an anime city is all signs. */
 export const ANIME_TAIL =
-  "2D hand-drawn animation — never a 3D render and never photographic; every character an original design, not any existing anime, manga or game character; every grown-up drawn with an adult face and adult proportions, and everyone modestly dressed; one single full frame of the film — never a manga page, panels, speech bubbles, sound effects or lettering; nothing readable anywhere";
+  "2D hand-drawn animation — never a 3D render and never photographic; every character an original design, not any existing anime, manga or game character; every grown-up drawn with an adult face, adult proportions and a grown-up's full height, and everyone modestly dressed; one single full frame of the film — never a manga page, panels, speech bubbles, sound effects or lettering; nothing readable anywhere";
 
 export const ANIME_STYLES: readonly AnimeStyle[] = [
   {
@@ -103,7 +104,9 @@ export const ANIME_STYLES: readonly AnimeStyle[] = [
     // (the voice the Retro Anime ad recipe was narrated by in production — cartoon-styles.json → retroanime)
     narrator: "English_ConfidentWoman",
     short: "1990s hand-painted cel anime",
-    look: "a frame from a 1990s hand-painted cel anime: crisp confident ink lines, hard-edged cel shadows with a single highlight tone, a saturated sunset palette of magenta, teal and amber, airbrushed painted skies, a soft analogue grain and glow",
+    // (the sky only where the scene is outdoors, 2026-11-26: "a saturated sunset palette … airbrushed painted skies" put a
+    //  magenta sunset through a hole in the ceiling of an UNDERGROUND garage — the palette is its light, not its sky)
+    look: "a frame from a 1990s hand-painted cel anime: crisp confident ink lines, hard-edged cel shadows with a single highlight tone, a saturated palette of magenta, teal and amber light, airbrushed painted skies where the scene is outdoors, a soft analogue grain and glow",
     musicHint: "90s synth thriller score with analogue pads and a gated snare",
   },
   {
@@ -114,7 +117,10 @@ export const ANIME_STYLES: readonly AnimeStyle[] = [
     kick: "A neon-lit what-if",
     tint: "t-kmv",
     short: "neon-lit cyber-city anime",
-    look: "a frame from a cyber-noir anime: a rain-slick city after dark, neon magenta and cyan light where every sign is only a shape of light, dense hand-drawn architecture and machinery, steam and haze, hard rim light on the people, sharp angular line art, deep shadows",
+    // (2026-11-26, looked at: "sharp angular line art" drew a Western comic book — cross-hatched, heavy-jawed — not anime,
+    //  so the faces are named as anime's own, clean outlines and flat cel shading; and "every sign is only a shape of
+    //  light" still came back with letter-like marks on two signs, so the light is said as blank panels and tubes)
+    look: "a frame from a cyber-noir anime film: a rain-slick city after dark, neon magenta and cyan light from blank glowing panels and tubes that carry no letters or symbols, dense hand-drawn architecture and machinery, steam and haze, anime character designs with clean confident outlines and flat two-tone cel shading on faces and clothes, hard rim light on the people, deep shadows",
     musicHint: "a dark synth pulse, deep bass and glassy arpeggios",
   },
   {
@@ -136,7 +142,11 @@ export const ANIME_STYLES: readonly AnimeStyle[] = [
     kick: "A shadowy mystery",
     tint: "t-horror",
     short: "dark anime of ink-black shadows",
-    look: "a frame from a dark, moody anime: deep ink-black shadows, a muted grey-blue palette with one deep-red accent, sharp faces in thin hard line art, heavy shadow shapes and fine hatching, lit by moonlight, one lamp or one candle, an unsettling stillness; eerie, never gory",
+    // (2026-11-26, looked at: "fine hatching" and "sharp faces in thin hard line art" drew a Western horror comic, not
+    //  anime; and "one deep-red accent" became the SAME deep-red scarf on the heroine and on the creature, though neither's
+    //  words had one — a style word turned into wardrobe, and two characters made alike. So the faces are anime's, the
+    //  dark is flat black shapes, and the only warm colour is the light itself.)
+    look: "a frame from a dark, moody anime film: deep ink-black shadows cut in hard flat shapes, a muted grey-blue palette, anime character designs with sharp clean outlines and flat cel shading, the darkness brushed in solid black ink, lit by cold moonlight or by one warm lamp or candle, an unsettling stillness; eerie, never gory",
     musicHint: "a low cello drone, a music box and sparse piano",
   },
   {
@@ -147,7 +157,9 @@ export const ANIME_STYLES: readonly AnimeStyle[] = [
     kick: "An everyday comedy",
     tint: "t-kids",
     short: "soft pastel slice-of-life anime",
-    look: "a frame from a soft slice-of-life anime: a bright pastel palette of mint, peach and sky blue, clean thin line art, simple flat shading with a soft bloom, bright expressive eyes, cosy everyday places (cafés, small apartments, bookshops, sunny streets), light and cheerful",
+    // (2026-11-26, looked at: with "bright expressive eyes" the café owner, a woman in her twenties, came back the height of
+    //  a child beside her friend — big eyes are how an anime model draws the young. The faces are said simply instead.)
+    look: "a frame from a soft slice-of-life anime: a bright pastel palette of mint, peach and sky blue, clean thin line art, simple flat shading with a soft bloom, simply drawn expressive faces, cosy everyday places (cafés, small apartments, bookshops, sunny streets), light and cheerful",
     musicHint: "bouncy ukulele, glockenspiel and light handclaps",
   },
 ];
