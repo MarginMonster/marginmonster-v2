@@ -22,6 +22,8 @@ import { castEntry, castMarks, characterKind, portraitPrompt } from "../app/lib/
 import { entryName } from "../app/lib/narrated-core.ts";
 import { GENRE_FILMS, startersOf } from "../app/lib/film-genres.ts";
 import { ANIME_STYLES, drawnLead } from "../app/lib/anime-styles.ts";
+import { seriesCharacters, seriesFromPayload } from "../app/lib/film-series.ts";
+import { storyToEditFrom } from "../app/lib/story-edit.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // (a checkout with CRLF line endings must read the same as one with LF)
@@ -249,6 +251,82 @@ test("the words: what the writer and the pictures are told", () => {
   // the lines a picture is told
   assert.equal(markLine("Kai", "a long cobalt scarf", 2), "Kai always has a long cobalt scarf: in this picture too, the same shape, size and colours as in reference image 2, worn or carried the same way — unless these words have Kai put it down.");
   assert.equal(portraitHas("Kai", "a long cobalt scarf"), " Kai always has a long cobalt scarf: it is clearly seen in this portrait — worn, held or carried where it shows from the front.");
+});
+
+test("the carries: Next episode and Edit story keep the tag whole, and the scene's move", () => {
+  const long = `Bram Tolliver, a broad-shouldered ferryman in his fifties ${"with a weathered face and a patched oilskin coat ".repeat(6)}[always: a dented brass lantern on a long pole | move: the Long Reach — a lunge that hooks the lantern pole over a gap]`;
+  assert.ok(long.length > 300);
+  const body = JSON.stringify({ treatment: { title: "TEST Ferry", cast: [long, "Walter, an elderly watchman"], scenes: [] } });
+  const chars = seriesCharacters(body);
+  assert.ok(chars[0].length <= 200 && chars[0].endsWith("[always: a dented brass lantern on a long pole | move: the Long Reach — a lunge that hooks the lantern pole over a gap]"), chars[0]);
+  assert.equal(chars[1], "Walter, an elderly watchman");
+  const s = seriesFromPayload({ id: "s1", title: "TEST Ferry", episode: 2, recap: "The ferry crossed.", characters: [long] });
+  assert.ok(s && s.characters[0] === chars[0], "the same through the queue");
+  // Edit story: the cast list cut at 300 keeps the tag; a scene's move comes back with it
+  const meta = JSON.stringify({ kind: "narrated", template: "fantasy", aspect: "9:16", captions: "bold" });
+  const scenes = [1, 2, 3].map((n) => ({ visual: `WIDE: Bram on the jetty, part ${n}`, caption: `Line ${n} of the TEST story.`, ...(n === 2 ? { move: "Bram Tolliver" } : {}) }));
+  const st = storyToEditFrom({ id: "t1", title: "TEST Ferry", metaJson: meta, bodyJson: JSON.stringify({ prompt: "a ferryman", treatment: { title: "TEST Ferry", musicMood: "folk", cast: [long], scenes } }) }, null);
+  assert.ok(st);
+  assert.ok(st!.treatment.cast[0].length <= 300 && st!.treatment.cast[0].endsWith("over a gap]"));
+  assert.deepEqual(st!.treatment.scenes.map((x) => x.move), [undefined, "Bram Tolliver", undefined]);
+  assert.ok(!("move" in st!.treatment.scenes[0]), "no move, no key");
+});
+
+test("wiring that cannot run here (no writer, no picture model locally) — pinned at the source", () => {
+  const eng = read("app", "lib", "film-engine.server.ts");
+  const fn = eng.slice(eng.indexOf("export async function previewFilmTreatment("), eng.indexOf("// ---- Assembly"));
+  // the scene's move is asked for; the scene keeps it
+  assert.ok(eng.includes("singer: { type: \"string\" }, move: { type: \"string\" } },"));
+  assert.ok(eng.includes("  move?: string;\n}\nexport interface FilmTreatment {"));
+  assert.ok(fn.includes("...(narrated && typeof s.move === \"string\" && s.move.trim() ? { move: s.move.replace(/\\s+/g, \" \").trim().slice(0, 40) } : {}),"));
+  // a picked face's card: told only, at the END of its look, fit for the story — and nobody else's character in it
+  assert.ok(fn.includes("const markFmt = { childSafe: !!tmpl.childSafe, horror: tmpl.key === \"horror\" };"));
+  assert.ok(fn.includes("const cut = scrubFranchise((c?.desc || \"\").trim().replace(/\\s+/g, \" \")).slice(0, 220);"));
+  assert.ok(fn.includes("desc: narrated ? scrubFranchise(withMark(cut, markForFormat(markOf(c?.mark), markFmt))) : cut,"));
+  assert.ok(fn.includes("const typedIdea = scrubFranchise((opts.topic || \"\").trim());") && fn.indexOf("const typedIdea = ") < fn.indexOf("const nudged = "), "scrubbed before a starter is chosen from it");
+  // the writer's lines: ORIGINAL_CAST after the idea (whole, plan) and the part's brief; markBrief after the cast — 3 each
+  assert.ok(fn.includes("const markBrief = narrated && storyFormat ? `\\n${markWriter({ drawn: !!tmpl.drawn, childSafe: !!tmpl.childSafe, horror: tmpl.key === \"horror\", lead: markLead(tmpl.key, !!tmpl.drawn), chosen: castChosen.length > 0, name: exName, things: dealMarkThings(Math.random, { weapons: !tmpl.childSafe && tmpl.key !== \"horror\" }) })}` : \"\";"));
+  const count = (s: string, x: string) => s.split(x).length - 1;
+  assert.equal(count(fn, "(storyFormat ? `${ORIGINAL_CAST}\\n` : \"\") +"), 3);
+  assert.equal(count(fn, "markBrief +\n"), 3);
+  assert.ok(fn.includes("    ideaLine +\n    // EVERY CHARACTER IS OUR OWN"));
+  assert.ok(fn.includes("    castLine +\n    threatBrief +\n    // WHAT THEY ALWAYS HAVE, and their moves (character-mark.ts → markWriter): a told story only\n    markBrief +\n"), "whole: right after the cast and the threat");
+  assert.ok(fn.includes("      ideaLine +\n      // (every character our own") && fn.includes("      castLine +\n      threatBrief +\n      markBrief +\n      `\\n${AGES_FIT_RELATION}` +"), "the plan");
+  assert.ok(fn.includes("seenAs: one!.seenAs }) +\n    // (every part is told") && fn.includes("    partCast +\n    partThreat +\n    markBrief +\n"), "each part");
+  // the answer: the cast normalised; a chosen face keeps only its card's; a move only where somebody has one; the scrub
+  assert.ok(fn.includes("const cast = Array.isArray(parsed.cast) ? parsed.cast.filter((c) => typeof c === \"string\" && c.trim()).slice(0, 5).map((e) => (narrated ? normalizeCastEntry(e, markFmt) : e)) : undefined;"));
+  assert.ok(fn.includes("if (own) cast[i] = setMarkIn(cast[i], markForFormat(peelMark(own.desc).mark, markFmt));"));
+  assert.ok(fn.includes("const movers = (cast || []).map((e) => castEntry(e)).filter((c) => !!c.name && !!c.mark?.move).map((c) => c.name);") && fn.includes("const moves = castMoves(list, movers);"));
+  assert.ok(fn.includes("console.log(`[film] an existing character's name was taken out: \"${ip.word}\" → \"${ip.as}\"`);"));
+  assert.ok(fn.includes("list = list.map((s) => ({ ...s, visual: scrubFranchise(s.visual), ...(s.caption ? { caption: scrubFranchise(s.caption) } : {}) }));") && fn.includes("outTitle = scrubFranchise(outTitle);") && fn.includes("places = places.map((p) => scrubFranchise(p));"));
+  assert.ok(fn.indexOf("const moves = castMoves(list, movers);") > fn.indexOf("if (places.length) list = list.map((s, i) => ({ ...s, visual: placeNamed("), "after the places are named in the scenes");
+  assert.ok(fn.indexOf("const moves = castMoves(list, movers);") < fn.indexOf("return { title: outTitle, scenes: list,"));
+
+  const nar = read("app", "lib", "narrated-story.server.ts");
+  // the last net: every picture ask, scrubbed whole
+  assert.ok(nar.includes("const full = scrubFranchise(`${frameWords(aspect)} ${prompt} No watermark, no signature.`);"));
+  const seeds = nar.slice(nar.indexOf("export async function narratedSceneSeeds("), nar.indexOf("/** The narrator reads the whole story."));
+  assert.ok(seeds.includes("const marks = castMarks(o.treatment.cast || []);") && seeds.includes("const fit = markForFormat(m, { childSafe: !!tmpl.childSafe, horror: tmpl.key === \"horror\" }); if (fit) marks.set(k, fit); else marks.delete(k);"));
+  const note = seeds.indexOf("here.forEach((c) => { const note = creatureNote(c.name, c.kind); if (note) notes.push(note); });");
+  const mark = seeds.indexOf("here.forEach((c, n) => { const m = marks.get(c.name.trim().toLowerCase()); if (m?.has) notes.push(markLine(c.name, m.has, n + 1)); });");
+  assert.ok(note > 0 && mark > note && mark < seeds.indexOf("notes.push(creatureHidden(c.name))"), "a forEach of its own, after the creature note");
+  assert.ok(seeds.includes("const mover = scene.move ? here.find((c) => sameCharacter(c.name, scene.move!)) : undefined;"));
+  assert.ok(seeds.includes("const mv = mover ? marks.get(mover.name.trim().toLowerCase())?.move : undefined;"));
+  assert.ok(seeds.includes("if (mover && mv) notes.push(moveLine(mover.name, mv, { drawn: !!tmpl.drawn, childSafe: !!tmpl.childSafe }));"));
+  assert.ok(seeds.includes("who[k].others.map((e) => pictureText(e).slice(0, 200)).join(\"; and \")") && seeds.includes("unpictured.map((e) => pictureText(e).slice(0, 200)).join(\"; and \")"));
+  assert.ok(!seeds.includes("e.slice(0, 200)"), "no character said from words with its tag");
+  // untouched: the scene note, the portrait call (portraitPrompt peels the tag itself)
+  assert.ok(seeds.includes("here.forEach((c, n) => notes.push(`${c.name} is the character in reference image ${n + 1}${c.look ? ` (${c.look.slice(0, 160)})` : \"\"}.`));"));
+  assert.ok(seeds.includes("const ask = portraitPrompt(dressedInWater(e), tmpl.sceneHint, safe);"));
+
+  // the carries
+  const series = read("app", "lib", "film-series.ts");
+  assert.equal(series.split("fitEntry(oneLine(str(c)).replace(/<{3,}|>{3,}/g, \" \"), 200)").length - 1, 2, "both of the series' character cuts");
+  const edit = read("app", "lib", "story-edit.ts");
+  assert.ok(edit.includes("const castList = (Array.isArray(tr.cast) ? tr.cast : []).map((c) => fitEntry(oneLine(str(c)), 300)).filter(Boolean).slice(0, 8);"));
+  assert.ok(edit.includes("...(oneLine(str(s.move)) ? { move: oneLine(str(s.move)).slice(0, 40) } : {}),"));
+  // Another language copies each scene WHOLE ({ ...s, caption }): its move rides along with nothing to change there
+  assert.ok(read("app", "lib", "story-translate.ts").includes("scenes: treatment.scenes.map((s, i) => ({ ...s, caption: told[i] }))"));
 });
 
 test("the leads, and the examples a story is dealt", () => {
