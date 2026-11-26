@@ -45,6 +45,9 @@ test("the run-down look listens to the story: a worn place its words ask for is 
   const glass = "OVER THE SHOULDER: over Girish's shoulder, close to the glass of the claw machine, inside the case among faded stuffed toys, a pale hand with fingers too long presses flat against the glass from within.";
   assert.equal(wornAsked(glass, ""), false, "its own words do not");
   assert.equal(wornAsked(glass, "", "TEST — a night watchman walks his rounds through a derelict, boarded-up seaside arcade, closed for years, where one dusty old claw machine keeps lighting up by itself."), true, "the idea does");
+  // …a worn countertop, tabletop, table or desk the words name is a worn place too
+  assert.equal(wornAsked("At the kitchen: A DETAIL: Philomena's wrinkled hand resting flat on the worn wooden countertop, her fingers tracing an old groove worn into the surface.", ""), true);
+  assert.equal(wornAsked("CLOSE: her hands on the scarred oak table, steam rising from the cups.", ""), true);
   // …and an idea that calls a home only OLD, with dust motes in its light, asks for no worn place (LIVED_IN)
   assert.equal(wornAsked("At the kitchen: CLOSE: Teodor's face, flour dusting his cheek, eyes down on his kneading hands.", "", "TEST — in their old family house, a grandmother teaches her grandson to bake bread on a rainy Sunday; dust motes drift in the window light while she tells him about the grandfather who built the kitchen."), false);
   assert.deepEqual(wornPlaces(wordsOf(rink)), ["rink", "floor"]);
@@ -264,7 +267,9 @@ test("wired: the loop listens to the story, spends from the story's purse, cover
   assert.ok(fn.indexOf("const purse = redrawPurse(") < fn.indexOf("const worker = async () => {"), "made once, before the workers");
   // the scene's own words and its place's, against the story's
   // (…and the member's own idea, since 2026-11-26: a derelict arcade's close-up on its claw machine never named the arcade)
-  assert.ok(fn.includes("const wornHere = wornAsked(`${written} ${scene.caption || \"\"} ${setAt ? `${setAt.name}: ${setAt.look}` : \"\"}`, storyWords, idea);"));
+  // (…and a DETAIL is never a run-down room: live 2026-11-26, a hand on the worn countertop its words asked for)
+  assert.ok(fn.includes("const wornHere = cam === \"detail\" || wornAsked(`${written} ${scene.caption || \"\"} ${setAt ? `${setAt.name}: ${setAt.look}` : \"\"}`, storyWords, idea);"));
+  assert.ok(fn.indexOf("const cam = sceneShot(scene);") < fn.indexOf("const wornHere = cam === \"detail\""), "the shot is read before");
   assert.ok(fn.includes("const stareHere = stareCounts(cam, written);"));
   assert.ok(fn.includes("const grimy = tmpl.childSafe || wornHere ? null : parseStoryGrime(String(grimeRaw || \"\"));"));
   assert.ok(fn.includes("...(lens?.length && stareHere ? { lens } : {})"));
