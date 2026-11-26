@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ANIME_STYLES, drawnLead } from "../app/lib/anime-styles.ts";
-import { FILM_HEROES, TALL_STILL_MEDIA, LOOP_MEDIA, heroById, heroName, heroOf, heroShelves, heroesFor, posterKey } from "../app/lib/film-heroes.ts";
+import { FILM_HEROES, TALL_STILL_MEDIA, LOOP_MEDIA, heroById, heroName, heroOf, heroShelves, heroesFor, homeRows, posterKey } from "../app/lib/film-heroes.ts";
 import { storyHeroOf, isFormatName } from "../app/lib/film-series.ts";
 import { coverKind, coverWords } from "../app/lib/archive-cover.ts";
 
@@ -44,13 +44,16 @@ test("one told hero per style, built FROM the table: id = template = poster = th
   for (const h of anime) assert.ok(`${h.kick} · ${h.meta}`.length <= 45 && page.includes(`.${h.tint}{background:`), h.id);
 });
 
-test("the Anime shelf stands right after the Still Stories and lists exactly the six, in the table's order; the Stories list none", () => {
+test("the Anime way lists exactly the six, in the table's order; the Stories list none — and it is a tile of the Stories row", () => {
   const shelves = heroShelves(FILM_HEROES);
-  // (2026-11-26, THE WAYS — the owner's "A", then "Those need to be on display": Anime is a card of "Only on EasyMode",
-  //  tagged New, its row "Pick a style")
+  // (2026-11-26, THE WAYS — the owner's "A", then "Those need to be on display": Anime was a card of "Only on EasyMode",
+  //  tagged New, its row "Pick a style". That evening, THE ROWS: Anime is a TILE of the Stories row — told by a narrator —
+  //  marked "✦ Only on EasyMode", one tap into its builder, whose first card picks the style: "Pick a style")
   assert.deepEqual(shelves.map((s) => s.key), ["still", "told", "acted", "anime", "kids", "sung"]);
   const sh = shelves.find((s) => s.key === "anime")!;
-  assert.deepEqual([sh.name, sh.tag, sh.line, sh.pick, sh.group], ["Anime", "New", "A narrator tells it over hand-drawn anime pictures", "Pick a style", "only"]);
+  assert.deepEqual([sh.name, sh.tag, sh.line, sh.pick], ["Anime", "New", "A narrator tells it over hand-drawn anime pictures", "Pick a style"]);
+  const tile = homeRows(shelves, FILM_HEROES).find((r) => r.key === "told")!.tiles.find((w) => w.key === "anime")!;
+  assert.deepEqual([tile.name, tile.short, tile.tag, tile.only, tile.heroes.map((h) => h.id)], ["Anime", "Hand-drawn, six styles", "New", true, KEYS]);
   assert.deepEqual(sh.heroes.map((h) => h.id), KEYS);
   // (the Stories hold the movie categories; an anime story is picked by its look — and told over stills by picking Still
   //  in its Length panel, where every told story's rung is picked)
@@ -59,13 +62,15 @@ test("the Anime shelf stands right after the Still Stories and lists exactly the
   // poster opens on moving pictures, as a Story's does. (Had they drifted toward 3D or a photograph, it would open on Still.)
   assert.equal(sh.rung, undefined);
   const heroesSrc = read("app", "lib", "film-heroes.ts");
-  assert.ok(heroesSrc.includes("{ key: \"anime\", name: \"Anime\", tag: \"New\", line: \"A narrator tells it over hand-drawn anime pictures\", short: \"Hand-drawn, six styles\", pick: \"Pick a style\", group: \"only\",") && heroesSrc.includes("has: (h) => h.shelf === \"anime\" },"));
-  // (where pictures cannot move at all the shelf stays: its stories are told over stills there, like every story)
+  assert.ok(heroesSrc.includes("{ key: \"anime\", name: \"Anime\", tag: \"New\", line: \"A narrator tells it over hand-drawn anime pictures\", short: \"Hand-drawn, six styles\", pick: \"Pick a style\",") && heroesSrc.includes("has: (h) => h.shelf === \"anime\" },"));
+  // (where pictures cannot move at all the way stays: its stories are told over stills there, like every story)
   assert.ok(heroShelves(FILM_HEROES, { still: false }).some((s) => s.key === "anime"));
-  // each poster its own zoom key; a page that is not offered the anime templates has no Anime shelf, never an empty one
+  // each style its own zoom key; a page that is not offered the anime templates has no Anime way — and no Anime tile —
+  // never an empty one
   for (const h of sh.heroes) assert.equal(posterKey(h.id, sh.rung), h.id);
   const member = heroesFor(FILM_HEROES.map((h) => h.tmpl).filter((t) => !KEYS.includes(t)), FILM_HEROES.filter((h) => h.told === "narrated").map((h) => h.tmpl).filter((t) => !KEYS.includes(t)));
   assert.ok(!heroShelves(member).some((s) => s.key === "anime"));
+  assert.ok(!homeRows(heroShelves(member), member).some((r) => r.tiles.some((w) => w.key === "anime")));
   assert.ok(!member.some((h) => h.shelf));
 });
 
@@ -165,16 +170,16 @@ test("THE CAST CARD: an anime story's says, in one line, that it draws its own c
   assert.ok(page.includes("{storyCard === \"voice\" && narrated && ("));
 });
 
-test("THE SHELF'S LOOK: a cherry-pink accent, a spark on its heading and on each poster's badge", () => {
+test("THE TILE'S LOOK: on the Stories row in the Stories' colours, ✦ Only on EasyMode over its name — and a spark on its builder's Style card", () => {
+  // (2026-11-26, that evening — THE ROWS: the Anime shelf's cherry pink went with its shelf; its tile stands on the Stories
+  //  row, in the Stories' gold, and says it is only on EasyMode over its name)
   const css = page.slice(page.indexOf("const FS_STYLE = `"));
-  assert.ok(css.includes(".fs-shelf.is-anime{--shelf:#CA3254;--shelf-soft:rgba(202,50,84,.08);}"));
-  // warm: red leads, and it is none of the other four accents (the sums are tests/film-theater.test.ts's)
-  const [r, g, b] = [1, 3, 5].map((i) => parseInt("#CA3254".slice(i, i + 2), 16));
-  assert.ok(r > b && b > g && r - b > 100);
-  for (const other of ["#A8741B", "#3E6A8E", "#0C7A46", "#6B4BC8"]) assert.ok(css.includes(`--shelf:${other};`), other);
-  // (2026-11-26: every way's heading icon from one map — the Anime row's is still the spark)
-  assert.ok(page.includes("<Ico n={WAY_ICON[sh.key]} size={18} />") && page.includes("anime: \"sparkle\""));
-  assert.ok(read("app", "lib", "icons.tsx").includes("  sparkle: <>"));
+  assert.ok(!css.includes(".fs-shelf.is-anime"));
+  assert.ok(page.includes("{w.only ? <span className=\"fs-fmt-kick is-only\">✦ {t(\"Only on EasyMode\")}</span> : null}"));
+  assert.ok(css.includes(".fs-fmt-kick.is-only{margin-bottom:3px;color:#F3D98C;"));
+  // its builder's first card is STYLE — "The look" — its icon a style's own badge, the spark, on the style's own tint
+  assert.ok(page.includes("<span className={`mm-card-ico is-genre ${hero.tint}`}>{fmtIcon(hero.tmpl, hero.told === \"narrated\")}</span>"));
+  assert.ok(page.includes("{t(genreWay === \"anime\" ? \"The look\" : \"The kind\")}</span><b>{t(genreWay === \"anime\" ? \"Style\" : \"Genre\")}</b>"));
   const fmt = page.slice(page.indexOf("  const fmtIcon = (key: string, told = false) => {"), page.indexOf("  const fmtIcon = (key: string, told = false) => {") + 900);
   assert.ok(fmt.indexOf("if (animeStyleOf(key)) return <svg") > 0 && fmt.indexOf("if (animeStyleOf(key)) return <svg") < fmt.indexOf("if (told) return"), "a style's spark before the told book");
   assert.ok(page.includes("import { animeStyleOf } from \"../lib/anime-styles\";"));

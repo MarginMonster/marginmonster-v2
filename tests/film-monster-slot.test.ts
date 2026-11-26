@@ -196,7 +196,9 @@ test("RUN: one monster at most — a second tap un-picks, another replaces; neve
   // another format — and every next episode or story opened to edit (they open through switchHero, even onto the
   // same hero) — starts the monster over exactly where it starts the stars over
   assert.ok(ui.includes('setTold(openNarrated ? "narrated" : "acted"); setStoryPick([]); setStoryMonster(null);'));
-  assert.equal(count(ui, "setStoryMonster(null)"), 2, "switchHero, and \"We invent it\"");
+  // (…and since 2026-11-26 the Genre card's switchGenre, where the new genre has no monster: a monster is Horror's alone)
+  assert.ok(ui.includes("if (h.tmpl !== \"horror\") setStoryMonster(null);"));
+  assert.equal(count(ui, "setStoryMonster(null)"), 3, "switchHero, switchGenre, and \"We invent it\"");
   // and another monster is another story: the script starts over (asked first, the page's orArm)
   assert.ok(ui.includes('useEffect(() => { setTreatment(null); setSeeds(null); setFrames([]); setCast([]); }, [told, storyPick.join(","), storyMonster]);'));
 });

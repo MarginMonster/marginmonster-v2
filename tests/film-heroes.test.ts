@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { FILM_HEROES, LOOP_MEDIA, TALL_STILL_MEDIA, heroById, heroName, heroOf, heroShelves, heroesFor, CAUGHT_ON_CAM, wayParamOf } from "../app/lib/film-heroes.ts";
+import { FILM_HEROES, LOOP_MEDIA, TALL_STILL_MEDIA, heroById, heroName, heroOf, heroShelves, heroesFor, homeRows, rowOfWay, CAUGHT_ON_CAM, wayParamOf } from "../app/lib/film-heroes.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8");
@@ -94,19 +94,17 @@ test("a page is offered only the heroes it can make", () => {
   assert.deepEqual(heroesFor(["musicvideo"], ["horror"]).map((h) => h.id), ["musicvideo"]);
 });
 
-test("the grid shows a poster per hero, and opening one sets the format AND how it is told", () => {
+test("the home shows a tile per FORMAT, and opening one sets the format AND how it is told", () => {
   assert.ok(ui.includes("const heroes = heroesFor(d.templates.map((x) => x.key), d.narratable || []);"));
-  // (the posters stand on shelves now — told, acted, sung: each shelf lists its own heroes)
-  // (2026-11-26: and the told heroes again on the STILL shelf — a poster opens its hero on its shelf's rung, plays no
-  //  loop there, and says "Still pictures" where a Story's poster says "narrated in minutes": the slice is longer)
-  const grid = ui.slice(ui.indexOf("{sh.heroes.map((h) => ("), ui.indexOf("{sh.heroes.map((h) => (") + 1100);
-  // (2026-11-25, the genres are movie categories: the poster says its CATEGORY — "Comedy" — and the shelf says
-  //  how it is told; the whole name, "Comedy Film", is what a screen reader is told, with the line under it)
-  assert.ok(grid.includes("onClick={() => enterFormat(h.id, sh.rung)}") && grid.includes("<LoopCover k={h.media} loop={sh.rung === \"still\" ? false : undefined} />") && grid.includes("<b>{t(h.card)}</b>"));
-  assert.ok(grid.includes("aria-label={[t(h.name), h.kick ? t(h.kick) : \"\", sh.rung === \"still\" ? t(\"Still pictures\") : h.meta ? t(h.meta) : \"\"].filter(Boolean).join(\" · \")}") && !grid.includes("<b>{t(h.name)}</b>"));
-  // (2026-11-26, THE WAYS: nothing under a poster any more — the way's card above says how it is told, once; the owner:
-  //  "This has become repetitive". A screen reader still hears the whole name, its line and its note.)
-  assert.ok(!grid.includes("className=\"fs-fmt-sub\""), "no sub-line under a poster");
+  // (2026-11-26, that evening — THE ROWS: no genre on the home. A tile is a format — "Narrated Video", "Acted Film" — and
+  //  the genre is the builder's first card; a tile shows its name on its picture and its one short line under it, and a
+  //  screen reader hears its whole line)
+  const grid = ui.slice(ui.indexOf("{row.tiles.map((w) => {"), ui.indexOf("{row.cameras?.map((c) => ("));
+  assert.ok(grid.includes("onClick={() => openTile(w)}") && grid.includes("<b>{t(w.name)}</b>") && grid.includes("<span className=\"fs-fmt-sub\">{t(w.short)}</span>"));
+  assert.ok(grid.includes("aria-label={[t(w.name), t(w.line), w.tag ? t(w.tag) : \"\", w.only ? t(\"Only on EasyMode\") : \"\"].filter(Boolean).join(\" · \")}"));
+  assert.ok(!grid.includes("h.card") && !ui.includes("{sh.heroes.map((h) => ("), "no genre poster on the home");
+  // one tap: the tile's hero — the genre the guide box's idea names, else its first — on the tile's rung
+  assert.ok(ui.includes("const openTile = (w: HomeTile) => { setRingRow(null); enterFormat(heroOfTile(w, tileGuess), w.rung); };"));
   assert.ok(!ui.includes("{d.templates.map((x) => {\n              const m = FMT["), "the grid is no longer one poster per template");
   const sw = ui.slice(ui.indexOf("const switchHero = (id: string) => {"), ui.indexOf("const switchHero = (id: string) => {") + 1100);
   assert.ok(sw.includes("const openNarrated = !!nt?.dialogue && h.told === \"narrated\" && (d.narratable || []).includes(h.tmpl);"));
@@ -115,7 +113,7 @@ test("the grid shows a poster per hero, and opening one sets the format AND how 
   assert.ok(sw.includes("openNarrated ? d.narratedScenes.def : (nt?.defaultScenes || 6)"));
   assert.ok(sw.includes("if (nt?.dialogue) setFilmAspect(openNarrated ? \"9:16\" : \"16:9\");"));
   // two heroes can share a template, so "the same one again" is judged on the hero (and since 2026-11-26 a told
-  // hero opened from a shelf with a rung — Stories, Still Stories — is opened on that rung, after switchHero's reset)
+  // hero opened from a tile with a rung — Narrated Video, Narrated Pictures — is opened on that rung, after switchHero's reset)
   assert.ok(ui.includes("window.setTimeout(() => { if (key !== heroId) switchHero(key); if (rung) setPictures(rung); setEntered(true); setAnim(\"\"); setZoomKey(null); }, reduce ? 0 : 400);"));
   assert.ok(!ui.includes("switchTemplate("));
 });
@@ -124,10 +122,12 @@ test("there is no Acted / Narrated switch in the builder", () => {
   assert.ok(!ui.includes("tapStory(\"told\")") && !ui.includes("storyCard === \"told\"") && !ui.includes("aria-pressed={narrated}") && !ui.includes("aria-pressed={!narrated}"));
   assert.ok(!ui.includes("setTold(\"acted\")") && !ui.includes("setTold(\"narrated\")"), "only opening a hero decides how it is told");
   assert.equal(count(ui, "setTold("), 1);
-  // the steps count on without it: Cast 1, Length 2, Shape 3, Captions 4, Narrator/Engine 5
-  for (const [card, n] of [["length", 2], ["shape", 3], ["captions", 4], ["voice", 5]] as const) {
-    assert.ok(ui.includes(`{storyDone.${card} ? <Ico n="check" size={13} /> : ${n}}</span>`), `${card} is step ${n}`);
+  // the steps count on without it: Cast 1, Length 2, Shape 3, Captions 4, Narrator/Engine 5 — and from 2 when the GENRE
+  // card stands first (2026-11-26: the genre is a setup step — `stepAt`, tests/film-genre-setup.test.ts)
+  for (const [card, n] of [["cast", 1], ["length", 2], ["shape", 3], ["captions", 4], ["voice", 5]] as const) {
+    assert.ok(ui.includes(`{storyDone.${card} ? <Ico n="check" size={13} /> : ${n} + stepAt}</span>`), `${card} is step ${n}`);
   }
+  assert.ok(ui.includes("{storyDone.genre ? <Ico n=\"check\" size={13} /> : 1}</span>"));
 });
 
 test("the builder's banner, the Generate button and a kept music video all speak of the hero", () => {
@@ -198,21 +198,23 @@ test("an acted film's badge in the Archive is its poster's name too", () => {
 /* The owner, 2026-11-24, with a photo of the grid (a Story beside its Film beside the next Story): "Narrated
  * and acted need segregated in an attractive way my friend, currently it's a bit confusing without clicking
  * through". */
-test("the posters stand on WAYS — the ladder (Picture Book · Story · Film), then Only on EasyMode (Anime · Kids · Music Video) — each thing once", () => {
+test("the WAYS — every hero on exactly one — are what the home's tiles and the builder's Genre card are made of", () => {
   // (2026-11-24, the owner: "Narrated and acted need segregated in an attractive way" — the shelves. 2026-11-26, of the
   //  Stories and the Still Stories showing the same nine posters: "This has become repetitive and unorganized and
   //  confusing"; he picked "A": big WAY cards, the ladder then "Only on EasyMode", and ONE row of the chosen way's posters.
   //  Then: "I don't want to lose our distinctive categories like caught on cam, found footage, and our other uniques" —
-  //  "Those need to be on display": Caught on Cam (a page's, CAUGHT_ON_CAM) and Kids are cards of their own.)
+  //  "Those need to be on display". That evening: "I liked when it was rows designated (the genere tiles are what
+  //  complicated things)" — the cards and the chosen way's row are gone, and a way is a TILE on the rows: its name, tag,
+  //  short line and picture; its heroes are the genres its builder's first card offers.)
   const shelves = heroShelves(FILM_HEROES);
   // (the ladder's NAMES are his hierarchy in his words — "narrated with stills / … stills to video … / acted" — after his
   //  phone photo: "Picture book sounds like a physical book / story / film come across as confusing", 2026-11-26)
   assert.deepEqual(shelves.map((s) => [s.key, s.name, s.tag]), [["still", "Narrated Pictures", "Cheapest"], ["told", "Narrated Video", "Most popular"], ["acted", "Acted Film", "Premium"], ["anime", "Anime", "New"], ["kids", "Kids", "For little ones"], ["sung", "Music Video", "Sung"]]);
-  // …and every card says what it is on a phone too: a SHORT line, a few words
+  // …and every one says what it is on a phone too: a SHORT line, a few words (the line under its tile)
   assert.deepEqual(shelves.map((s) => s.short), ["Still images, read aloud", "Every scene moves", "Characters talk on camera", "Hand-drawn, six styles", "Cartoons & sing-alongs", "Your artist sings"]);
-  assert.equal(CAUGHT_ON_CAM.short, "Phone, house & body cams");
-  for (const sh of [...shelves, CAUGHT_ON_CAM]) assert.ok(sh.short.length <= 26, sh.short);
-  assert.deepEqual(shelves.map((s) => s.group), ["ladder", "ladder", "ladder", "only", "only", "only"]);
+  for (const sh of shelves) assert.ok(sh.short.length <= 26, sh.short);
+  // (the ladder / "Only on EasyMode" grouping went with the ways' cards; what to do in the Genre panel is each way's own)
+  assert.ok(shelves.every((s) => !("group" in s)));
   assert.deepEqual(shelves.map((s) => s.pick), ["Pick a genre", "Pick a genre", "Pick a genre", "Pick a style", "Pick one", "Pick one"]);
   // THE GENRES ARE MOVIE CATEGORIES (the owner, 2026-11-25): the WORD on a poster is its category; the Archive's name says
   // Film or Story. Picture Book's posters are the Story's, in the same order, on the cheapest rung.
@@ -253,17 +255,20 @@ test("the posters stand on WAYS — the ladder (Picture Book · Story · Film), 
   const flat = heroShelves(FILM_HEROES, { still: false });
   assert.deepEqual(flat.map((s) => s.key), ["told", "acted", "anime", "kids", "sung"]);
   assert.equal(flat[0].line, line("still"));
+  assert.equal(flat[0].short, shelves[0].short, "…and its tile's short line too: \"Every scene moves\" would be untrue there");
   assert.deepEqual(flat[0].art, shelves[0].art);
   // a page that offers fewer formats shows fewer ways — never an empty one
   assert.deepEqual(heroShelves(FILM_HEROES.filter((h) => !h.shelf)).map((s) => s.key), ["still", "told", "acted", "kids", "sung"], "no anime template offered, no Anime card");
   assert.deepEqual(heroShelves(FILM_HEROES.filter((h) => h.told !== "narrated")).map((s) => s.key), ["acted", "kids", "sung"], "no Stories, no Picture Book");
   assert.deepEqual(heroShelves([]), []);
-  // CAUGHT ON CAM: Found Footage's cameras, named as its builder names them
+  // CAUGHT ON CAM: Found Footage's cameras, named as its builder names them — and its ROW's words (the way card's art,
+  // tag and lines went with the card)
   assert.deepEqual(CAUGHT_ON_CAM.cameras.map((c) => c.key), ["house", "bodycam", "phone", "camcorder"]);
   assert.deepEqual(CAUGHT_ON_CAM.cameras.map((c) => c.name), ["House camera", "Body cam", "Phone", "Camcorder"]);
-  assert.equal(CAUGHT_ON_CAM.group, "only");
+  assert.deepEqual(Object.keys(CAUGHT_ON_CAM), ["key", "name", "line", "cameras"]);
+  assert.deepEqual([CAUGHT_ON_CAM.name, CAUGHT_ON_CAM.line], ["Caught on Cam", "Found footage"]);
   // every way's art is a real file, and none is a -tall Story file with captions burnt into it
-  for (const a of [...shelves.map((s) => s.art), CAUGHT_ON_CAM.art]) {
+  for (const a of shelves.map((s) => s.art)) {
     for (const p of [a.still, a.clip].filter(Boolean) as string[]) assert.ok(exists("public", ...p.replace(/^\//, "").split("/")), p);
     assert.ok(!/film-(?:loop|still)-(?:horrorstory|shortstory|moralstory)-tall/.test(`${a.still} ${a.clip || ""}`), a.still);
   }
@@ -271,42 +276,100 @@ test("the posters stand on WAYS — the ladder (Picture Book · Story · Film), 
   assert.equal(wayParamOf("still"), "still");
   assert.equal(wayParamOf("stories"), null);
 
-  // THE PAGE: the way cards, then ONE row — the chosen way's
+  // every word of the ways is in all five languages (a tile says its name, tag and short line; a screen reader its line;
+  // the Genre panel its pick)
+  const dict = fs.readFileSync(new URL("../app/lib/ui-i18n-dict.ts", import.meta.url), "utf8");
+  for (const sh of shelves) for (const k of [sh.name, sh.tag, sh.line, sh.pick, sh.short]) assert.ok(dict.split(`${JSON.stringify(k)}:`).length - 1 >= 5, k);
+});
+
+/* THE ROWS (2026-11-26, that evening). The owner, with two photos of the ways on the live home: "Because this setup is hard
+ * to understand narrated/acted being at the top of the selection looks odd and easy to misunderstand. I liked when it was
+ * rows designated (the genere tiles are what complicated things)". */
+test("THE ROWS: Stories · Films · Music · Caught on Cam — each designated by how it is told, a few FORMAT tiles, never a genre", () => {
+  const all = homeRows(heroShelves(FILM_HEROES), FILM_HEROES, { lyric: true, cam: true });
+  assert.deepEqual(all.map((r) => [r.key, r.name, r.line, !!r.only]), [
+    ["told", "Stories", "A narrator tells it", false],
+    ["acted", "Films", "Actors speak on camera", false],
+    ["sung", "Music", "Sung", false],
+    ["cam", "Caught on Cam", "Found footage", true],
+  ]);
+  const tiles = (rows: typeof all) => rows.map((r) => r.tiles.map((w) => [w.key, w.name, w.short, w.tag || "", !!w.only]));
+  assert.deepEqual(tiles(all), [
+    [["told", "Narrated Video", "Every scene moves", "Most popular", false], ["still", "Narrated Pictures", "Still images, read aloud", "Cheapest", false], ["anime", "Anime", "Hand-drawn, six styles", "New", true]],
+    [["acted", "Acted Film", "Characters talk on camera", "Premium", false], ["kidstv", "Kids Cartoon", "A cartoon for little ones", "", false]],
+    [["musicvideo", "Music Video", "Your artist sings", "", false], ["kidsmusicvideo", "Kids Music Video", "A sing-along for little ones", "", false], ["lyricvideo", "Lyric Video", "Your song, words on screen", "", false]],
+    [],
+  ]);
+  // Caught on Cam's row is its cameras
+  assert.deepEqual(all[3].cameras?.map((c) => c.key), ["house", "bodycam", "phone", "camcorder"]);
+  // each tile opens what its way holds: the genres (an anime's styles) for the builder's first card, or its one format
+  const by = Object.fromEntries(all.flatMap((r) => r.tiles).map((w) => [w.key, w]));
+  assert.deepEqual(by.told.heroes, heroShelves(FILM_HEROES).find((s) => s.key === "told")!.heroes);
+  assert.deepEqual(by.still.heroes, by.told.heroes, "Narrated Pictures opens the very same stories, on its rung");
+  assert.deepEqual([by.told.rung, by.still.rung, by.acted.rung, by.anime.rung], ["moving", "still", undefined, undefined]);
+  assert.deepEqual([by.told.heroes[0].id, by.acted.heroes[0].id, by.anime.heroes[0].id], ["shortstory", "testmovie", "animedream"], "Drama, Drama, the first style");
+  assert.deepEqual(["kidstv", "musicvideo", "kidsmusicvideo", "lyricvideo"].map((k) => by[k].heroes.map((h) => h.id)), [["kidstv"], ["musicvideo"], ["kidsmusicvideo"], ["lyricvideo"]]);
+  // the picture of each: the way's art where it IS one of its heroes' phone posters (drawn as that poster: its phone cut —
+  // the very file — and its wide cut on a wide screen), else the art itself; never a -tall Story loop (captions burnt in)
+  assert.deepEqual(Object.fromEntries(Object.entries(by).map(([k, w]) => [k, "media" in w.cover ? w.cover.media : w.cover.art.still])), {
+    told: "/landing/film-loop-horrorstory.jpg", still: "fantasystory", anime: "animesky", acted: "testmovie", kidstv: "kidstv",
+    musicvideo: "musicvideo", kidsmusicvideo: "kidsmusicvideo", lyricvideo: "lyricvideo",
+  });
+  assert.deepEqual(by.lyricvideo.cover, { media: "lyricvideo", loop: true, tall: true });
+  for (const k of ["still", "acted", "anime"] as const) {
+    const sh = heroShelves(FILM_HEROES).find((s) => s.key === k)!;
+    assert.equal(sh.art.still, `/landing/film-still-${(by[k].cover as { media: string }).media}-tall.jpg`, `${k}: the way card's own picture, on a phone`);
+  }
+  // A MEMBER (no Lyric Video, no Caught on Cam, no anime templates): the same rows less those
+  const member = FILM_HEROES.filter((h) => !h.shelf);
+  const rows = homeRows(heroShelves(member), member);
+  assert.deepEqual(rows.map((r) => r.key), ["told", "acted", "sung"]);
+  assert.deepEqual(tiles(rows)[0].map((w) => w[0]), ["told", "still"]);
+  assert.deepEqual(tiles(rows)[2].map((w) => w[0]), ["musicvideo", "kidsmusicvideo"]);
+  // where pictures cannot move: no Narrated Pictures, and the Narrated Video says what it is told over then, still
+  const flat = homeRows(heroShelves(member, { still: false }), member);
+  assert.deepEqual(tiles(flat)[0], [["told", "Narrated Video", "Still images, read aloud", "Most popular", false]]);
+  assert.deepEqual(flat[0].tiles[0].cover, { media: "fantasystory" }, "and shows no motion");
+  // a row with nothing on it is not shown
+  assert.deepEqual(homeRows([], []), []);
+
+  // THE PAGE: one map draws every row, in the shelves' own markup — an icon chip, its name, its line — and the tiles
   const ui = fs.readFileSync(new URL("../app/routes/web.film.tsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   assert.equal(ui.split("heroShelves(").length - 1, 1, "one call");
   assert.ok(ui.includes("const shelves = heroShelves(heroes, { still: d.storyMotion });"));
-  assert.ok(ui.includes("...(d.foundFootage ? [CAUGHT_ON_CAM] : []),"), "Caught on Cam is an operator's, as its builder is");
-  assert.ok(ui.includes("{shelves.filter((sh) => sh.key === wayOn).map((sh) => ("));
-  assert.ok(ui.includes("<button type=\"button\" key={w.key} className={`fs-way is-${w.key}${wayOn === w.key ? \" on\" : \"\"}`} aria-pressed={wayOn === w.key} onClick={() => pickWay(w.key)}>"));
-  assert.ok(ui.includes("<section key={sh.key} className={`fs-shelf is-${sh.key}`} aria-labelledby={`fs-shelf-${sh.key}`}>"));
-  assert.ok(ui.includes("<h2 className=\"fs-shelf-name\" id={`fs-shelf-${sh.key}`}>{t(sh.name)}</h2>"));
-  assert.ok(ui.includes("<span>{t(sh.heroes.length + (sh.key === \"sung\" && d.lyricVideo ? 1 : 0) > 1 ? sh.pick : \"Tap it to start\")}</span>") && !ui.includes("<em className=\"fs-shelf-tag\">{t(sh.tag)}</em>"), "the row says what to do; the tag is on its card, once");
-  assert.ok(ui.includes("<div className={`fs-fmtgrid${anim === \"in\" ? \" throw\" : \"\"}`} role=\"tablist\" aria-label={t(sh.name)}>"), "each row is its own list of formats");
-  assert.ok(ui.includes("{sh.heroes.map((h) => ("));
-  for (const k of [".fs-shelf.is-told{--shelf:", ".fs-shelf.is-still{--shelf:", ".fs-shelf.is-anime{--shelf:", ".fs-shelf.is-acted{--shelf:", ".fs-shelf.is-sung{--shelf:", ".fs-shelf.is-kids{--shelf:", ".fs-shelf.is-cam{--shelf:", ".fs-shelves.throw .fs-shelf{background:transparent;border-color:transparent;}"]) assert.ok(ui.includes(k), k);
-  assert.ok(ui.includes("@media(min-width:980px){.fs-shelf .fs-fmtgrid{grid-template-columns:repeat(4,minmax(0,1fr));}}"));
-  // every word on the cards and rows is in all five languages
-  const dict = fs.readFileSync(new URL("../app/lib/ui-i18n-dict.ts", import.meta.url), "utf8");
-  for (const sh of [...shelves, CAUGHT_ON_CAM]) for (const k of [sh.name, sh.tag, sh.line, sh.pick, sh.short]) assert.ok(dict.split(`${JSON.stringify(k)}:`).length - 1 >= 5, k);
-  assert.ok(ui.includes("<span className=\"fs-way-name\"><b>{t(w.name)}</b><small className=\"is-short\">{t(w.short)}</small><small className=\"is-long\">{t(w.line)}</small></span>"), "a phone shows the short line, a wider screen the long one");
-  for (const k of ["Pick what to make", "Only on EasyMode", "How it's told", "Tap it to start"]) assert.ok(dict.split(`${JSON.stringify(k)}:`).length - 1 >= 5, k);
+  assert.ok(ui.includes("const rows = homeRows(shelves, heroes, { lyric: d.lyricVideo, cam: d.foundFootage });"), "the Lyric Video and Caught on Cam are an operator's, as their builders are");
+  assert.equal(ui.split("{rows.map((row) => (").length - 1, 1);
+  assert.ok(ui.includes("<section key={row.key} id={`fs-row-${row.key}`} className={`fs-shelf is-${row.key}${ringRow === row.key ? \" is-ring\" : \"\"}`} aria-labelledby={`fs-shelf-${row.key}`}>"));
+  assert.ok(ui.includes("<span className=\"fs-shelf-ico\" aria-hidden=\"true\"><Ico n={ROW_ICON[row.key]} size={18} /></span>"));
+  assert.ok(ui.includes("const ROW_ICON: Record<HomeRowKey, string> = { told: \"book\", acted: \"film\", sung: \"music\", cam: \"camera\" };"));
+  assert.ok(ui.includes("<h2 className=\"fs-shelf-name\" id={`fs-shelf-${row.key}`}>{t(row.name)}</h2>"));
+  // ✦ Only on EasyMode, on display: after Caught on Cam's line, and over the Anime tile's name
+  assert.ok(ui.includes("<span>{t(row.line)}{row.only ? <> · <b className=\"fs-only\"><span aria-hidden=\"true\">✦</span> {t(\"Only on EasyMode\")}</b></> : null}</span>"));
+  assert.ok(ui.includes("{w.only ? <span className=\"fs-fmt-kick is-only\">✦ {t(\"Only on EasyMode\")}</span> : null}"));
+  assert.ok(ui.includes("{w.tag ? <span className=\"fs-fmt-tag\">{t(w.tag)}</span> : null}"));
+  // the accents: Stories gold, Films green, Music violet, Caught on Cam red
+  for (const k of [".fs-shelf.is-told{--shelf:#A8741B;", ".fs-shelf.is-acted{--shelf:#0C7A46;", ".fs-shelf.is-sung{--shelf:#6B4BC8;", ".fs-shelf.is-cam{--shelf:#B83A28;", ".fs-shelves.throw .fs-shelf{background:transparent;border-color:transparent;}"]) assert.ok(ui.includes(k), k);
+  // …and none for a way that is no row (the still, anime and kids shelves were rows of their own until that evening)
+  for (const k of [".fs-shelf.is-still", ".fs-shelf.is-anime", ".fs-shelf.is-kids"]) assert.ok(!ui.includes(k), k);
+  // every word of the rows is in all five languages
+  const dict = fs.readFileSync(new URL("../app/lib/ui-i18n-dict.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  for (const k of [...all.flatMap((r) => [r.name, r.line, ...r.tiles.flatMap((w) => [w.name, w.short, w.line, w.tag || ""])]), "Only on EasyMode"].filter(Boolean)) {
+    assert.ok(dict.split(`\n  ${JSON.stringify(k)}: `).length - 1 >= 5, k);
+  }
 });
 
-test("THE ROW OPENS UNDER THE GROUP THAT WAS TAPPED (2026-11-26 — the owner: \"Selected at the top the type then outputs at the bottom - I think that is the confusing part\")", async () => {
-  const fs = await import("node:fs");
+test("NO WAYS GRID, NO CHOSEN-WAY ROW: the cards, their row and their code and styles are gone", () => {
   const ui = fs.readFileSync(new URL("../app/routes/web.film.tsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
-  // the row is built once, and drawn right after the group holding the chosen way — the ladder's under the ladder, an
-  // original's under "Only on EasyMode"
-  assert.ok(ui.includes('const wayGroup = wayCards.find((w) => w.key === wayOn)?.group || "ladder";'));
-  assert.ok(ui.includes("const wayRow = (\n          <div key=\"row\" className={`fs-shelves${anim === \"in\" ? \" throw\" : \"\"}`}>"));
-  assert.equal(ui.split("wayGroup === g ? wayRow : null,").length - 1, 1);
-  const ways = ui.slice(ui.indexOf("<div className={`fs-ways${anim"), ui.indexOf("</>)}", ui.indexOf("<div className={`fs-ways${anim")));
-  assert.ok(ways.includes("wayGroup === g ? wayRow : null,"), "inside the ways, after each group");
-  assert.equal(ui.split('className={`fs-shelves${anim === "in" ? " throw" : ""}`}').length - 1, 1, "one row in the markup");
-  // the ways fade by their groups, so the tapped poster in the row still pops; a wide screen wraps the row under both
-  assert.ok(ui.includes(".fs-ways.throw > .fs-ways-grp{opacity:0;transform:scale(.97);pointer-events:none;}"));
-  assert.ok(!ui.includes(".fs-ways.throw{opacity:0;"));
-  assert.ok(ui.includes("  .fs-ways{display:flex;flex-wrap:wrap;align-items:flex-end;gap:18px;}") && ui.includes("  .fs-ways > .fs-shelves{order:9;flex:1 1 100%;min-width:0;}"));
-  // Caught on Cam's card: its footage enlarged by the scale property, which the card's drift animation cannot override
-  assert.ok(ui.includes(".fs-way.is-cam .fs-way-pic img,.fs-way.is-cam .fs-way-vid{scale:1.18;transform-origin:50% 96%;}"));
+  for (const gone of ["wayCards", "wayOn", "wayHeld", "pickWay", "wayGroup", "wayRow", "WayCover", "WAY_STEP", "WAY_ICON", "guessKey", "fs-ways", "fs-way", "fsWayDrift", "fsWayPan", "\"How it's told\"", "\"Pick what to make\"", "\"Tap it to start\""]) {
+    assert.ok(!ui.includes(gone), gone);
+  }
+  // one list of rows in the markup, and a link's way (?way=) is a ROW brought into view and ringed — never entered
+  assert.equal(ui.split('className={`fs-shelves${anim === "in" ? " throw" : ""}`}').length - 1, 1);
+  assert.ok(ui.includes("const [ringRow, setRingRow] = useState<HomeRowKey | null>(() => rowOfWay(rows, d.openWay));"));
+  assert.ok(ui.includes("window.requestAnimationFrame(() => document.getElementById(`fs-row-${ringRow}`)?.scrollIntoView({ block: \"start\", behavior: still ? \"auto\" : \"smooth\" }));"));
+  assert.ok(ui.includes(".fs-shelf.is-ring{outline:3px solid var(--shelf);outline-offset:4px;}"), "an outline: the ticket's own shadow is not touched");
+  const rows = homeRows(heroShelves(FILM_HEROES), FILM_HEROES, { cam: true });
+  assert.deepEqual((["still", "told", "anime", "acted", "kids", "sung", "cam"] as const).map((w) => rowOfWay(rows, w)), ["told", "told", "told", "acted", "acted", "sung", "cam"]);
+  assert.equal(rowOfWay(homeRows(heroShelves(FILM_HEROES), FILM_HEROES), "cam"), null, "no Caught on Cam row for a member");
+  assert.equal(rowOfWay(rows, null), null);
 });

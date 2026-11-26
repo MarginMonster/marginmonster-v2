@@ -14,7 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { FILM_HEROES, heroOf, heroShelves, heroesFor, posterKey } from "../app/lib/film-heroes.ts";
+import { FILM_HEROES, LOOP_MEDIA, heroOf, heroShelves, heroesFor, homeRows, posterKey } from "../app/lib/film-heroes.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // (a checkout with CRLF line endings must read the same as one with LF)
@@ -102,40 +102,32 @@ test("a poster's key says which shelf it stands on, so the same hero pops only w
   assert.equal(keys.length, 9 + 9 + 6 + 11 + 2);
 });
 
-test("the page: one map draws every shelf; a still poster opens its hero on the still rung, plays no loop, and says so", () => {
-  // (2026-11-26, THE WAYS: the one map draws the CHOSEN way's row — the page calls heroShelves once, up top)
-  const block = between(page, "{shelves.filter((sh) => sh.key === wayOn).map((sh) => (", "{entered && (");
-  // the SAME single map — the still shelf is not a second block of markup
+test("the page: Narrated Pictures is a TILE of the Stories row — it opens its story on the still rung, plays no loop, and says so", () => {
+  // (2026-11-26, that evening — THE ROWS: the still rung is no shelf or way card of its own any more but one tile of the
+  //  Stories row, beside Narrated Video; one map draws every row, and the page calls heroShelves once, up top)
+  const block = between(page, "{rows.map((row) => (", "{entered && (");
   assert.equal(count(page, "heroShelves("), 1);
-  assert.equal(count(block, "{sh.heroes.map((h) => ("), 1);
+  assert.equal(count(block, "{row.tiles.map((w) => {"), 1);
   assert.equal(count(block, "className=\"fs-shelf-arrow "), 2);
-  // its heading's icon: a picture
-  // (2026-11-26: and the Anime shelf's, a spark — tests/anime-shelf.test.ts)
-  assert.ok(block.includes("<Ico n={WAY_ICON[sh.key]} size={18} />") && page.includes("const WAY_ICON: Record<WayKey, string> = { still: \"image\", told: \"book\", acted: \"film\", anime: \"sparkle\", kids: \"star\", sung: \"music\", cam: \"camera\" };"));
-  // each poster: its zoom by its own key; chosen only while its rung is; opened on its shelf's rung
-  assert.ok(block.includes("className={`fs-fmt${zoomKey === posterKey(h.id, sh.rung) ? \" zoom\" : \"\"}"));
-  assert.ok(block.includes("aria-selected={heroId === h.id && (!sh.rung || pictures === sh.rung)}"));
-  assert.ok(block.includes("onClick={() => enterFormat(h.id, sh.rung)}"));
-  // no moving loop on the still shelf: LoopCover with loop={false} has no <video> at all
-  assert.ok(block.includes("<LoopCover k={h.media} loop={sh.rung === \"still\" ? false : undefined} />"));
+  const stories = homeRows(heroShelves(FILM_HEROES), FILM_HEROES).find((r) => r.key === "told")!;
+  const still = stories.tiles.find((w) => w.key === "still")!;
+  assert.deepEqual(stories.tiles.map((w) => w.key), ["told", "still", "anime"]);
+  // its words: the still way's own — the short line under the tile, the whole line to a screen reader
+  assert.deepEqual([still.name, still.short, still.tag, still.line, still.rung], ["Narrated Pictures", "Still images, read aloud", "Cheapest", "A narrator tells it over still pictures that slowly move", "still"]);
+  // it opens the very Stories Narrated Video does — each on the STILL rung: its zoom key says which tile it was
+  assert.deepEqual(still.heroes, stories.tiles[0].heroes);
+  assert.equal(posterKey(still.heroes[0].id, still.rung), "still:shortstory");
+  assert.ok(page.includes("const openTile = (w: HomeTile) => { setRingRow(null); enterFormat(heroOfTile(w, tileGuess), w.rung); };"));
+  assert.ok(block.includes("const zk = posterKey(heroOfTile(w, tileGuess), w.rung);"));
+  // no moving loop: its picture is the fantasy story's poster, which has none — LoopCover has no <video> for it at all
+  assert.deepEqual(still.cover, { media: "fantasystory" });
+  assert.ok(!LOOP_MEDIA.includes("fantasystory"));
+  assert.ok(block.includes(": <LoopCover k={w.cover.media} loop={w.cover.loop} tall={w.cover.tall} />}"));
   assert.ok(page.includes("const has = !!clip || (loop ?? LOOP_KEYS.includes(k));") && page.includes("{has && <video ref={ref} className={`fs-fmt-vid"));
-  // its note is "Still pictures" where a Story's says "narrated in minutes" — on the poster and to a screen reader
-  // (2026-11-26: nothing under a poster now — the card above says it, once; a screen reader still hears "Still pictures")
-  assert.ok(!block.includes("className=\"fs-fmt-sub\""));
-  assert.ok(block.includes("sh.rung === \"still\" ? t(\"Still pictures\") : h.meta ? t(h.meta) : \"\"].filter(Boolean).join(\" · \")}"));
-  // its badge is the shelf's picture where a Story's is the told book (the row reads as pictures at a glance); its
-  // word is the Story's. Its badge's COLOUR and its note's are the shelf's own blue, one across the row (the stylesheet,
-  // below: reviewed at 390 px — with each genre's tint the row read as the Stories twice)
-  assert.ok(block.includes("<span className={`fs-fmt-ico ${h.tint}`} aria-hidden=\"true\">{sh.rung === \"still\" ? <Ico n=\"image\" size={15} /> : fmtIcon(h.tmpl, h.told === \"narrated\")}</span>"));
-  assert.equal(count(FS_STYLE, ".fs-shelf.is-still .fs-fmt-ico{background:linear-gradient(135deg,#4A7BA3,#2D506E);}\n.fs-shelf.is-still .fs-fmt-sub em{color:var(--shelf);}\n"), 1);
-  // (three classes: it outranks a genre's one-class tint, `.t-film{background:…}`, wherever either stands)
-  assert.ok(FS_STYLE.includes(".t-film{background:"));
-  // white on the badge, and the note's blue on the poster's white foot, read at 4.5:1 or better
-  const lum = (h: string) => { const c = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
-  const ratio = (a: string, b: string) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
-  for (const [fg, bg] of [["#FFFFFF", "#4A7BA3"], ["#FFFFFF", "#2D506E"], ["#3E6A8E", "#FFFFFF"]]) assert.ok(ratio(fg, bg) >= 4.5, `${fg} on ${bg}: ${ratio(fg, bg).toFixed(2)}`);
-  assert.ok(block.includes("<span className=\"fs-fmt-label\"><b>{t(h.card)}</b></span>"));
-  assert.ok(page.includes("// (2026-11-26) …and the told heroes again on a shelf of their still rung: a poster's key says which shelf it stands on\nimport { posterKey } from \"../lib/film-heroes\";"));
+  // its line is under it, and a screen reader hears its whole line
+  assert.ok(block.includes("<span className=\"fs-fmt-sub\">{t(w.short)}</span>"));
+  assert.ok(block.includes("aria-label={[t(w.name), t(w.line), w.tag ? t(w.tag) : \"\", w.only ? t(\"Only on EasyMode\") : \"\"].filter(Boolean).join(\" · \")}"));
+  assert.ok(page.includes("// (2026-11-26) …and a tile's zoom key is the hero it opens on its rung: Narrated Pictures' is `still:<id>`\nimport { posterKey } from \"../lib/film-heroes\";"));
 });
 
 /** The page's enterFormat, compiled as it stands, in a world of recorded state calls. */
@@ -157,7 +149,7 @@ function enterWorld(heroId: string) {
   return { enterFormat, calls, settle: () => { while (later.length) later.shift()!(); }, last: (name: string) => [...calls].reverse().find(([n]) => n === name)?.[1] };
 }
 
-test("entering from the still shelf opens the hero on the still rung — and the same hero from the other shelf keeps its work", () => {
+test("entering from the still tile opens the hero on the still rung — and the same hero from the other tile keeps its work", () => {
   // the switch's reset comes first, then the shelf's rung: the preset wins
   const src = between(page, "  const enterFormat = (key: string, rung?: StoryPictures) => {", "\n  };");
   assert.ok(src.includes("setZoomKey(posterKey(key, rung)); setAnim(\"in\");"));
@@ -195,26 +187,29 @@ test("entering from the still shelf opens the hero on the still rung — and the
   w.enterFormat("horror");
   w.settle();
   assert.ok(!w.calls.some(([n]) => n === "pictures" || n === "switchHero"));
-  assert.ok(page.includes("onClick={() => enterFormat(playing.id)}") && page.includes("onClick={() => enterFormat(LYRIC_HERO.id)}"));
+  // (the hero reel's tag goes straight in; every tile — the Lyric Video's among them — by its own rung, openTile)
+  assert.ok(page.includes("onClick={() => enterFormat(playing.id)}") && page.includes("onClick={() => openTile(w)}"));
+  assert.equal(homeRows(heroShelves(FILM_HEROES), FILM_HEROES, { lyric: true }).flatMap((r) => r.tiles).find((x) => x.key === "lyricvideo")?.rung, undefined);
 });
 
-test("a still poster moves the way a still story moves: Gentle, slowly, a transform only — and never past its picture's edge", () => {
+test("the still tile's picture moves the way a still story moves: Gentle, slowly, a transform only — and never past its picture's edge", () => {
   const before = FS_STYLE.slice(0, FS_STYLE.indexOf("/* ───────── THE ROWS — each shelf is ONE row of its posters, swiped sideways ─────────"));
+  // (2026-11-26, that evening — THE ROWS: what the still shelf's posters did, its one tile does; with no neighbours on a
+  //  shelf of its own, nothing to start at another point of the move)
   const rules = [
-    ".fs-shelf.is-still .fs-fmt-cover img{animation:mmCamGentle 14s ease-in-out infinite alternate;}",
-    // on a touch screen neighbours start at other points of the move; where there is a mouse a row at rest is even
-    "@media not all and (hover:hover) and (pointer:fine){\n  .fs-shelf.is-still .fs-fmt:nth-child(3n+2) .fs-fmt-cover img{animation-delay:-4.7s;}\n  .fs-shelf.is-still .fs-fmt:nth-child(3n) .fs-fmt-cover img{animation-delay:-9.3s;}\n}",
+    ".fs-tile.is-still .fs-fmt-cover img{animation:mmCamGentle 14s ease-in-out infinite alternate;}",
     // where there is a mouse: while it is pointed at, or has the keyboard's focus (as a loop plays); on a touch screen, always
-    "@media(hover:hover) and (pointer:fine){\n  .fs-shelf.is-still .fs-fmt-cover img{animation-play-state:paused;}\n  .fs-shelf.is-still .fs-fmt:hover .fs-fmt-cover img,.fs-shelf.is-still :focus-visible > .fs-fmt-cover img{animation-play-state:running;}\n}",
+    "@media(hover:hover) and (pointer:fine){\n  .fs-tile.is-still .fs-fmt-cover img{animation-play-state:paused;}\n  .fs-tile.is-still:hover .fs-fmt-cover img,.fs-tile.is-still:focus-visible .fs-fmt-cover img{animation-play-state:running;}\n}",
     // nothing moves for anyone who asks for less motion
-    "@media(prefers-reduced-motion:reduce){.fs-shelf.is-still .fs-fmt-cover img{animation:none;}}",
+    "@media(prefers-reduced-motion:reduce){.fs-tile.is-still .fs-fmt-cover img{animation:none;}}",
   ];
   for (const r of rules) assert.equal(count(before, r), 1, r);
+  assert.ok(!FS_STYLE.includes(".fs-shelf.is-still"), "no still shelf: its mat, its tilt and its blue went with it");
   // the page's own sheet (mounted on the home, always), before the rows — whose rules move nothing by themselves
   assert.equal(count(page, "<style dangerouslySetInnerHTML={{ __html: FS_STYLE }} />"), 1);
-  // only the still shelf's covers drift: no other rule animates a poster's picture
+  // only the still tile's cover drifts: no other rule animates a poster's picture
   const flat = FS_STYLE.replace(/\/\*[\s\S]*?\*\//g, "");
-  assert.deepEqual([...flat.matchAll(/([^{}]*\.fs-fmt-cover img)\{[^}]*animation:[^;}]+/g)].map((m) => m[1].trim()), [".fs-shelf.is-still .fs-fmt-cover img", ".fs-shelf.is-still .fs-fmt-cover img"]);
+  assert.deepEqual([...flat.matchAll(/([^{}]*\.fs-fmt-cover img)\{[^}]*animation:[^;}]+/g)].map((m) => m[1].trim()), [".fs-tile.is-still .fs-fmt-cover img", ".fs-tile.is-still .fs-fmt-cover img"]);
 
   // the move is S13b's GENTLE — the still story's own default camera — the keyframes the Length step's tile plays
   const kf = /@keyframes mmCamGentle\{((?:\d+%\{[^}]*\})+)\}/.exec(FS_STYLE);
@@ -249,13 +244,12 @@ test("a still poster moves the way a still story moves: Gentle, slowly, a transf
   assert.ok(/mmCamGentle 14s ease-in-out infinite alternate/.test(before));
 });
 
-test("the still shelf has its own accent — a cool steel blue — and its words in all five languages", () => {
+test("the still tile wears its row's colours — the Stories' — and its words are in all five languages", () => {
+  // (2026-11-26, that evening — THE ROWS: the steel blue was the still SHELF's; the tile stands in the Stories row, in its gold)
   const before = FS_STYLE.slice(0, FS_STYLE.indexOf("/* ───────── THE ROWS"));
-  assert.ok(before.includes(".fs-shelf.is-told{--shelf:#A8741B;--shelf-soft:rgba(168,116,27,.1);}\n/* (the STILL shelf"));
-  assert.ok(before.includes(".fs-shelf.is-still{--shelf:#3E6A8E;--shelf-soft:rgba(62,106,142,.09);}\n.fs-shelf.is-acted{"));
-  // blue: more blue in it than red or green, and none of the other three
-  const [r, g, b] = [1, 3, 5].map((i) => parseInt("#3E6A8E".slice(i, i + 2), 16));
-  assert.ok(b > g && g > r);
+  assert.ok(before.includes(".fs-shelf.is-told{--shelf:#A8741B;--shelf-soft:rgba(168,116,27,.1);}\n.fs-shelf.is-acted{"));
+  assert.ok(!before.includes("#3E6A8E"), "no steel blue left on the home");
+  assert.equal(homeRows(heroShelves(FILM_HEROES), FILM_HEROES).find((r) => r.tiles.some((w) => w.key === "still"))?.key, "told");
   // the words — every one five times, and the two it reuses never added again (a duplicate key is a TS error)
   for (const k of ["Still Stories", "A narrator tells it over still pictures that slowly move", "A narrator tells it over moving pictures", "Cheapest", "Still pictures"]) {
     assert.equal(count(dict, `\n  ${JSON.stringify(k)}: `), 5, k);

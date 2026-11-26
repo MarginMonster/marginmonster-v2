@@ -653,10 +653,17 @@ test("the Terms say what the tick means: whose song, the platforms' claims, and 
   assert.ok(read("app", "routes", "privacy.tsx").includes('export const LEGAL_UPDATED = "24 November 2026";'), "the date moved with the change");
 });
 
-test("the page: a Lyric Video poster on the Music videos shelf for operators, and its one-screen builder", () => {
+test("the page: a Lyric Video tile on the Music row for operators, and its one-screen builder", async () => {
   const ui = read("app", "routes", "web.film.tsx");
   assert.ok(ui.includes("lyricVideo: isAdminEmail(account.email),"));
-  assert.ok(ui.includes('{sh.key === "sung" && d.lyricVideo && (') && ui.includes("onClick={() => enterFormat(LYRIC_HERO.id)}") && ui.includes("<LoopCover k={LYRIC_HERO.media} loop tall />"));
+  // (2026-11-26, that evening — THE ROWS: the Music row's last tile; one tap opens its builder — openTile → enterFormat)
+  const { FILM_HEROES: H, LYRIC_HERO: L, heroShelves: shelvesOf, homeRows: rowsOf } = await import("../app/lib/film-heroes.ts");
+  const music = (lyric: boolean) => rowsOf(shelvesOf(H), H, { lyric }).find((r) => r.key === "sung")!.tiles;
+  assert.deepEqual(music(true).map((w) => w.key), ["musicvideo", "kidsmusicvideo", "lyricvideo"]);
+  assert.ok(!music(false).some((w) => w.key === "lyricvideo"), "an operator's");
+  const tile = music(true).find((w) => w.key === "lyricvideo")!;
+  assert.deepEqual([tile.name, tile.short, tile.heroes, tile.cover], ["Lyric Video", "Your song, words on screen", [L], { media: L.media, loop: true, tall: true }]);
+  assert.ok(ui.includes("const rows = homeRows(shelves, heroes, { lyric: d.lyricVideo, cam: d.foundFootage });") && ui.includes("onClick={() => openTile(w)}") && ui.includes(": <LoopCover k={w.cover.media} loop={w.cover.loop} tall={w.cover.tall} />}"));
   assert.ok(ui.includes("setLyricOn(key === LYRIC_HERO.id);") && ui.includes("const hero = lyricOn ? LYRIC_HERO : heroById(heroId);"));
   assert.ok(ui.includes("{lyricOn ? <LyricVideoBuilder t={t} /> : (<>"));
   assert.ok(ui.includes('fetch("/api/film-song-upload", { method: "POST", body: fd })') && ui.includes('fetch("/api/lyric-video", { method: "POST", body: fd })'));
@@ -703,7 +710,11 @@ test("the Movie Maker's door to Found Footage: the Caught on Cam card — operat
   for (const f of [FOUND_FOOTAGE_DOOR.still, FOUND_FOOTAGE_DOOR.clip]) assert.ok(fs.existsSync(path.join(root, "public", f)), f);
   const ui = read("app", "routes", "web.film.tsx");
   assert.ok(ui.includes("foundFootage: isAdminEmail(account.email),"), "the same operator check as every admin-only format");
-  assert.ok(ui.includes("...(d.foundFootage ? [CAUGHT_ON_CAM] : []),") && ui.includes('{wayOn === "cam" && d.foundFootage && ('), "the card and its row: an operator's");
+  // (2026-11-26, that evening — THE ROWS: Caught on Cam is a ROW of its own, its tiles the cameras — an operator's)
+  const { homeRows } = await import("../app/lib/film-heroes.ts");
+  assert.deepEqual(homeRows(heroShelves(FILM_HEROES), FILM_HEROES, { cam: true }).find((r) => r.key === "cam")?.cameras?.map((c) => c.key), ["house", "bodycam", "phone", "camcorder"]);
+  assert.ok(!homeRows(heroShelves(FILM_HEROES), FILM_HEROES).some((r) => r.key === "cam"), "no row for a member");
+  assert.ok(ui.includes("const rows = homeRows(shelves, heroes, { lyric: d.lyricVideo, cam: d.foundFootage });") && ui.includes("{row.cameras?.map((c) => ("), "the row and its cameras: an operator's");
   assert.ok(ui.includes("href={`${FOUND_FOOTAGE_DOOR.href}?camera=${c.key}`}"), "each camera opens the builder on it");
   assert.ok(ui.includes("<LoopCover k={`ff-${c.key}`} still={c.still} clip={c.clip} />"));
   // (each camera's card has its own footage: the phone's is the smiling woman with the iPhone screen, the camcorder's the
