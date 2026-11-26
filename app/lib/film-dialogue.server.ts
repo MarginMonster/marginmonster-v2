@@ -1752,7 +1752,7 @@ export async function generateTestMovie(opts: {
     // (The owner's knocking film: the older sister smiled through its most frightening line. The delivery said
     // how the line SOUNDS; nothing said what her face does.)
     const otherName = [spkA, spkB].find((n) => !!n && fnm(n) !== fnm(speaker)) || "";
-    const face = staged && !silent ? faceNote({ horror, tone, visual: scene.visual, speaker, other: turnB ? turnB.speaker : otherName }) : "";
+    const face = staged && !silent ? faceNote({ horror, tone, visual: scene.visual, speaker, other: turnB ? turnB.speaker : otherName, mood: tmpl.faceMood }) : "";
     const deliver = `${tone
       ? `Deliver it ${tone} — put that exact emotion and energy into the voice, expressively, NEVER flat or monotone.`
       : `Deliver it with the REAL emotion the words carry — an angry line sounds angry, a threat sounds menacing, hurt shows as hurt — with natural intonation and emphasis, NEVER flat or monotone.`}${face ? ` ${face}` : ""}`;
@@ -1804,7 +1804,7 @@ export async function generateTestMovie(opts: {
       // pushed the fingers out into a big hand reaching at the lens (acted-staging.ts → revealClip).
       const sides = [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })).filter((p) => !!p.side);
       const unseen = staged && !!heardIn(eventAt(i), [spkA, spkB, ...peopleNames])?.unseen;
-      const scared = staged ? faceNote({ horror, visual: scene.visual, speaker: spkA, other: spkB }) : "";
+      const scared = staged ? faceNote({ horror, visual: scene.visual, speaker: spkA, other: spkB, mood: tmpl.faceMood }) : "";
       try {
         playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, drawn: revealed, creature: revealedCreature, outdoors, seen: revealSeen, implied, face: scared, sighted: !!sighted, sight: sighted?.who, shadow: sightedShadow, cloth });
       } catch (e) {

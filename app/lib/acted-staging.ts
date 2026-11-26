@@ -750,17 +750,27 @@ const WARM = /\b(?:warm(?:ly|th)?|fond(?:ly|ness)?|cheerful(?:ly)?|happ(?:y|ily)
 
 /** WHO MUST NOT SMILE IN THIS SHOT, said plainly: in a horror film both of the two, in every shot but one whose
  *  line is said warmly (and its tone says no fear); in any other film the one who says a frightened line (its
- *  TONE says fear). Never when the script makes the smile the horror — a scene whose words have that one smiling
+ *  TONE says fear) — and on any other line the format's own faces (`mood`, its faceMood, 2026-11-26: told only to
+ *  the master, a Thriller line said "coldly, with quiet menace" could be grinned through). Never when the script
+ *  makes the smile the horror — a scene whose words have that one smiling
  *  ("Ylva smiles at the wall"), or a tone that says the line is said smiling. "" = nothing to say. It has no
  *  quotation mark in it (it goes into silent shots too). */
-export function faceNote(o: { horror?: boolean; tone?: string | null; visual?: string | null; speaker?: string | null; other?: string | null }): string {
+export function faceNote(o: { horror?: boolean; tone?: string | null; visual?: string | null; speaker?: string | null; other?: string | null; /** the format's own faces (FilmTemplate.faceMood): said to a clip of a film that is not horror, on a line that is not afraid */ mood?: string | null }): string {
   const tone = oneLine(o.tone);
   const visual = oneLine(o.visual);
   const afraid = FEAR.test(tone);
-  if (o.horror ? WARM.test(tone) && !afraid : !afraid) return "";
   const smiles = (name: string): boolean => {
     try { return new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(name)}(?![\\p{L}\\p{N}])[^.;!?,]{0,32}?${SMILE.source}`, "iu").test(visual); } catch { return false; }
   };
+  // (A GENRE'S OWN FACES reached the master picture only — said to the clip too, unless the mood forbids a smile and the
+  //  line is said warmly or smiling, or the scene's words have the speaker smiling)
+  if (!o.horror && !afraid) {
+    const mood = oneLine(o.mood).replace(/["“”«»]/g, "");
+    const who = oneLine(o.speaker);
+    const noSmile = /\b(?:smil|grin|laugh)/i.test(mood);
+    return !mood || (noSmile && (WARM.test(tone) || SMILE.test(tone) || (!!who && smiles(who)))) ? "" : mood;
+  }
+  if (o.horror && WARM.test(tone) && !afraid) return "";
   const speaker = oneLine(o.speaker);
   const other = o.horror ? oneLine(o.other) : "";
   const who = [
