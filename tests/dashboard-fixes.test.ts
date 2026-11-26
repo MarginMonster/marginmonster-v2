@@ -280,8 +280,15 @@ test("10 · on a phone the Brand Kit's save bar sits above the bottom dock and c
   const [side, clearance] = [Number(main[1]), Number(main[2])];
   const [fabBottom, fabRight, fabWidth, fabHeight] = [Number(fab[1]), Number(fab[2]), Number(fab[3]), Number(fab[4])];
   const [barBottom, barPadRight] = [Number(bar[1]), Number(bar[2])];
-  assert.equal(barBottom, clearance, "the bar stands on the room the shell leaves for its dock");
-  assert.equal(clearance, 98);
+  // (2026-11-26: the page keeps 168px clear — the dock's 98 plus the Helpurr button standing above the dock, so a
+  //  page's last row ends above the button, never under it; the bar still stands right on the dock, at its 98)
+  assert.equal(barBottom, 98, "the bar stands on the room the shell leaves for its dock");
+  assert.equal(clearance, 168);
+  assert.ok(clearance >= fabBottom + fabHeight, "a page's last row ends above the Helpurr button");
+  // …and from 621 to 760px, where the dock shows too, the button is the same size in the same place
+  const fab760 = /@media\(max-width:760px\)\{\.mm-fab\{bottom:calc\((\d+)px \+ env\(safe-area-inset-bottom,0px\)\);right:(\d+)px;width:(\d+)px;height:(\d+)px\}/.exec(shell);
+  assert.ok(fab760 && fab760.slice(1).join() === fab.slice(1).join(), "the 760px rule keeps the phone numbers");
+  assert.ok(shell.indexOf(fab760[0]) < shell.indexOf(fab[0]), "…written before the 620px rule");
   // Helpurr floats in the bottom-right corner at the height the bar now sticks at…
   assert.ok(fabBottom <= barBottom && barBottom < fabBottom + fabHeight, "they share a band of the screen");
   // …so the bar keeps its button out from under it (the page is itself `side` px in from the screen edge)

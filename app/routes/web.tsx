@@ -379,6 +379,25 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   const loc = useLocation();
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
+  // THE CAT TUCKS AWAY WHILE YOU SCROLL (2026-11-26): the corner button sat on top of whatever scrolled under it —
+  // a poster's corner, a tile's button. While the page moves it slides mostly off the edge, one ear and an eye
+  // peeking in; when the page settles it pops back out. Never in the way of what you are looking at, and alive.
+  const [tuck, setTuck] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let lastY = window.scrollY;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onScroll = () => {
+      const y = window.scrollY;
+      if (Math.abs(y - lastY) < 6) return;
+      lastY = y;
+      setTuck(true);
+      clearTimeout(timer);
+      timer = setTimeout(() => setTuck(false), 850);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => { window.removeEventListener("scroll", onScroll); clearTimeout(timer); };
+  }, []);
   // Maximized = the dedicated full-screen Helpurr surface (a "chat section"),
   // opened from the nav. Same chat, same logic — just a roomier layout with a
   // backdrop. The floating panel is the compact default.
@@ -935,7 +954,7 @@ function Buddy({ hud, authed, mode }: { hud: { name: string; ads: number; level:
   return (
     <>
       {!(open && max) && (
-        <button type="button" className={`mm-fab${open ? " open" : ""}${onHome ? " mm-fab-min" : ""}`} onClick={() => {
+        <button type="button" className={`mm-fab${open ? " open" : ""}${onHome ? " mm-fab-min" : ""}${tuck && !open ? " mm-fab-tuck" : ""}`} onClick={() => {
           const next = !open;
           setOpen(next);
           // On phones the little corner card is cramped — open Helpurr as the full
@@ -1648,7 +1667,9 @@ body{font-family:Inter,-apple-system,sans-serif;}
   .wb-chip{padding:4px 9px 4px 5px;gap:6px;}
   .wb-chip-lvl{display:none;}
   .wb-chip-ava{width:27px;height:27px;}
-  .wb-main{padding:10px 16px calc(98px + env(safe-area-inset-bottom,0px));}
+  /* 168, not 98: the Helpurr button stands 97 px up, above the tab bar, and is 56 px tall (66 above 620 px) — a page's
+     last row ends above it, never under it */
+  .wb-main{padding:10px 16px calc(168px + env(safe-area-inset-bottom,0px));}
   /* Phone nav = a FLOATING bottom tab bar (Facebook-style pill). Hide the top tab row. */
   .wb-tabs{display:none;}
   /* GPU-composite the fixed nav so iOS Safari doesn't let it lag/"travel" up the page during
@@ -2091,9 +2112,12 @@ body{font-family:Inter,-apple-system,sans-serif;}
 @media(prefers-reduced-motion:reduce){.wb-ready-poster::after{animation:none;}.wb-ready-bulbs i{animation:none;opacity:.9;}}
 
 /* ---- Helpurr — the AI helper (floating sidekick) ---- */
-.mm-fab{position:fixed;z-index:10600;bottom:30px;right:20px;width:66px;height:66px;border:0;cursor:pointer;padding:0;background:transparent;transition:transform .15s;}
+.mm-fab{position:fixed;z-index:10600;bottom:30px;right:20px;width:66px;height:66px;border:0;cursor:pointer;padding:0;background:transparent;transition:transform .34s cubic-bezier(.2,1.35,.4,1);}
 .mm-fab:hover{transform:translateY(-2px) scale(1.06);}
 .mm-fab.open{transform:scale(.92);opacity:.95;}
+/* Tucked while the page scrolls: slid mostly off the right edge, tilted, one ear and an eye peeking in. */
+.mm-fab.mm-fab-tuck{transform:translateX(75%) rotate(-12deg);transition:transform .2s ease-in;}
+@media (prefers-reduced-motion: reduce){.mm-fab,.mm-fab.mm-fab-tuck{transition:opacity .2s;}.mm-fab.mm-fab-tuck{transform:none;opacity:.3;}}
 /* On the home the hero already carries a big Helpurr, so the corner quick-ask is
    kept but dialed down — smaller and quieter, a persistent handle rather than a
    second focal point. */
@@ -2376,6 +2400,9 @@ video.mm-media-item{width:176px;height:234px;object-fit:cover;}
 .mm-attach-x{position:absolute;top:-7px;right:-7px;width:20px;height:20px;min-width:0;min-height:0;border:0;border-radius:50%;background:#4A554E;color:#fff;font-size:12px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0;box-shadow:0 1px 3px rgba(0,0,0,.35);}
 .mm-attach-x:hover{background:#2f3833;}
 .mm-attach-up{font-size:12px;color:var(--ink2);font-style:italic;}
+/* Wherever the tab bar shows (≤ 760 px) the button stands above it, at its phone size: from 621 to 760 px it sat at
+   30 px, on the bar's last tab. (The 620 rule below keeps the same numbers and adds the full-screen chat.) */
+@media(max-width:760px){.mm-fab{bottom:calc(97px + env(safe-area-inset-bottom,0px));right:16px;width:56px;height:56px}.mm-panel{bottom:calc(157px + env(safe-area-inset-bottom,0px));right:16px;}}
 @media(max-width:620px){.mm-fab{bottom:calc(97px + env(safe-area-inset-bottom,0px));right:16px;width:56px;height:56px}.mm-panel{bottom:calc(157px + env(safe-area-inset-bottom,0px));right:16px;height:62vh}
   .mm-panel.mm-max{top:0;left:0;right:0;bottom:0;margin:0;width:100vw;height:100vh;height:100dvh;border-radius:0}
   .mm-panel.mm-max .mm-list,.mm-panel.mm-max .mm-input{padding-left:14px;padding-right:14px}}
