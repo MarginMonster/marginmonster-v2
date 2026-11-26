@@ -53,8 +53,9 @@ import { joinList } from "./acted-staging";
 // NIGHT IS NIGHT (2026-11-25): the acted engine's own night rule and night sentence — story-picture.ts → storyNight
 import { NIGHT_LINE, nightSetting } from "./acted-staging";
 import { NIGHT_STYLE_LIGHT, parseStoryNight, storyNight } from "./story-picture";
-// THE RUN-DOWN LOOK LISTENS TO THE STORY (2026-11-26 — story-picture.ts → wornAsked: a worn place its words ask for is no fault)
-import { wornAsked } from "./story-picture";
+// THE CHECKS LISTEN TO THE STORY (2026-11-26 — story-picture.ts: a worn place its words ask for and a stare its shot asks for
+// are no faults)
+import { stareCounts, wornAsked } from "./story-picture";
 import { streamSeconds } from "./film-join.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
 import { episodeOwnName, type ShowMeta } from "./character-series";
@@ -312,11 +313,14 @@ export async function narratedSceneSeeds(o: {
       // (…and told to take only the night's light from its style: the Mystery's offers "flat grey daylight through rain" —
       //  story-picture.ts → NIGHT_STYLE_LIGHT, review of S11)
       const night = storyNight({ words: visual, said: scene.caption, place: setAt ? `${setAt.name}: ${setAt.look}` : "", idea, childSafe: tmpl.childSafe, cartoon: tmpl.cartoon }, nightSetting);
-      // A WORN PLACE THE STORY ASKS FOR IS NO FAULT (2026-11-26, the live log: 29 redraws for "run-down" — an old roller
-      // rink, a worn concrete pier, boot-prints in dust): the look is still asked, and its answer not counted here
-      // (story-picture.ts → wornAsked). The ordinary home and the working hospital room, whose words never call them old, are
-      // looked at as before.
+      // A WORN PLACE THE STORY ASKS FOR IS NO FAULT, AND NEITHER IS A STARE THE SHOT ASKS FOR (2026-11-26, the live log: 29
+      // redraws for "run-down" — an old roller rink, a worn concrete pier, boot-prints in dust — and 58 for "stared into the
+      // lens", nine of the eleven looked at a walk toward the camera, a look over a shoulder, a wide, or eyes the words put
+      // "just past the camera's edge"): the look is still asked, and its answer not counted here (story-picture.ts →
+      // wornAsked, stareCounts). The ordinary home and the working hospital room, whose words never call them old, are
+      // looked at as before; so is a face near the lens staring down it.
       const wornHere = wornAsked(`${written} ${scene.caption || ""} ${setAt ? `${setAt.name}: ${setAt.look}` : ""}`, storyWords);
+      const stareHere = stareCounts(cam, written);
       // (a genre whose world is its OWN — Fantasy, film-genres.ts → ownWorld — is told everybody is clothed, and not that
       //  its places look the way they look TODAY: "no cottage and no castle unless they name one", 2026-11-25)
       const promptOf = (withPlace: boolean): string => `${safe}${visual.slice(0, 600)}${/[.!?]$/.test(visual) ? "" : "."}${night ? ` ${NIGHT_LINE} ${NIGHT_STYLE_LIGHT}` : ""} Style: ${tmpl.sceneHint}.${tmpl.faceMood ? ` ${tmpl.faceMood}` : ""}${cam ? ` ${cameraLine(cam, aspect)}` : ""} ${[...notes, ...(withPlace ? placeNotes : [])].join(" ")}${(withPlace ? refs : people).length ? ` ${CAST_LOCK}` : ""} ${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : ""}${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT} ${TRUE_SIZE}` : ""}${tmpl.childSafe || tmpl.ownWorld ? ` ${DRESSED}` : ` ${TODAY_LOOK}`}${!tmpl.childSafe && shadowNote(visual) ? ` ${SHADOW_SHAPE}` : ""} ${STORY_SOUND} ${NOTHING_WRITTEN}`;
@@ -360,7 +364,7 @@ export async function narratedSceneSeeds(o: {
           // (…and a night scene's sky read as dusk or day — only a clear "dusk" or "day" is the fault: story-picture.ts → parseStoryNight)
           const dark = night ? parseStoryNight(String(grimeRaw || "")) : null;
           if (seen == null && panels == null && extra == null && outside == null && lens == null && grimy == null && inset == null && bare == null && dark == null) return null;
-          return { seen: seen || castPics.map(() => true), panels: panels === true, ...(twice ? { twice } : {}), ...(extra ? { extra: true } : {}), ...(outside ? { outside: true } : {}), ...(lens?.length ? { lens } : {}), ...(grimy ? { grimy: true } : {}), ...(inset ? { inset: true } : {}), ...(dark === false ? { notNight: true } : {}), ...(bare?.unclothed ? { unclothed: true, unclothedWho: bare.who } : {}) };
+          return { seen: seen || castPics.map(() => true), panels: panels === true, ...(twice ? { twice } : {}), ...(extra ? { extra: true } : {}), ...(outside ? { outside: true } : {}), ...(lens?.length && stareHere ? { lens } : {}), ...(grimy ? { grimy: true } : {}), ...(inset ? { inset: true } : {}), ...(dark === false ? { notNight: true } : {}), ...(bare?.unclothed ? { unclothed: true, unclothedWho: bare.who } : {}) };
         } catch (e) {
           console.error(`[narrated] scene ${i + 1}: the picture could not be looked at, keeping it: ${e instanceof Error ? e.message.slice(0, 120) : e}`);
           return null;

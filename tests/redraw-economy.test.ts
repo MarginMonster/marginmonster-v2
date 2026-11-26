@@ -7,6 +7,8 @@
  * record while it still held them and LOOKED at: of their eleven stares two were stares, and none of their six run-down
  * calls was anything but the old roller rink the story was set in. So:
  *   · the run-down look counts only where no words of the story ask for a worn place (story-picture.ts → wornAsked);
+ *   · a stare counts only where the shot is not facing us — never in a WALKING, an OVER THE SHOULDER or a WIDE, nor where
+ *     the scene's words have them look our way (story-picture.ts → stareCounts);
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -14,8 +16,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  wornAsked, wornPlaces, wornSaid,
+  EYES_FIRST, stareCounts, storyExtrasPrompt, wornAsked, wornPlaces, wornSaid,
 } from "../app/lib/story-picture.ts";
+import { sceneShot } from "../app/lib/story-shots.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const read = (...p: string[]) => fs.readFileSync(path.join(here, "..", ...p), "utf8").replace(/\r\n/g, "\n");
@@ -56,4 +59,30 @@ test("the run-down look listens to the story: a worn place its words ask for is 
   assert.equal(wornAsked("WIDE: the living room, an old photo on the wall above the sofa", ""), false, "an old photo ON the wall is not an old wall");
   assert.equal(wornAsked("WIDE: the kitchen, spotless, no dust anywhere", ""), false, "said NOT to be");
   assert.equal(wornAsked("WIDE: the farmhouse kitchen at night", "an old man lives on the hill"), false, "an old man is not an old place");
+});
+
+test("a stare counts only where the shot is not facing us — the cases read off the rejected pictures", () => {
+  const rink = story("Circling in the Dark");
+  const shotOf = (s: Scene) => sceneShot({ visual: s.v });
+  // WALKING toward the camera: she faces us (three goes, the third looking well aside, all called stares)
+  assert.equal(shotOf(rink.scenes[0]), "walk");
+  assert.equal(stareCounts("walk", rink.scenes[0].v), false);
+  // a close-up whose words have her look just past the camera's edge (two goes drawn exactly so)
+  assert.equal(stareCounts(shotOf(rink.scenes[3]), rink.scenes[3].v), false);
+  // NEAR AND FAR, a face near the lens staring down it while the moment is the skater far behind: STILL a fault (right twice)
+  assert.equal(stareCounts(shotOf(rink.scenes[2]), rink.scenes[2].v), true);
+  // OVER THE SHOULDER: Imelda looks up at HIM (three goes); WIDE: Fergus small in the doorway
+  const oven = story("The Warmth by the Oven");
+  assert.equal(stareCounts(shotOf(oven.scenes[3]), oven.scenes[3].v), false);
+  assert.equal(stareCounts(shotOf(oven.scenes[1]), oven.scenes[1].v), false);
+  // a plain close-up about something else is still looked at
+  assert.equal(stareCounts("close", "CLOSE: Verity's face lit by the glow of the call-button panel, eyes fixed on one small red light"), true);
+  assert.equal(stareCounts("two", "TOGETHER: Halina and Radek facing each other at the harbour dock"), true);
+  assert.equal(stareCounts(null, "Inside the dark bedroom, Edvin stands at the window looking out"), true, "a scene with no shot: its words decide");
+  for (const w of ["his gaze fixed past us toward the brass elevator doors", "she turns to face the camera", "looking straight at us", "the woman strides toward camera through shallow water"]) assert.equal(stareCounts("close", w), false, w);
+  // the reader writes down where the eyes point before it answers — the question it was tuned with kept word for word
+  const q = storyExtrasPrompt("CLOSE: Delphine's face, frozen mid-breath", ["Delphine: a night guard"]);
+  assert.ok(q.includes(`look straight into the camera, eyes on the lens as if posing for a photograph? Somebody looking at something to one side of the camera, or seen from the side or from behind, does not. ${EYES_FIRST} `));
+  assert.ok(EYES_FIRST.includes("only eyes that meet the lens itself count — eyes on something just beside the camera or past its edge, or a face turned even a little away, do not."));
+  assert.ok(q.includes("\"eyes\": [\"whose face, and where its eyes point, in a few words — for each face you can see\"], \"intoLens\": [\"the name of each person looking straight into the camera — an empty list when nobody does\"]"));
 });

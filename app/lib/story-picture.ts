@@ -301,8 +301,14 @@ export function storyCastPrompt(refs: number): string {
 export function storyExtrasPrompt(visual: string, who: ReadonlyArray<string> = []): string {
   const words = String(visual || "").replace(/\s+/g, " ").replace(/"/g, "'").trim().replace(/[.\s]+$/, "").slice(0, 600);
   const names = (who || []).map((w) => String(w || "").replace(/\s+/g, " ").replace(/"/g, "'").trim().slice(0, 160)).filter(Boolean).slice(0, 4);
-  return `The image is a picture from an illustrated story. It was asked to show exactly this: "${words}".${names.length ? ` Who is who: ${names.join("; ")}.` : ""} First list every person or creature you can see in it (not a reflection, not a picture on a wall, not a statue), each in a few words with where it is. Then say whether ANY of them is somebody those words do not put there — a stranger, a passer-by, somebody sitting, standing or watching who is not described. Next, only if those words have somebody INSIDE looking OUT — peering out, looking or watching through a window, a glass pane or a door — at somebody or something out there (on a porch, in a yard, in the street, in the dark): that person is the LOOKER (otherwise there is none). Find the looker in the picture by how they look, and say where THEY are — the looker, not what they look at — judged only by what you SEE, not by what the words wanted. "outdoors": you can see the looker STANDING out on the porch boards, its steps, a yard or a street — the same open floor or ground as what they look at, nothing but open air between. "indoors": anything else — in a room or a hallway, behind a window's glass, or seen in a window's frame behind its sill (glass or no glass). Last: does any PERSON in it — not a creature, a ghost or a shadow — look straight into the camera, eyes on the lens as if posing for a photograph? Somebody looking at something to one side of the camera, or seen from the side or from behind, does not. ${UNCLOTHED_ASKED} Reply with ONLY this JSON: {"people": ["…" for each], "uninvited": true or false, "looker": "the looker's name, or an empty string", "lookerIs": "what the looker stands on and what is around the looker, in a few words", "lookerStands": "indoors" or "outdoors" or "", "intoLens": ["the name of each person looking straight into the camera — an empty list when nobody does"], "unclothed": true or false, "unclothedWho": "where that one is, in a few words — an empty string when nobody is"}.`;
+  return `The image is a picture from an illustrated story. It was asked to show exactly this: "${words}".${names.length ? ` Who is who: ${names.join("; ")}.` : ""} First list every person or creature you can see in it (not a reflection, not a picture on a wall, not a statue), each in a few words with where it is. Then say whether ANY of them is somebody those words do not put there — a stranger, a passer-by, somebody sitting, standing or watching who is not described. Next, only if those words have somebody INSIDE looking OUT — peering out, looking or watching through a window, a glass pane or a door — at somebody or something out there (on a porch, in a yard, in the street, in the dark): that person is the LOOKER (otherwise there is none). Find the looker in the picture by how they look, and say where THEY are — the looker, not what they look at — judged only by what you SEE, not by what the words wanted. "outdoors": you can see the looker STANDING out on the porch boards, its steps, a yard or a street — the same open floor or ground as what they look at, nothing but open air between. "indoors": anything else — in a room or a hallway, behind a window's glass, or seen in a window's frame behind its sill (glass or no glass). Last: does any PERSON in it — not a creature, a ghost or a shadow — look straight into the camera, eyes on the lens as if posing for a photograph? Somebody looking at something to one side of the camera, or seen from the side or from behind, does not. ${EYES_FIRST} ${UNCLOTHED_ASKED} Reply with ONLY this JSON: {"people": ["…" for each], "uninvited": true or false, "looker": "the looker's name, or an empty string", "lookerIs": "what the looker stands on and what is around the looker, in a few words", "lookerStands": "indoors" or "outdoors" or "", "eyes": ["whose face, and where its eyes point, in a few words — for each face you can see"], "intoLens": ["the name of each person looking straight into the camera — an empty list when nobody does"], "unclothed": true or false, "unclothedWho": "where that one is, in a few words — an empty string when nobody is"}.`;
 }
+/** …AND WHERE THE EYES POINT IS WRITTEN DOWN BEFORE THE STARE IS ANSWERED (2026-11-26, the live log's rejected pictures,
+ *  LOOKED at: Delphine walking at us with her eyes well off to one side, and Delphine "frozen mid-breath, her eyes locked on
+ *  something just past the camera's edge" — both answered "stared into the lens"). The reader writes down what it sees
+ *  before it answers, as the cast question has since 2026-11-22. Not re-asked here (no reader credit on this desk): its
+ *  rate is read on the live log — "[narrated] scene N try K: … stared into the lens". */
+export const EYES_FIRST = "Before you answer, write down for each face you can see where its eyes point (\"eyes\"): only eyes that meet the lens itself count — eyes on something just beside the camera or past its edge, or a face turned even a little away, do not.";
 /** …AND, IN THE SAME ANSWER, ANYBODY UNCLOTHED (2026-11-25: three acted lake films in a row drew the woman "standing
  *  waist-deep in the lake" bare; a told story is drawn by the same picture models from the same kind of words, and was
  *  never looked at for it). Asked in the question that already lists every person in the picture — one question
@@ -420,6 +426,34 @@ export function parseStoryLens(raw: string): string[] | null {
   const l = jsonIn(raw)?.intoLens;
   if (!Array.isArray(l)) return null;
   return l.map((n) => String(n ?? "").replace(/\s+/g, " ").trim().slice(0, 40)).filter(Boolean);
+}
+
+/* A STARE IS A FAULT ONLY WHERE THE SHOT IS NOT FACING US (2026-11-26). Read off the live log of a day of told stories
+ * (eleven of them, 59 scenes): 58 pictures were called "stared into the lens" — the most of any check — and of
+ * the eleven of them that could be LOOKED at (the rejected goes of "Circling in the Dark" and "The Warmth by the Oven"),
+ * two were stares. The other nine were the shot itself:
+ *   · WALKING — "Delphine strides toward the camera through the dark rink lobby": walking at us, she faces us, three goes
+ *     running (the third looking well off to one side, called a stare all the same);
+ *   · OVER THE SHOULDER — over Fergus's shoulder, Imelda looks up at HIM, three goes: whoever faces the shoulder looks
+ *     just past the lens, which is how every film shoots two people;
+ *   · WIDE — Fergus small in the bakery doorway, facing in;
+ *   · a close-up whose own words have them look our way — "her eyes locked on something just past the camera's edge":
+ *     two goes of Delphine drawn exactly so.
+ * The log's own words say the same of the stories that could not be looked at: Ottavia carrying the loaf "toward the
+ * camera", three goes; the woman from the lake walking at us out of the water — the horror itself — three; over a
+ * shoulder, twelve more. Of the 58, the rule below leaves 20: close-ups and a face near the lens.
+ * The two that WERE stares: "NEAR AND FAR: Delphine stands close at the edge of the frame…" — a face near the lens
+ * looking straight down it while the moment is the skater far behind her. So: a face that fills the frame, or stands
+ * near the lens, looking straight down it in a moment about something else is still drawn again; in a WALKING, an
+ * OVER THE SHOULDER or a WIDE shot, or where the words have them look toward the camera, it is not a fault. (The look
+ * is still asked — one question among several — and its answer is not counted there.) */
+const FACING_SHOTS: ReadonlySet<string> = new Set(["walk", "over", "wide"]);
+const LOOKS_OUR_WAY = /\b(?:toward|towards|into|at|past|beside)\s+(?:the\s+)?(?:camera|lens|viewer)\b|\b(?:toward|towards|at|past)\s+us\b|\bcamera['’]s\s+edge\b|\bfac(?:e|es|ing)\s+(?:the\s+)?(?:camera|lens|viewer|us)\b/i;
+/** Does a stare into the lens count as a fault in this picture? `shot`: how the scene is seen (story-shots.ts →
+ *  sceneShot), `words`: its VISUAL. */
+export function stareCounts(shot: string | null | undefined, words: string | null | undefined): boolean {
+  if (shot && FACING_SHOTS.has(shot)) return false;
+  return !LOOKS_OUR_WAY.test(String(words || "").replace(/\s+/g, " "));
 }
 /** …its answer: true / false, or null when it cannot be read (the picture is then kept as it is). */
 export function parseStoryExtras(raw: string): boolean | null {
