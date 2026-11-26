@@ -244,3 +244,14 @@ test("THE WIRING: a drawn story's narrator, and its style said first in every on
   assert.ok(nar.includes("const promptOf = (withPlace: boolean): string => `${safe}${visual.slice(0, 600)}"));
   assert.ok(nar.includes("await renderCreativeSeed(`${safe}${night ? `${NIGHT_LINE} ` : \"\"}"));
 });
+
+test("THE DOOR IS SHUT until the Anime shelf opens it: a drawn format is operators-only and told-only on the page's action (S15a review, 2026-11-26)", () => {
+  const page = fs.readFileSync(new URL("../app/routes/web.film.tsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const action = page.slice(page.indexOf("export const action = async"), page.indexOf("export const action = async") + 12000);
+  // right after the format is known, before anything is written or drawn
+  const guard = action.indexOf("if (tmpl.drawn && !isAdminEmail(account.email)) {");
+  assert.ok(guard > action.indexOf("const tmpl = filmTemplate(templateKey || undefined);"), "after the format is known");
+  assert.ok(guard > 0 && guard < action.indexOf("const narrated = "), "before anything else reads the request");
+  assert.ok(action.includes("detail: `not offered \"${templateKey.slice(0, 40)}\"` }, { status: 400 });"), "answered like a format that does not exist");
+  assert.ok(action.includes("if (tmpl.drawn && (intent === \"film\" || intent === \"previewFilmTreatment\") && ((form.get(\"filmMode\") as string) || \"\").trim() !== \"narrated\") {"), "never acted");
+});

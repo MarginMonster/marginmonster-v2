@@ -498,6 +498,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json({ error: tr(lang, "That film format doesn't exist — pick one in the Movie Maker."), detail: `unknown template "${templateKey.slice(0, 40)}"` }, { status: 400 });
   }
   const tmpl = filmTemplate(templateKey || undefined);
+  // AN ANIME FORMAT (anime-styles.ts → a `drawn` template) is the owner's to look at first: operators only until he has
+  // seen it and set a price, and only ever TOLD — its look is drawn, and the acted engine is photoreal or 3D cartoon
+  // (S15a's review: until this guard, any member's hand-made request could run one, in either way, at house cost).
+  // The Anime shelf (S15b) offers it; anything else asking for it is answered like a format that does not exist.
+  if (tmpl.drawn && !isAdminEmail(account.email)) {
+    return json({ error: tr(lang, "That film format doesn't exist — pick one in the Movie Maker."), detail: `not offered "${templateKey.slice(0, 40)}"` }, { status: 400 });
+  }
+  if (tmpl.drawn && (intent === "film" || intent === "previewFilmTreatment") && ((form.get("filmMode") as string) || "").trim() !== "narrated") {
+    return json({ error: tr(lang, "An anime story is told by a narrator — pick Narrated."), detail: "drawn formats are told only" }, { status: 400 });
+  }
   // (an idea is the member's whole story — it was cut at 300 characters, and a tester's came to the writer
   //  ending "…built around the roots of a big tr": IDEA_MAX, premise-rules.ts)
   const topic = ((form.get("filmTopic") as string) || "").trim().slice(0, IDEA_MAX);
