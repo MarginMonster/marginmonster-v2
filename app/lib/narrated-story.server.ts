@@ -362,7 +362,7 @@ export async function narratedSceneSeeds(o: {
       // "just past the camera's edge"): the look is still asked, and its answer not counted here (story-picture.ts →
       // wornAsked, stareCounts). The ordinary home and the working hospital room, whose words never call them old, are
       // looked at as before; so is a face near the lens staring down it.
-      const wornHere = wornAsked(`${written} ${scene.caption || ""} ${setAt ? `${setAt.name}: ${setAt.look}` : ""}`, storyWords);
+      const wornHere = wornAsked(`${written} ${scene.caption || ""} ${setAt ? `${setAt.name}: ${setAt.look}` : ""}`, storyWords, idea);
       const stareHere = stareCounts(cam, written);
       // (a genre whose world is its OWN — Fantasy, film-genres.ts → ownWorld — is told everybody is clothed, and not that
       //  its places look the way they look TODAY: "no cottage and no castle unless they name one", 2026-11-25)
@@ -371,7 +371,11 @@ export async function narratedSceneSeeds(o: {
       // about clothes — a story dresses people for the part), and is it one picture. The cast is looked for
       // whenever the scene has any; panels only where the words described two moments (that is when a
       // picture model stacks two views). A look that cannot be made, or says nothing, keeps the picture.
-      const castPics = here.map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);
+      // (…except in a DETAIL, which shows no face by design — story-shots.ts → detail: one person's hand, a thing. Asked "is
+      //  she in it?" against her portrait, the look can only say no: a hard fault, and the redraw it paid for told to draw
+      //  her EXACTLY as in her reference image — a face in a picture planned to have none. The S14b review's measured day
+      //  had three such calls, all on DETAILs of hands. The other looks are asked as ever.)
+      const castPics = cam === "detail" ? [] : here.map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);
       // (who is who, by their looks — so the look can tell the girl at the window from the ghost on the porch)
       const whoIsWho = here.map((c) => (c.look ? `${c.name}: ${c.look.slice(0, 120)}` : c.name));
       const lookAt = async (got: string): Promise<StoryCheck | null> => {

@@ -1197,9 +1197,23 @@ export function shapedAss(cards: Card[], look: "bold" | "highlight" | "subtitles
  * VISUAL names them (the writer is told to name everyone who is in it, and nobody who is not). */
 
 const NAME_SKIP = /^(the|a|an|mr|mrs|ms|miss|dr|sir|lady|lord|old|little|big|young|captain|king|queen|uncle|aunt|grandma|grandpa)$/i;
-/** The words of a name a scene might call the character by: "Mourning Mary" → Mourning, Mary; "The Ganve" → Ganve. */
+/* A NAME THAT ONLY DESCRIBES IS CALLED BY ITS HEAD WORD (2026-11-26, live): a horror story's creature was named "the
+ * claw machine ghost", and every scene that showed "the claw machine" — the machine, its glass still empty — counted
+ * the ghost as in it. The picture checks said "cast not in it", and the redraws drew the ghost's hands into a scene
+ * whose words had none and a pale figure into the last one: five redraws in a four-scene story, its reveal given away
+ * two scenes early. A proper name is called by any of its own words ("Mourning Mary" → Mary). A name that only
+ * describes — more than one word, none of them written with a capital: "the claw machine ghost", "the woman in grey",
+ * "the keeper's daughter" — is called by its HEAD word only: the ghost, the woman, the daughter. (A script with no
+ * capitals at all — Urdu, Chinese — keeps every word, as before.) */
+const ABOUT_HEAD = /\s+(?:in|with|of|from|who|that|on|at|under|behind|beside|by|near|wearing|holding|inside)\s+/i;
+const describes = (words: string[]): boolean => words.length > 1 && !words.some((w) => /^\p{Lu}/u.test(w)) && words.some((w) => /\p{Ll}/u.test(w));
+/** The words of a name a scene might call the character by: "Mourning Mary" → Mourning, Mary; "The Ganve" → Ganve;
+ *  "the claw machine ghost" → ghost. */
 export function nameWords(name: string): string[] {
-  return (name || "").split(/[^\p{L}\p{N}'’-]+/u).filter((w) => w.length >= 2 && !NAME_SKIP.test(w));
+  const words = (name || "").split(/[^\p{L}\p{N}'’-]+/u).filter((w) => w.length >= 2 && !NAME_SKIP.test(w));
+  if (!describes(words)) return words;
+  const head = (name || "").split(ABOUT_HEAD)[0].split(/[^\p{L}\p{N}'’-]+/u).filter((w) => w.length >= 2 && !NAME_SKIP.test(w));
+  return [head[head.length - 1] || words[words.length - 1]];
 }
 /** Is this character named in the text? The whole name in any case, or one of its own words exactly as
  *  written — as a word of its own, so "Dot" is not in "dotted", and "Howl" is not "a distant howl". */
@@ -1220,7 +1234,10 @@ export const entryName = (entry: string): string => ((entry || "").split(/[,:—
  * doorway in two of them, and the one picture that rightly left her out was flagged "Edda is missing".
  * A character is IN a picture when its words name them as somebody — not only as whose a place or a thing
  * is. "Edda's hand on the rail" is Edda; "Edda's cottage" is a cottage. */
-const OF_THEIR_OWN = /^(?:hands?|face|eyes?|arms?|shoulders?|hair|back|fingers?|feet|foot|head|coat|cloak|dress|gown|scarf|hat|cap|side|lap|knees?|cheeks?|mouth|lips|chest|neck|sleeves?|apron|jacket|boots|shoes|grip|grasp|gaze|smile|expression|shell|tail|paws?|fur|wings?|beak|ears?|nose|whiskers|claws|breath|shadow|voice|body|figure|silhouette|reflection)$/i;
+/* (…and a VOICE is heard, never drawn — 2026-11-26, live: "CLOSE: Teodor's face … as Philomena's voice drifts over him"
+ *  put the grandmother in her grandson's close-up; the look said "not in it" three times, two redraws paid to push her
+ *  face into a shot planned to show only his. The acted films' rule already: "A woman's voice calls…" is never drawn.) */
+const OF_THEIR_OWN = /^(?:hands?|face|eyes?|arms?|shoulders?|hair|back|fingers?|feet|foot|head|coat|cloak|dress|gown|scarf|hat|cap|side|lap|knees?|cheeks?|mouth|lips|chest|neck|sleeves?|apron|jacket|boots|shoes|grip|grasp|gaze|smile|expression|shell|tail|paws?|fur|wings?|beak|ears?|nose|whiskers|claws|breath|shadow|body|figure|silhouette|reflection)$/i;
 const GONE_AFTER = /^\s*(?:is|was|has|had)?\s*(?:no longer\b|not (?:there|here)\b|nowhere\b|gone\b(?!\s+(?:still|quiet|silent|pale|white|cold|rigid|grey|gray|slack))|vanished\b|disappeared\b|missing\b)/i;
 const GONE_BEFORE = /\b(?:no sign of|no trace of|without|instead of|(?:search(?:es|ing|ed)?|look(?:s|ing|ed)?|call(?:s|ing|ed)?|wait(?:s|ing|ed)?) for)\s+$/i;
 /** Is this character IN the picture these words describe? Named, and at least once as somebody: not as the

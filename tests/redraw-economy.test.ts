@@ -40,6 +40,13 @@ test("the run-down look listens to the story: a worn place its words ask for is 
   // …and the scenes after it, whose own words only say "the dark rink floor" — the story said the rink is old
   assert.equal(wornSaid(`${rink.scenes[2].v} ${rink.scenes[2].c}`), false, "its own words do not say it");
   assert.equal(wornAsked(`${rink.scenes[2].v} ${rink.scenes[2].c}`, wordsOf(rink)), true, "the story's do");
+  // THE MEMBER'S IDEA sets every scene's place (live 2026-11-26: "Lights in the Glass" re-made — scene 3, close on the claw
+  // machine, named no arcade and was drawn again for looking run-down in the derelict arcade the idea asked for)
+  const glass = "OVER THE SHOULDER: over Girish's shoulder, close to the glass of the claw machine, inside the case among faded stuffed toys, a pale hand with fingers too long presses flat against the glass from within.";
+  assert.equal(wornAsked(glass, ""), false, "its own words do not");
+  assert.equal(wornAsked(glass, "", "TEST — a night watchman walks his rounds through a derelict, boarded-up seaside arcade, closed for years, where one dusty old claw machine keeps lighting up by itself."), true, "the idea does");
+  // …and an idea that calls a home only OLD, with dust motes in its light, asks for no worn place (LIVED_IN)
+  assert.equal(wornAsked("At the kitchen: CLOSE: Teodor's face, flour dusting his cheek, eyes down on his kneading hands.", "", "TEST — in their old family house, a grandmother teaches her grandson to bake bread on a rainy Sunday; dust motes drift in the window light while she tells him about the grandfather who built the kitchen."), false);
   assert.deepEqual(wornPlaces(wordsOf(rink)), ["rink", "floor"]);
   // the worn concrete pier, the ferry's worn plank deck, boot-prints in dust, the dusty velvet rope
   const ferry = story("Eleven Went Aboard");
@@ -256,7 +263,8 @@ test("wired: the loop listens to the story, spends from the story's purse, cover
   assert.ok(fn.includes("const storyWords = [idea, ...scenes.map((s) => `${s?.visual || \"\"} ${s?.caption || \"\"}`), ...placeList].join(\" \");"));
   assert.ok(fn.indexOf("const purse = redrawPurse(") < fn.indexOf("const worker = async () => {"), "made once, before the workers");
   // the scene's own words and its place's, against the story's
-  assert.ok(fn.includes("const wornHere = wornAsked(`${written} ${scene.caption || \"\"} ${setAt ? `${setAt.name}: ${setAt.look}` : \"\"}`, storyWords);"));
+  // (…and the member's own idea, since 2026-11-26: a derelict arcade's close-up on its claw machine never named the arcade)
+  assert.ok(fn.includes("const wornHere = wornAsked(`${written} ${scene.caption || \"\"} ${setAt ? `${setAt.name}: ${setAt.look}` : \"\"}`, storyWords, idea);"));
   assert.ok(fn.includes("const stareHere = stareCounts(cam, written);"));
   assert.ok(fn.includes("const grimy = tmpl.childSafe || wornHere ? null : parseStoryGrime(String(grimeRaw || \"\"));"));
   assert.ok(fn.includes("...(lens?.length && stareHere ? { lens } : {})"));

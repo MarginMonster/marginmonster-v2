@@ -135,7 +135,7 @@ export function dressedInWater(text: string): string {
  *  shot from: it is drawn again with the clothes said FIRST, and if the model still will not, the figure is dressed by
  *  an edit of that picture.) */
 export function unclothedPrompt(): string {
-  return `Look at every person and every human-like figure in this picture, however small, far away or pale. Is ANY of them unclothed — a bare chest or bare torso, or a body with no clothing visible on it? Bare arms, bare legs, bare feet and a swimsuit all count as CLOTHED; a figure whose body is hidden by water, dark or distance and shows no bare torso counts as clothed. ${COATED} Reply with ONLY this JSON: {"unclothed": true or false, "who": "where that figure is, in a few words — an empty string when nobody is"}`;
+  return `Look at every person and every human-like figure in this picture, however small, far away or pale. Is ANY of them unclothed — a bare chest or bare torso, or a body with no clothing visible on it? Bare arms, bare legs, bare feet and a swimsuit all count as CLOTHED; a figure whose body is hidden by water, dark or distance and shows no bare torso counts as clothed. ${PART_ALONE} ${COATED} Reply with ONLY this JSON: {"unclothed": true or false, "who": "where that figure is, in a few words — an empty string when nobody is"}`;
 }
 /** …AN ANIMAL WEARS ITS OWN COAT (2026-11-25, when the look went from an acted film's master to every picture of the
  *  app's films — a children's story's portraits and scenes among them): a cartoon rabbit or a fox standing upright
@@ -143,6 +143,11 @@ export function unclothedPrompt(): string {
  *  on it — and the cast look would then find it was not the rabbit of its own portrait. Foreseen, not yet seen: said
  *  so that a reader never has to guess. A nearly-human thing with bare skin is still a figure, and is dressed. */
 export const COATED = "An animal, or a creature covered in its own fur, feathers or scales — real or a cartoon — counts as CLOTHED.";
+/** …A HAND ON ITS OWN IS NOT A BODY (2026-11-26, live): a horror story's ghost was a pale hand pressed to the inside
+ *  of a claw machine's glass, and the look called it unclothed — "the pale hand and partial arm … show bare skin with
+ *  no clothing" — a hard fault, drawn again twice. A hand or an arm with no body seen with it is clothed, as bare arms
+ *  already were; nothing else about the question changes. */
+export const PART_ALONE = "A hand or an arm seen on its own — reaching out of the dark, pressed to a glass, coming in from the picture's edge — with no body seen with it counts as CLOTHED too.";
 export function parseUnclothed(raw: string): { unclothed: boolean; who: string } {
   try {
     const m = /\{[\s\S]*\}/.exec(String(raw || ""));
@@ -315,7 +320,7 @@ export const EYES_FIRST = "Before you answer, write down for each face you can s
  *  waist-deep in the lake" bare; a told story is drawn by the same picture models from the same kind of words, and was
  *  never looked at for it). Asked in the question that already lists every person in the picture — one question
  *  more, never a fifth call — in the master's own words (unclothedPrompt), after the people are written down. */
-export const UNCLOTHED_ASKED = `And: is ANY person or human-like figure in it — however small, far away or pale — unclothed: a bare chest or bare torso, or a body with no clothing visible on it? Bare arms, bare legs, bare feet and a swimsuit all count as CLOTHED; a figure whose body is hidden by water, dark or distance and shows no bare torso counts as clothed. ${COATED}`;
+export const UNCLOTHED_ASKED = `And: is ANY person or human-like figure in it — however small, far away or pale — unclothed: a bare chest or bare torso, or a body with no clothing visible on it? Bare arms, bare legs, bare feet and a swimsuit all count as CLOTHED; a figure whose body is hidden by water, dark or distance and shows no bare torso counts as clothed. ${PART_ALONE} ${COATED}`;
 /** …its answer: whether anybody is unclothed, and where — null when the answer does not say (an older reading, or one
  *  that cannot be read: then nobody is taken to be). */
 export function parseStoryUnclothed(raw: string): { unclothed: boolean; who: string } | null {
@@ -432,9 +437,14 @@ export function wornSaid(text: string | null | undefined): boolean {
 /** IS A WORN PLACE ASKED FOR HERE? The scene's own words say so — or the STORY's words (its idea, its other scenes, its
  *  places) call a place worn that this scene's words name: "The old roller rink…" in the first scene's narration makes
  *  "far across the dark rink floor" in the third worn too. Then a picture the look calls run-down is not drawn again. */
-export function wornAsked(scene: string | null | undefined, story: string | null | undefined = ""): boolean {
+/*  (…and THE MEMBER'S OWN IDEA sets every scene's place — 2026-11-26, live: the idea was "a derelict, boarded-up seaside
+ *  arcade, closed for years"; scene 3, close on the claw machine's glass, named only the machine, never the arcade, and was
+ *  drawn again for looking run-down — in the derelict arcade the idea asked for. When the idea itself calls a place worn,
+ *  no scene of that story is drawn again for looking worn. An idea that calls a home only OLD does not: DOMESTIC, as above.) */
+export function wornAsked(scene: string | null | undefined, story: string | null | undefined = "", idea: string | null | undefined = ""): boolean {
   const s = String(scene || "").replace(/\s+/g, " ");
   if (wornSaid(s)) return true;
+  if (idea && wornSaid(idea)) return true;
   const words = ` ${s.toLowerCase().replace(/[^\p{L}\p{N}'’ -]/gu, " ")} `;
   // (the place's word as the scene writes it: one or many, or its own — "the ferry's wheel")
   const named = (p: string): RegExp => new RegExp(`[\\s-]${p.endsWith("y") ? `${p.slice(0, -1)}(?:y|ies)` : `${p}(?:s|es)?`}(?:['’]s?)?[\\s-]`, "u");

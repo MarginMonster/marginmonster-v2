@@ -737,7 +737,8 @@ test("each shelf is ONE row, swiped sideways, in both themes: 2.3 posters on a p
   // — the shell's .wb-main padding, width for width — and not a pixel more.
   assert.ok(shell.includes(".wb-main{max-width:none;margin:0 auto;padding:10px clamp(18px,3vw,56px) 70px;}"));
   const phoneShell = shell.slice(shell.indexOf("@media(max-width:760px){\n  .wb-nav{padding:12px 16px;gap:10px;}"));
-  assert.ok(phoneShell.indexOf("  .wb-main{padding:10px 16px calc(98px + env(safe-area-inset-bottom,0px));}") > 0);
+  // (its bottom 168px since 2026-11-26 — clear of the Helpurr button; the 16px sides are what this row's tray takes back)
+  assert.ok(phoneShell.indexOf("  .wb-main{padding:10px 16px calc(168px + env(safe-area-inset-bottom,0px));}") > 0);
   assert.ok(rows.includes(".fs-wrap{--fs-gut:0px;}\n@media(max-width:979px){.fs-wrap{--fs-gut:clamp(18px,3vw,56px);}}\n@media(max-width:760px){.fs-wrap{--fs-gut:16px;}}"));
   assert.ok(rows.includes("  .fs-shelf{--pe:16px;--pw:calc((100% + var(--pe) - 3 * var(--gap)) / 3.3);margin-inline-end:calc(var(--fs-gut) * -1);border-inline-end-width:0;border-start-end-radius:0;border-end-end-radius:0;}"));
   assert.equal(count(rows, "var(--fs-gut) * -1"), 2, "the tray and the Next-episode row: each by the gutter, once");

@@ -179,6 +179,9 @@ test("the told story's look asks it in the SAME question that lists the people �
   // the master's own words — and an animal wears its own coat, in both
   assert.ok(sp.UNCLOTHED_ASKED.includes("a bare chest or bare torso, or a body with no clothing visible on it? Bare arms, bare legs, bare feet and a swimsuit all count as CLOTHED"));
   assert.ok(sp.UNCLOTHED_ASKED.endsWith(sp.COATED) && unclothedPrompt().includes(sp.COATED));
+  // a hand or an arm on its own is not a body (live 2026-11-26: a ghost's hand pressed to glass, called unclothed)
+  assert.ok(sp.UNCLOTHED_ASKED.endsWith(`${sp.PART_ALONE} ${sp.COATED}`) && unclothedPrompt().includes(`${sp.PART_ALONE} ${sp.COATED}`));
+  assert.ok(sp.PART_ALONE.includes("with no body seen with it counts as CLOTHED too") && !/torso|chest/i.test(sp.PART_ALONE), "nothing about a bare torso changes");
   assert.equal(sp.COATED, "An animal, or a creature covered in its own fur, feathers or scales — real or a cartoon — counts as CLOTHED.");
   // its answer — null when the answer does not say (an older reading: nobody is taken to be unclothed)
   assert.deepEqual(sp.parseStoryUnclothed('{"people":["a woman in the lake"],"uninvited":false,"intoLens":[],"unclothed":true,"unclothedWho":"in the lake,   far right"}'), { unclothed: true, who: "in the lake, far right" });

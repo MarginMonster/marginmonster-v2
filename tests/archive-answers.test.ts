@@ -58,7 +58,9 @@ test("on a phone the Select bar and the toast stand above the app's own tab bar"
   // "Add to collection" and "Done" — the bar's third row could not be tapped
   assert.ok(ui.includes("@media(max-width:760px){.wa-bulk,.wa-toast{bottom:calc(98px + env(safe-area-inset-bottom,0px));}}"));
   const shell = fs.readFileSync(path.join(root, "app", "routes", "web.tsx"), "utf8").replace(/\r\n/g, "\n");
-  assert.ok(shell.includes(".wb-main{padding:10px 16px calc(98px + env(safe-area-inset-bottom,0px));}"), "the same 98px the page itself keeps clear");
+  // (the page itself keeps 168px clear since 2026-11-26: the tab bar's 98 plus the Helpurr button standing above it —
+  //  the Select bar and the toast still stand right above the tab bar, at its 98)
+  assert.ok(shell.includes(".wb-main{padding:10px 16px calc(168px + env(safe-area-inset-bottom,0px));}"), "the page keeps the tab bar's 98px clear, and the Helpurr button's above it");
   assert.ok(/@media\(max-width:760px\)\{[\s\S]*?\.wb-bottom\{display:flex;/.test(shell), "…at the width where the tab bar appears");
   // the rule comes after the 640px toast rule it has to beat
   assert.ok(ui.indexOf("@media(max-width:760px){.wa-bulk,.wa-toast{") > ui.indexOf("@media(max-width:640px){.wa-toast{left:16px;right:16px;transform:none;bottom:16px;}"));

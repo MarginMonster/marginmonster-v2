@@ -125,7 +125,8 @@ test("where the pictures are drawn: a portrait each, the reference in every scen
   // (…with what it always has, and never its move or its tag, since 2026-11-26 — character-mark.ts → pictureText)
   assert.ok(fn.includes("if (unpictured.length) notes.push(`In this picture: ${unpictured.map((e) => pictureText(e).slice(0, 200)).join(\"; and \")}.`);"));
   // THE LOOK now asks about them too — the question and the fix are the ones the picked cast always had
-  assert.ok(fn.includes("const castPics = here.map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);"));
+  // (…in every scene but a DETAIL, which shows no face — not asked there since 2026-11-26: tests/story-picture.test.ts)
+  assert.ok(fn.includes("const castPics = cam === \"detail\" ? [] : here.map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);"));
   assert.ok(fn.includes("castPics.length ? anthropicVision(storyCastPrompt(castPics.length), [pic, ...castPics], { maxTokens: 500, model: \"claude-sonnet-4-6\" }) : Promise.resolve(\"\"),"));
   assert.ok(fn.includes("fix = storyFix(seenAs!, here.map((c) => c.name), here.map((c) => c.kind || \"person\"));"), "the fix says what a creature must be");
   // what goes back: the pictures, the token, and the cards to show (an older storyboard keeps its sheet)
