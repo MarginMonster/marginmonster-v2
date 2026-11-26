@@ -337,6 +337,9 @@ model CustomAvatar {
   // What sort of character this is: person | cartoon | monster (CharacterKind in app/lib/avatars.ts).
   // A person is forged into four outfits; a cartoon or a monster keeps the ONE look its maker approved.
   kind      String   @default("person")
+  // PROPS & MOVES (S16, 2026-11-26): what this character always has and the move they are known for — JSON
+  // {"has":"…","move":"…"} (app/lib/character-mark.ts → CharacterMark), set on its ID card. Null = none.
+  mark      String?
   // The "character kit" the Presenters section shows (app/lib/presenter-kit.server.ts). Files live on the
   // renders disk: kit<id>-o<N>.webp are the portraits with the background removed, and each outfit's
   // full-body rotation is a PresenterSpin row plus its frames.
