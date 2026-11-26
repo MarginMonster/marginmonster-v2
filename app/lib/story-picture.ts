@@ -598,31 +598,35 @@ export function storyFix(c: StoryCheck, names: string[], kinds: ReadonlyArray<st
  * right, a smaller picture pasted in, somebody missing or drawn twice, a stranger, the looker stood outside, a night drawn
  * as day, a picture letterboxed or framed on a sheet's ground — is never let through to save money (review of S14b): it
  * is drawn again up to its three goes, as before, and what it spends counts against the cap, so it leaves less for the
- * soft ones. A SOFT fault — a stare, a run-down room — may spend only what is left of the cap, and never more than its
- * first half (rounded up): the cap cuts the soft faults, and only them. A story whose hard faults alone pass the cap
- * draws more than 1.5 a scene; the log line "[narrated] the pictures: …" says so. (Four scenes are drawn at a time: there
- * is no waiting to see them all. The same day replayed with the checks that listen to the story and this cap —
- * tests/redraw-economy.test.ts: 82 pictures, 1.39 a scene, was 122.) */
-export type FaultTier = "hard" | "soft" | "";
-/** How bad the worst thing wrong with a picture is. A band a crop cuts off is no fault to draw again for (coverNow). */
+ * soft ones. A SOFT fault may spend only what is left of the cap: a run-down room its words never asked for (the
+ * owner's own "why are the walls dingy and not just a regular household?" — LIVED_IN) all of what is left; a STARE, the
+ * softest — nine of the eleven looked at were the shot itself — never more than the cap's first half (rounded up), so a
+ * dingy home that comes back after the stares still has its redraw. The cap cuts the soft faults, and only them. A story
+ * whose hard faults alone pass the cap draws more than 1.5 a scene; the log line "[narrated] the pictures: …" says so.
+ * (Four scenes are drawn at a time: there is no waiting to see them all. The same day replayed with the checks that
+ * listen to the story and this cap — tests/redraw-economy.test.ts: 84 pictures, 1.42 a scene, was 122.) */
+export type FaultTier = "hard" | "soft" | "stare" | "";
+/** How bad the worst thing wrong with a picture is: "hard", "soft" (a run-down room), "stare" (only a stare) or "". A
+ *  band a crop cuts off is no fault to draw again for (coverNow). */
 export function faultTier(c: StoryCheck | null | undefined): FaultTier {
   if (!c) return "";
   const { lens: _lens, grimy: _grimy, band, ...rest } = c;
   if (storyFaults({ ...rest, ...(band && !bandCuttable(band) ? { band } : {}) })) return "hard";
-  return c.lens?.length || c.grimy ? "soft" : "";
+  return c.grimy ? "soft" : c.lens?.length ? "stare" : "";
 }
 /** A BAND A CROP PUTS RIGHT, AND NOTHING ELSE WRONG, IS COVERED AT ONCE — never drawn again (review of S14: it paid for up to
  *  two redraws, about $0.15 and four looks each, before it was covered for nothing at the end). */
 export const coverNow = (c: StoryCheck | null | undefined): boolean => !!c?.band && bandCuttable(c.band) && faultTier(c) === "";
 /** The most redraws a drawing of `scenes` scenes may spend on soft faults (hard ones are counted in it, never refused). */
 export const redrawCap = (scenes: number): number => Math.ceil(Math.max(0, Math.floor(Number(scenes) || 0)) / 2);
-/** What one drawing of a story has spent, and may: a soft fault only while `spent` is under `cap` and `spentSoft` under
- *  `soft`; a hard fault always (counted in `spent`, which may then pass `cap`). */
-export type RedrawPurse = { cap: number; soft: number; spent: number; spentSoft: number };
+/** What one drawing of a story has spent, and may: a run-down room only while `spent` is under `cap`; a stare only while
+ *  `spent` is under `cap` and `spentStares` under `stares`; a hard fault always (counted in `spent`, which may then pass
+ *  `cap`). */
+export type RedrawPurse = { cap: number; stares: number; spent: number; spentStares: number };
 export function redrawPurse(scenes: number, capped = true): RedrawPurse {
   // (uncapped — STORY_REDRAW_CAP=off — every scene has its three goes, as before 2026-11-26)
   const cap = capped ? redrawCap(scenes) : 2 * Math.max(0, Math.floor(Number(scenes) || 0));
-  return { cap, soft: capped ? Math.ceil(cap / 2) : cap, spent: 0, spentSoft: 0 };
+  return { cap, stares: capped ? Math.ceil(cap / 2) : cap, spent: 0, spentStares: 0 };
 }
 /** May a scene whose last go came back with a fault of this tier be drawn again? Yes spends one from the purse.
  *  (Called and answered at once — the four scenes drawing side by side never spend the same redraw twice.) */
@@ -633,9 +637,9 @@ export function spendRedraw(p: RedrawPurse, tier: FaultTier): boolean {
   //  panel fell to the lenient path, drawn without the cast's looks. It is drawn again — up to its three goes, as before —
   //  and what it spends is counted, so it leaves less for the soft faults after it: the cap cuts stares and run-down rooms.)
   if (tier === "hard") { p.spent++; return true; }
-  if (p.spent >= p.cap || p.spentSoft >= p.soft) return false;
+  if (p.spent >= p.cap || (tier === "stare" && p.spentStares >= p.stares)) return false;
   p.spent++;
-  p.spentSoft++;
+  if (tier === "stare") p.spentStares++;
   return true;
 }
 

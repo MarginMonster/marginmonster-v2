@@ -56,7 +56,8 @@ import { joinList } from "./acted-staging";
 import { NIGHT_LINE, nightSetting } from "./acted-staging";
 import { NIGHT_STYLE_LIGHT, parseStoryNight, storyNight } from "./story-picture";
 // A STORY'S REDRAWS ARE COUNTED, AND THE CHECKS LISTEN TO THE STORY (2026-11-26 — story-picture.ts: a worn place its words ask
-// for and a stare its shot asks for are no faults; at most half its scenes in redraws for a soft fault, a hard one always)
+// for and a stare its shot asks for are no faults; at most half its scenes in redraws for a soft fault, a quarter for stares,
+// a hard one always)
 import { coverNow, faultTier, redrawPurse, spendRedraw, stareCounts, wornAsked } from "./story-picture";
 import { streamSeconds } from "./film-join.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
@@ -266,7 +267,7 @@ export async function narratedSceneSeeds(o: {
   await alive();
   // A STORY'S REDRAWS ARE COUNTED (story-picture.ts → redrawCap, 2026-11-26: a day of live told stories drew 2.07 pictures
   // a scene, three of "Circling in the Dark"'s four scenes every go there was): this drawing of it may spend at most half
-  // its scenes, rounded up, on redraws for a stare or a run-down room — and only half of that on them. A hard fault (somebody
+  // its scenes, rounded up, on redraws for a run-down room or a stare — and only half of that on stares. A hard fault (somebody
   // missing or bare, panels, a band no crop puts right, a stranger…) is always drawn again, up to its three goes, and counted
   // against the same cap (review of S14b: never let through to save money). Past it, a picture keeps its best try and its
   // fault is written down as ever. STORY_REDRAW_CAP=off: three goes a scene for every fault, as before.
@@ -438,7 +439,7 @@ export async function narratedSceneSeeds(o: {
         const cover = coverNow(seenAs);
         const tier = faultTier(seenAs);
         const again = !cover && a < 2 && spendRedraw(purse, tier);
-        const then = again ? "drawing it again" : cover ? "a band a crop puts right, and nothing else — covered, not drawn again" : a < 2 ? `the story's redraws for a stare or a worn place are spent (${purse.spent} of ${purse.cap} in all, ${purse.spentSoft} of ${purse.soft} on these) — keeping its best try` : "keeping its best try";
+        const then = again ? "drawing it again" : cover ? "a band a crop puts right, and nothing else — covered, not drawn again" : a < 2 ? `the story's redraws${tier === "stare" ? " for a stare" : ""} are spent (${purse.spent} of ${purse.cap} in all, ${purse.spentStares} of ${purse.stares} on stares) — keeping its best try` : "keeping its best try";
         console.log(`[narrated] scene ${i + 1} try ${a + 1}: ${[seenAs!.unclothed ? `somebody unclothed (${seenAs!.unclothedWho || "somewhere in it"})` : "", seenAs!.panels ? "split into panels" : "", seenAs!.seen.includes(false) ? `cast not in it (${here.filter((_, n) => !seenAs!.seen[n]).map((c) => c.name).join(", ")})` : "", (seenAs!.twice || []).some(Boolean) ? "somebody drawn twice" : "", seenAs!.extra ? "somebody the words do not put there" : "", seenAs!.outside ? "whoever looks out stood outside" : "", seenAs!.lens?.length ? `${seenAs!.lens.join(" and ")} stared into the lens` : "", seenAs!.grimy ? "the place came out run-down" : "", seenAs!.inset ? "a smaller picture pasted into it" : "", seenAs!.notNight ? "a night scene drawn as dusk or day" : "", seenAs!.band ? `an empty band or a doubled strip (${[...seenAs!.band.sides, ...seenAs!.band.doubled.map((s) => `doubled ${s}`)].join(", ")})` : ""].filter(Boolean).join(", ")} — ${then}`);
         if (!again) break;
       }
@@ -506,7 +507,7 @@ export async function narratedSceneSeeds(o: {
   };
   await Promise.all(Array.from({ length: Math.min(4, todo.length) }, () => worker()));
   // (what this drawing of the story spent, in one line — the rate the still tier's price rests on, read off the log)
-  if (todo.length) console.log(`[narrated] the pictures: ${todo.length} scene${todo.length === 1 ? "" : "s"}, ${drawnPictures} drawn (${(drawnPictures / todo.length).toFixed(2)} a scene), ${purse.spent} of ${purse.cap} redraws spent (${purse.spentSoft} of ${purse.soft} for a stare or a worn place)`);
+  if (todo.length) console.log(`[narrated] the pictures: ${todo.length} scene${todo.length === 1 ? "" : "s"}, ${drawnPictures} drawn (${(drawnPictures / todo.length).toFixed(2)} a scene), ${purse.spent} of ${purse.cap} redraws spent (${purse.spentStares} of ${purse.stares} on stares)`);
   // (the cast is billed in the story's own order — a character drawn again does not move to the end of the row)
   const billed = (c: StoryCastRef): number => { const k = others.findIndex((e) => sameCharacter(c.name, castEntry(e).name)); return k < 0 ? others.length : k; };
   cards.sort((a, b) => billed(a) - billed(b));
