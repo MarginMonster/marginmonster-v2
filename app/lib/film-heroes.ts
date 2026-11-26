@@ -51,6 +51,7 @@
  * (`shelf: "anime"`). Its kick promises what HAPPENS — the kind of story it is told as, its kin — and its card names
  * the look.
  */
+import { CAMERA_LOOKS, type CameraLook } from "./camera-dress.ts";
 import type { StoryPictures } from "./story-motion.ts";
 import { ANIME_STYLES } from "./anime-styles.ts";
 
@@ -206,21 +207,61 @@ export function heroesFor(templateKeys: string[], narratableKeys: string[]): Fil
  * every told story's rung is picked). It is the anime heroes' one shelf, as Stories is the other told heroes'. It
  * carries no rung: the motion test drew Dream and Neon City to life and both drawings held flat and 2D (S15a's verdict,
  * "holds"), so a poster opens on moving pictures like any Story's. Its name, tag and line are a first proposal too. */
+/* THE WAYS (2026-11-26). The owner, with a photo of the Stories and the Still Stories rows showing the same nine posters:
+ * "This has become repetitive and unorganized and confusing, need ideas to simplify and make it more attractive and
+ * billion dollar esc". He picked "A" — one row of big WAY cards, each thing ONCE — and then: "But I don't want to lose our
+ * distinctive categories like caught on cam, found footage, and our other uniques" / "Those need to be on display". So the
+ * home is a row of way cards — THE LADDER, how a story is told from the cheapest to the most cinematic (Picture Book ·
+ * Story · Film), then "Only on EasyMode" (Caught on Cam · Anime · Kids · Music Video) — and under it ONE row: the chosen
+ * way's posters. A way is still a shelf here (heroShelves): every hero on exactly one non-rung way, Picture Book
+ * re-listing the Story heroes on the still rung (that is not a copy on screen any more: one way's row shows at a time, and
+ * Picture Book's posters are pages). The order of SHELVES is the order of the cards — his to change, one line each. */
+/** A way card's picture: a real file with NO burnt-in captions (the -tall Story loops have captions: never used). */
+export type WayArt = { still: string; clip?: string; /** a wide three-panel strip: only its MIDDLE panel is shown */ strip?: boolean; /** CSS object-position */ at?: string };
+export type WayKey = "still" | "told" | "acted" | "anime" | "kids" | "sung" | "cam";
 export type HeroShelf = {
-  key: "told" | "still" | "anime" | "acted" | "sung";
+  key: "told" | "still" | "anime" | "acted" | "sung" | "kids";
   name: string;
   tag: string;
   line: string;
+  /** the row's header line, under the cards ("Pick a genre") */
+  pick: string;
+  /** the ladder (how a story is told) or "Only on EasyMode" */
+  group: "ladder" | "only";
+  /** the way card's art */
+  art: WayArt;
   /** a RUNG shelf: the told story's rung its posters open on (the told shelf's is "moving") */
   rung?: StoryPictures;
   heroes: FilmHero[];
 };
+/** The kids' formats: a way of their own — a different audience and a different look; as the 11th poster of the
+ *  photoreal Film row they were buried off a phone's screen. So Film and Music Video do not list them. */
+export const KIDS_HEROES: readonly string[] = ["kidstv", "kidsmusicvideo"];
+/** CAUGHT ON CAM — Found Footage's way on the home (operators only, as its builder is): its row is the builder's
+ *  cameras, each opening the builder on that camera (?camera=). Not a shelf: nothing here is a FilmHero. */
+export const CAUGHT_ON_CAM = {
+  key: "cam" as const,
+  name: "Caught on Cam",
+  tag: "Found footage",
+  line: FOUND_FOOTAGE_DOOR.meta,
+  pick: "Pick the camera",
+  group: "only" as const,
+  art: { still: "/landing/ff-cam-house.jpg", clip: FOUND_FOOTAGE_DOOR.clip, at: "28% 50%" } as WayArt,
+  cameras: (["house", "bodycam", "phone", "camcorder"] as CameraLook[]).map((k) => ({ key: k, name: CAMERA_LOOKS.find((c) => c.key === k)?.name || k })),
+};
 const SHELVES: ReadonlyArray<Omit<HeroShelf, "heroes"> & { has: (h: FilmHero) => boolean }> = [
-  { key: "told", name: "Stories", tag: "Narrated", line: "A narrator tells it over moving pictures", rung: "moving", has: (h) => h.told === "narrated" && !h.shelf },
-  { key: "still", name: "Still Stories", tag: "Cheapest", line: "A narrator tells it over still pictures that slowly move", rung: "still", has: (h) => h.told === "narrated" && !h.shelf },
-  { key: "anime", name: "Anime", tag: "Narrated", line: "A narrator tells it over hand-drawn anime pictures", has: (h) => h.shelf === "anime" },
-  { key: "acted", name: "Films", tag: "Acted", line: "Actors speak the lines on camera", has: (h) => h.told === "acted" },
-  { key: "sung", name: "Music videos", tag: "Sung", line: "Your artist sings on camera", has: (h) => h.told === null },
+  { key: "still", name: "Picture Book", tag: "Cheapest", line: "A narrator tells it over still pictures that slowly move", pick: "Pick a genre", group: "ladder", rung: "still",
+    art: { still: "/landing/film-still-fantasystory-tall.jpg" }, has: (h) => h.told === "narrated" && !h.shelf },
+  { key: "told", name: "Story", tag: "Most popular", line: "A narrator tells it over moving pictures", pick: "Pick a genre", group: "ladder", rung: "moving",
+    art: { still: "/landing/film-loop-horrorstory.jpg", clip: "/landing/film-loop-horrorstory.mp4", strip: true }, has: (h) => h.told === "narrated" && !h.shelf },
+  { key: "acted", name: "Film", tag: "Premium", line: "Actors speak the lines on camera", pick: "Pick a genre", group: "ladder",
+    art: { still: "/landing/film-still-testmovie-tall.jpg", clip: "/landing/film-loop-testmovie-tall.mp4" }, has: (h) => h.told === "acted" && !KIDS_HEROES.includes(h.id) },
+  { key: "anime", name: "Anime", tag: "New", line: "A narrator tells it over hand-drawn anime pictures", pick: "Pick a style", group: "only",
+    art: { still: "/landing/film-still-animesky-tall.jpg", at: "50% 30%" }, has: (h) => h.shelf === "anime" },
+  { key: "kids", name: "Kids", tag: "For little ones", line: "Cartoons and sing-alongs", pick: "Pick one", group: "only",
+    art: { still: "/landing/film-still-kidstv-tall.jpg", clip: "/landing/film-loop-kidstv-tall.mp4" }, has: (h) => KIDS_HEROES.includes(h.id) },
+  { key: "sung", name: "Music Video", tag: "Sung", line: "Your artist sings on camera", pick: "Pick one", group: "only",
+    art: { still: "/landing/film-loop-musicvideo.jpg", clip: "/landing/film-loop-musicvideo-tall.mp4", at: "50% 25%" }, has: (h) => h.told === null && !KIDS_HEROES.includes(h.id) },
 ];
 /** The heroes a page offers, as its shelves — every hero on exactly one WAY shelf (or, an anime style, on its own), in
  *  the heroes' own order, and the told heroes again on a rung shelf; a shelf with nothing on it is not shown (a page
@@ -231,11 +272,18 @@ const SHELVES: ReadonlyArray<Omit<HeroShelf, "heroes"> & { has: (h: FilmHero) =>
  *  over stills; the line it replaced at least named the stills.) */
 export function heroShelves(heroes: ReadonlyArray<FilmHero>, o: { still?: boolean } = {}): HeroShelf[] {
   const still = o.still !== false;
-  const stillLine = SHELVES.find((s) => s.rung === "still")!.line;
+  const stillWay = SHELVES.find((s) => s.rung === "still")!;
+  // (where nothing can move, the Story says what it is told over then — and shows no motion: Picture Book's art)
   return SHELVES.filter((s) => still || s.rung !== "still")
-    .map(({ has, ...s }) => ({ ...s, ...(!still && s.rung === "moving" ? { line: stillLine } : {}), heroes: heroes.filter(has) }))
+    // (the Kids' row in its own order: the cartoon first — the bigger draw — then the sing-along)
+    .map(({ has, ...s }) => ({ ...s, ...(!still && s.rung === "moving" ? { line: stillWay.line, art: stillWay.art } : {}), heroes: s.key === "kids" ? heroes.filter(has).sort((a, b) => KIDS_HEROES.indexOf(a.id) - KIDS_HEROES.indexOf(b.id)) : heroes.filter(has) }))
     .filter((s) => s.heroes.length > 0);
 }
+/** A way named in a link (?way=…) — one of the ways' keys, or null. */
+export const wayParamOf = (v: unknown): WayKey | null => {
+  const k = String(v ?? "").trim().toLowerCase();
+  return k === "still" || k === "told" || k === "acted" || k === "anime" || k === "kids" || k === "sung" || k === "cam" ? k : null;
+};
 
 /** A poster's key on the page — the zoom key, so the same hero standing on two shelves pops only where it was
  *  tapped: `still:<id>` on the still shelf, the plain id everywhere else. */
