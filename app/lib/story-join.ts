@@ -16,7 +16,7 @@
  * Pure (no server file): tests/story-join.test.ts cuts a story of fifteen stand-in scenes both ways, with the very
  * arguments below, and compares the two frame by frame. */
 
-import { kenBurns } from "./narrated-core.ts";
+import { stillHeld, stillMove, stillMoves, type StillMove } from "./narrated-core.ts";
 import { motionChain } from "./story-motion.ts";
 
 const FPS = 30;
@@ -87,11 +87,13 @@ export type StoryScene = { still: string; clip?: { file: string; fit: { speed: n
 
 /** HOW SCENE `i` GOES INTO A CUT — its input and its picture's chain, exactly as the single cut takes it
  *  (narrated-story.server.ts → assembleNarrated → build): its clip, when clips are used and it has one; else its
- *  picture with the slow push-in (`moving`); else its picture held for the scene. */
-export function sceneIn(i: number, s: StoryScene, frames: number, W: number, H: number, how: { clips: boolean; moving: boolean }): { input: string[]; chain: string } {
+ *  picture held for the scene with its slow MOVE (`moving` — the move is laid over the part's joined picture, by
+ *  partGraph: narrated-core.ts → A STILL PICTURE'S SLOW MOVE; `move` says which, scene `i` counted through the whole
+ *  story so that no two neighbours move alike across a part's edge); else its picture held for the scene. */
+export function sceneIn(i: number, s: StoryScene, frames: number, W: number, H: number, how: { clips: boolean; moving: boolean }): { input: string[]; chain: string; move?: StillMove } {
   const m = how.clips && how.moving ? s.clip : null;
   if (m) return { input: ["-i", m.file], chain: motionChain(m.fit, frames, W, H) };
-  if (how.moving) return { input: ["-i", s.still], chain: `${kenBurns(i, frames, W, H)},format=yuv420p` };
+  if (how.moving) return { input: ["-i", s.still], chain: stillHeld(frames, W, H), move: stillMove(i) };
   return { input: ["-loop", "1", "-t", (frames / FPS).toFixed(3), "-i", s.still], chain: `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1,fps=${FPS},format=yuv420p` };
 }
 
@@ -105,11 +107,14 @@ export const exactly = (frames: number): string =>
  *  exactly as long as it is in the story, end to end, and the part's words drawn over them (`captions`: filters;
  *  none = no words) — on the story's own clock: while the words are drawn, the part's frames are timed in
  *  millionths of a second from `clock` (StoryPart → clock: where one cut's clock stands at the part's first frame),
- *  and from 0 again after. Out: [v]. */
-export function partGraph(chains: ReadonlyArray<string>, frames: ReadonlyArray<number>, captions: ReadonlyArray<string>, clock = 0): string {
+ *  and from 0 again after. Out: [v].
+ *  `moves` (sceneIn → move, for input k): the still scenes' slow moves, laid over the joined picture in one pass before
+ *  the words (narrated-core.ts → stillMoves: one `perspective` for the part, not one a scene — measured). */
+export function partGraph(chains: ReadonlyArray<string>, frames: ReadonlyArray<number>, captions: ReadonlyArray<string>, clock = 0, moves: ReadonlyArray<StillMove | null | undefined> = []): string {
   const g = chains.map((c, k) => `[${k}:v]${c},${exactly(frames[k])}[c${k}]`);
   g.push(`${chains.map((_, k) => `[c${k}]`).join("")}concat=n=${chains.length}:v=1:a=0[vcat]`);
-  g.push(captions.length ? `[vcat]settb=AVTB,setpts=PTS+${Math.max(0, Math.round(clock))},${captions.join(",")},setpts=PTS-STARTPTS[v]` : "[vcat]null[v]");
+  const mv = stillMoves(chains.map((_, k) => ({ move: moves[k] || null, frames: frames[k] })));
+  g.push(captions.length ? `[vcat]${mv ? `${mv},` : ""}settb=AVTB,setpts=PTS+${Math.max(0, Math.round(clock))},${captions.join(",")},setpts=PTS-STARTPTS[v]` : `[vcat]${mv || "null"}[v]`);
   return g.join(";");
 }
 
@@ -122,8 +127,8 @@ export const STORY_PICTURE = ["-threads", "2", "-filter_complex_threads", "2", "
  *  part of six moving scenes peaked at 662 MB with every H.264 decoder sized to the cores, 527 MB with one thread
  *  each — and was made in 69 seconds, not 92: the scenes play one after another, so their decoders never needed
  *  the cores). */
-export function storyPartArgs(scenes: ReadonlyArray<{ input: string[]; chain: string }>, frames: ReadonlyArray<number>, captions: ReadonlyArray<string>, clock: number, out: string): string[] {
-  return ["-y", ...scenes.flatMap((s) => ["-threads", "1", ...s.input]), "-filter_complex", partGraph(scenes.map((s) => s.chain), frames, captions, clock), "-map", "[v]", "-an", ...STORY_PICTURE, "-f", "mp4", out];
+export function storyPartArgs(scenes: ReadonlyArray<{ input: string[]; chain: string; move?: StillMove }>, frames: ReadonlyArray<number>, captions: ReadonlyArray<string>, clock: number, out: string): string[] {
+  return ["-y", ...scenes.flatMap((s) => ["-threads", "1", ...s.input]), "-filter_complex", partGraph(scenes.map((s) => s.chain), frames, captions, clock, scenes.map((s) => s.move)), "-map", "[v]", "-an", ...STORY_PICTURE, "-f", "mp4", out];
 }
 
 /** ffmpeg's arguments for THE STORY'S SOUND, once, for all of it — the single cut's own mix: the voice levelled and

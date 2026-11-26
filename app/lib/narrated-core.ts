@@ -1281,12 +1281,93 @@ export function barBox(ffmpegReport: string): { w: number; h: number; x: number;
 export const frameWords = (aspect: string): string =>
   `${aspect === "16:9" ? "A wide landscape" : aspect === "1:1" ? "A square" : "A tall vertical"} picture that fills the whole frame from edge to edge — no borders, no black bars, no letterboxing.`;
 
-/** A slow push in on one picture and a slow pull back on the next (zoompan), `frames` long, to W×H.
- *  The source is scaled up first so the move is smooth rather than stair-stepped. `i` picks the direction. */
+/* A STILL PICTURE'S SLOW MOVE (2026-11-25).
+ * A told story over its STILL pictures is the Movie Maker's cheapest rung (film-length.ts: 1 token a second) — the
+ * owner: "we also need the timeless pictures with narration as an extremely cheap base tier" — and the base tier must
+ * still look MADE, not broken (the tester of 2026-11-23, of stories over stills: "they only stop screen on one image
+ * and play voice"). Until that day every still did one of two things — a push in on one picture, a pull back on the
+ * next — by zoompan over the picture scaled to twice the frame, and measured on a TEST picture (one soft dot, its
+ * centre found to a hundredth of a pixel in every frame) that move STAIR-STEPPED: zoompan puts its window on WHOLE
+ * pixels of its source, so in a slow drift 124 of 284 frames did not move at all and the next one jumped half a pixel,
+ * and in a push-in the picture shivered 0.3 px a frame where it should have crept 0.03. So now:
+ *  · FOUR MOVES, in turn — a slow push in, a slow drift right, a slow pull back, a slow drift left — so no two scenes
+ *    side by side move alike, and a story opens pushing in, as it always did;
+ *  · drawn by `perspective`, which sets the picture's window to a fraction of a pixel (bicubic) in every frame: the
+ *    same TEST dot moves 0.304 px a frame ± 0.011 in the drift and 0.034 ± 0.006 in the push-in — never a frame that
+ *    stands still, never a shiver;
+ *  · ONCE for the whole cut, over the joined picture: each scene's picture is held for its frames (stillHeld) and the
+ *    one `perspective` after the join moves each scene by its own move over its own frames (stillMoves). A
+ *    `perspective` per scene was measured first: every one keeps a table the size of the frame, and six of them took
+ *    the six-scene cut from 590 MB (the zoompan move) to 735 — over the 572 of the same story cut from moving clips.
+ *    One for the cut is one table. MEASURED (peak private memory of the ffmpeg, Windows' own counter, -cpucount 16,
+ *    2K TEST pictures, ffmpeg 8.1): six scenes in one cut 590 MB → 509 (moving clips: 572); twelve in parts of six
+ *    525 → 454 a part (moving: 532); every part exactly its frames. Time: 63 → 75 s for the six;
+ *  · a scene's move is its place in the story, nothing else: told again (another language, an edit) it moves the same;
+ *  · on the picture at the frame's own size (a pass at 1.1× and then down was measured just as sharp: 23.4 against
+ *    23.4, mean |Laplacian| over small print at the push's closest frame — the zoompan over twice the frame kept a
+ *    little more, 28.1, and shivered);
+ *  · the window always inside the picture: no black edge, ever.
+ * Free — our own ffmpeg, nothing drawn. */
+export type StillMove = "in" | "right" | "out" | "left";
+export const STILL_MOVES: ReadonlyArray<StillMove> = ["in", "right", "out", "left"];
+/** Scene `i`'s move (`i` counted through the whole story): the four in turn, from a push in. */
+export const stillMove = (i: number): StillMove => STILL_MOVES[(((Math.round(Number(i)) || 0) % 4) + 4) % 4];
+/** How far a push goes (1 → 1.10, the reach it always had: ten seconds of it is a slow creep, not a lurch) and how
+ *  close a drift sits (1.08: it crosses 7.4% of the picture — about 80 px of a phone frame in a scene). */
+export const STILL_PUSH = 0.1;
+export const STILL_DRIFT_ZOOM = 1.08;
+
+/** WHERE THE WINDOW IS at `p` (0 at the scene's first frame, 1 at its last): its zoom (1 = the whole picture) and its
+ *  centre, as fractions of the picture. The window is 1/z of the picture each way, and always inside it. */
+export function stillWindow(move: StillMove, p: number): { z: number; cx: number; cy: number } {
+  const t = Math.max(0, Math.min(1, Number(p) || 0));
+  if (move === "in" || move === "out") return { z: 1 + STILL_PUSH * (move === "in" ? t : 1 - t), cx: 0.5, cy: 0.5 };
+  const f = 1 / STILL_DRIFT_ZOOM;
+  return { z: STILL_DRIFT_ZOOM, cx: f / 2 + (1 - f) * (move === "right" ? t : 1 - t), cy: 0.5 };
+}
+
+const num = (v: number): string => String(Math.round(v * 1e6) / 1e6);
+
+/** A STILL PICTURE HELD for exactly `frames` frames at 30 a second, filling W×H: brought to the frame ONCE and repeated
+ *  (`loop` — not decoded again for every frame), its frames numbered evenly from 0. stillMoves lays the move over it. */
+export function stillHeld(frames: number, W: number, H: number): string {
+  const n = Math.max(2, Math.round(Number(frames) || 0));
+  return `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1,loop=loop=${n - 1}:size=1:start=0,settb=1/30,setpts=N,fps=30,format=yuv420p`;
+}
+
+/** THE MOVES OF A RUN OF SCENES, laid over their joined picture in ONE pass: scene k (in order; `frames` long) moves by
+ *  its `move` over its own frames, and a scene with none (a moving clip) is passed through untouched. "" when nothing
+ *  moves. `perspective` numbers the frames it is given from 1 (`on`), and every frame of the run is given to it — the
+ *  untouched ones too, so the numbering stays the run's own (they are only not redrawn: `enable`). */
+export function stillMoves(scenes: ReadonlyArray<{ move: StillMove | null; frames: number }>): string {
+  const runs: Array<{ move: StillMove | null; at: number; n: number }> = [];
+  let at = 0;
+  for (const s of scenes) { const n = Math.max(1, Math.round(Number(s.frames) || 0)); runs.push({ move: s.move, at, n }); at += n; }
+  if (!runs.some((r) => r.move)) return "";
+  const f = 1 / STILL_DRIFT_ZOOM;
+  // each scene's four edges as expressions of the frame number (stillWindow, said for ffmpeg); untouched: the whole frame
+  const edges = runs.map((r) => {
+    if (!r.move) return { x0: "0", x1: "W", y0: "0", y1: "H" };
+    const p = `(on-${r.at + 1})/${Math.max(1, r.n - 1)}`;
+    const q = r.move === "in" || r.move === "right" ? p : `(1-${p})`;
+    const push = r.move === "in" || r.move === "out";
+    const z = push ? `(1+${num(STILL_PUSH)}*${q})` : num(STILL_DRIFT_ZOOM);
+    const cx = push ? "0.5" : `(${num(f / 2)}+${num(1 - f)}*${q})`;
+    return { x0: `W*(${cx}-0.5/${z})`, x1: `W*(${cx}+0.5/${z})`, y0: `H*(0.5-0.5/${z})`, y1: `H*(0.5+0.5/${z})` };
+  });
+  // …one expression an edge for the whole run: the scene whose frames `on` is in
+  const pick = (k: "x0" | "x1" | "y0" | "y1"): string =>
+    runs.slice(0, -1).reduceRight((rest, r, j) => `if(lt(on,${r.at + r.n + 1}),${edges[j][k]},${rest})`, edges[runs.length - 1][k]);
+  const x0 = pick("x0"), x1 = pick("x1"), y0 = pick("y0"), y1 = pick("y1");
+  const still = runs.filter((r) => r.move);
+  const enable = still.length === runs.length ? "" : `:enable='${still.map((r) => `between(n,${r.at},${r.at + r.n - 1})`).join("+")}'`;
+  return `perspective=x0='${x0}':y0='${y0}':x1='${x1}':y1='${y0}':x2='${x0}':y2='${y1}':x3='${x1}':y3='${y1}':interpolation=cubic:eval=frame${enable}`;
+}
+
+/** ONE STILL PICTURE, MOVING — scene `i`'s move (stillMove), exactly `frames` long, to W×H: the picture held and moved,
+ *  as a run of one. (What a cut does for each of its still scenes, said for one scene alone.) */
 export function kenBurns(i: number, frames: number, W: number, H: number): string {
-  const n = Math.max(2, frames);
-  const z = i % 2 === 0 ? `1+0.10*on/${n - 1}` : `max(1.10-0.10*on/${n - 1},1.001)`;
-  return `scale=${W * 2}:${H * 2}:force_original_aspect_ratio=increase,crop=${W * 2}:${H * 2},zoompan=z='${z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${n}:s=${W}x${H}:fps=30,setsar=1`;
+  return `${stillHeld(frames, W, H)},${stillMoves([{ move: stillMove(i), frames }])}`;
 }
 
 /** The frame a story is drawn on — full HD (it was 720p until the owner, 2026-11-25, of the stories' "rough"

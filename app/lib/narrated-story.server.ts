@@ -53,7 +53,7 @@ import { NIGHT_STYLE_LIGHT, parseStoryNight, storyNight } from "./story-picture"
 import { streamSeconds } from "./film-join.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
 import { episodeOwnName, type ShowMeta } from "./character-series";
-import { barBox, barsIn, boldCards, keepToldScenes, captionFilters, captionStyleOf, entryName, frameWords, kenBurns, namedIn, presentIn, sceneCast, sceneWindows, scriptWordTimes, storyFrame, subtitleCards, subtitleChars, type CaptionStyle, type Card, type Window, type WordT } from "./narrated-core";
+import { barBox, barsIn, boldCards, keepToldScenes, captionFilters, captionStyleOf, entryName, frameWords, namedIn, presentIn, sceneCast, sceneWindows, scriptWordTimes, stillHeld, stillMove, stillMoves, storyFrame, subtitleCards, subtitleChars, type CaptionStyle, type Card, type Window, type WordT } from "./narrated-core";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const rid = () => crypto.randomBytes(6).toString("hex");
@@ -598,12 +598,16 @@ export async function assembleNarrated(o: {
       f.push(m
         ? `[${i}:v]${motionChain(m.fit, frames[i], o.W, o.H)}[c${i}]`
         : moving
-        ? `[${i}:v]${kenBurns(i, frames[i], o.W, o.H)},format=yuv420p[c${i}]`
+        ? `[${i}:v]${stillHeld(frames[i], o.W, o.H)}[c${i}]`
         : `[${i}:v]scale=${o.W}:${o.H}:force_original_aspect_ratio=increase,crop=${o.W}:${o.H},setsar=1,fps=${FPS},format=yuv420p[c${i}]`);
     });
     f.push(`${norm.map((_, i) => `[c${i}]`).join("")}concat=n=${N}:v=1:a=0[vcat]`);
     let v = "[vcat]";
-    if (useCaptions && captions.length) { f.push(`[vcat]${(styled && cap.styled ? cap.styled : captions).join(",")}[vf]`); v = "[vf]"; }
+    // THE STILLS' SLOW MOVES (narrated-core.ts → A STILL PICTURE'S SLOW MOVE): each held picture moved by its own move
+    // over its own frames, in ONE pass over the joined picture — before the words, which stay where they are
+    const still = moving ? stillMoves(norm.map((_, i) => ({ move: clipOf(i) ? null : stillMove(i), frames: frames[i] }))) : "";
+    if (still) { f.push(`[vcat]${still}[vmv]`); v = "[vmv]"; }
+    if (useCaptions && captions.length) { f.push(`${v}${(styled && cap.styled ? cap.styled : captions).join(",")}[vf]`); v = "[vf]"; }
     f.push(`[${N}:a]aresample=44100,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=44100,apad=pad_dur=${TAIL_S}[vo]`);
     let aMap = "[vo]";
     if (musicOn) {

@@ -14,7 +14,7 @@ import {
   NARRATION_MAX_CHARS, STORY_ONE_CUT, STORY_PART_SCENES, STORY_PICTURE, cardsDuring, exactly, partGraph, readingParts, sceneIn, storyJoinArgs, storyPartArgs, storyParts, storySoundArgs,
 } from "../app/lib/story-join.ts";
 import { joinCheck, joinList, JOIN_TOLERANCE } from "../app/lib/acted-staging.ts";
-import { captionFilters, kenBurns } from "../app/lib/narrated-core.ts";
+import { captionFilters, stillHeld, stillMoves } from "../app/lib/narrated-core.ts";
 import { fitMotion, motionChain } from "../app/lib/story-motion.ts";
 import { maxShots } from "../app/lib/film-length.ts";
 
@@ -84,7 +84,11 @@ test("a part's picture: each scene by the single cut's own chain, made exactly a
   // HOW A SCENE GOES IN is what the single cut does with it — its clip, its picture moving slowly, its picture held
   const clip = { file: "c.mp4", fit: fitMotion(5, 9) };
   assert.deepEqual(sceneIn(3, { still: "s.jpg", clip }, 270, 1080, 1920, { clips: true, moving: true }), { input: ["-i", "c.mp4"], chain: motionChain(clip.fit, 270, 1080, 1920) });
-  assert.deepEqual(sceneIn(3, { still: "s.jpg", clip }, 270, 1080, 1920, { clips: false, moving: true }), { input: ["-i", "s.jpg"], chain: `${kenBurns(3, 270, 1080, 1920)},format=yuv420p` });
+  // (a still that moves is HELD in its own chain, and its move — the story's fourth scene drifts left — is laid over the
+  //  part's joined picture since 2026-11-25: one pass, not one a scene, narrated-core.ts → A STILL PICTURE'S SLOW MOVE)
+  assert.deepEqual(sceneIn(3, { still: "s.jpg", clip }, 270, 1080, 1920, { clips: false, moving: true }), { input: ["-i", "s.jpg"], chain: stillHeld(270, 1080, 1920), move: "left" });
+  assert.equal(partGraph(["A", "B"], [30, 45], [], 0, [null, "in"]), `[0:v]A,${exactly(30)}[c0];[1:v]B,${exactly(45)}[c1];[c0][c1]concat=n=2:v=1:a=0[vcat];[vcat]${stillMoves([{ move: null, frames: 30 }, { move: "in", frames: 45 }])}[v]`);
+  assert.ok(partGraph(["A"], [30], ["drawtext=x"], 5400000, ["out"]).endsWith(`[vcat]${stillMoves([{ move: "out", frames: 30 }])},settb=AVTB,setpts=PTS+5400000,drawtext=x,setpts=PTS-STARTPTS[v]`), "moved first, the words over it");
   assert.deepEqual(sceneIn(3, { still: "s.jpg", clip: null }, 270, 1080, 1920, { clips: true, moving: true }).input, ["-i", "s.jpg"]);
   assert.deepEqual(sceneIn(3, { still: "s.jpg", clip }, 270, 1080, 1920, { clips: true, moving: false }), { input: ["-loop", "1", "-t", "9.000", "-i", "s.jpg"], chain: "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1,fps=30,format=yuv420p" });
   // …the very chains, encoder and mix the single cut has (narrated-story.server.ts → assembleNarrated → build)
@@ -92,7 +96,11 @@ test("a part's picture: each scene by the single cut's own chain, made exactly a
   const single = nar.slice(nar.indexOf("export async function assembleNarrated("), nar.indexOf("async function cutInParts("));
   for (const s of [
     "? `[${i}:v]${motionChain(m.fit, frames[i], o.W, o.H)}[c${i}]`",
-    "? `[${i}:v]${kenBurns(i, frames[i], o.W, o.H)},format=yuv420p[c${i}]`",
+    "? `[${i}:v]${stillHeld(frames[i], o.W, o.H)}[c${i}]`",
+    // (…and the stills' moves over the joined picture, before the words — as partGraph lays them)
+    "const still = moving ? stillMoves(norm.map((_, i) => ({ move: clipOf(i) ? null : stillMove(i), frames: frames[i] }))) : \"\";",
+    "if (still) { f.push(`[vcat]${still}[vmv]`); v = \"[vmv]\"; }",
+    "if (useCaptions && captions.length) { f.push(`${v}${(styled && cap.styled ? cap.styled : captions).join(\",\")}[vf]`); v = \"[vf]\"; }",
     ": `[${i}:v]scale=${o.W}:${o.H}:force_original_aspect_ratio=increase,crop=${o.W}:${o.H},setsar=1,fps=${FPS},format=yuv420p[c${i}]`);",
     // (one decoding thread a scene since 2026-11-25, as storyPartArgs puts it before each scene's own input)
     "if (m) a.push(\"-threads\", \"1\", \"-i\", m.file);",
@@ -258,12 +266,14 @@ test("A STORY OF FIFTEEN SCENES CUT IN PARTS is, frame for frame, the story one 
     ];
     const how = { clips: true, moving: true };
     const scenes = frames.map((f, i) => sceneIn(i, { still: stills[i], clip: clips[i] }, f, W, H, how));
+    const moves = stillMoves(scenes.map((x, i) => ({ move: x.move || null, frames: frames[i] })));
 
     // ONE CUT — what the single cut does (assembleNarrated → build): every scene at once, the words, the mix, -t total
     const one = path.join(dir, "one.mp4");
     const g = [
       ...scenes.map((s, i) => `[${i}:v]${s.chain}[c${i}]`), `${scenes.map((_, i) => `[c${i}]`).join("")}concat=n=${N}:v=1:a=0[vcat]`,
-      `[vcat]${captionFilters(cards, "bold", font, W, H).join(",")}[vf]`,
+      // (the stills' moves over the joined picture, then the words — as build() lays them since 2026-11-25)
+      `[vcat]${moves},${captionFilters(cards, "bold", font, W, H).join(",")}[vf]`,
       `[${N}:a]aresample=44100,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=44100,apad=pad_dur=${TAIL}[vo]`,
       `[${N + 1}:a]aresample=44100,volume=0.18,afade=t=out:st=${Math.max(0, total - 1.6).toFixed(2)}:d=1.6[bg]`,
       "[vo][bg]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]",
@@ -313,7 +323,7 @@ test("A STORY OF FIFTEEN SCENES CUT IN PARTS is, frame for frame, the story one 
     // …and the word that is up across the edge between two parts is there on both sides of it
     const edgeFrame = parts[1].start;
     const plain = path.join(dir, "plain.mp4");
-    ff(["-y", ...scenes.flatMap((x) => x.input), "-filter_complex", `${scenes.map((x, i) => `[${i}:v]${x.chain}[c${i}]`).join(";")};${scenes.map((_, i) => `[c${i}]`).join("")}concat=n=${N}:v=1:a=0[v]`, "-map", "[v]", ...STORY_PICTURE, plain]);
+    ff(["-y", ...scenes.flatMap((x) => x.input), "-filter_complex", `${scenes.map((x, i) => `[${i}:v]${x.chain}[c${i}]`).join(";")};${scenes.map((_, i) => `[c${i}]`).join("")}concat=n=${N}:v=1:a=0,${moves}[v]`, "-map", "[v]", ...STORY_PICTURE, plain]);
     const bare = gridOf(plain, 45, 80);
     const lit = (frame: number) => { let d = 0; for (let j = 0; j < fine[frame].length; j++) d = Math.max(d, Math.abs(fine[frame][j] - bare[frame][j])); return d; };
     assert.ok(lit(edgeFrame - 2) > 60 && lit(edgeFrame + 2) > 60, `the card across the edge: ${lit(edgeFrame - 2)} before, ${lit(edgeFrame + 2)} after`);
