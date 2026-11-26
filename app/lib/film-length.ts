@@ -108,14 +108,27 @@ export function lengthStops(way: FilmWay, o: { min?: number; per?: number } = {}
  *   with the four looks at it: $0.026. The voice, the listen, the cast's portraits, the music bed: under half a
  *   cent. ≈ $0.08 a second. (While films are free that is ours to pay: a five-minute told story is about $24 —
  *   $15.50 of it the motion of its 32 scenes — and a five-minute acted one about $54.)
+ *  STILL — a told story over its STILL pictures, each with its slow move (story-motion.ts → THE LADDER, its first
+ *   rung; the owner, 2026-11-25, of the Stories shelf that promised only moving pictures: "we also need the timeless
+ *   pictures with narration as an extremely cheap base tier"). The same story with nothing spent on motion: the 2K
+ *   picture a scene and its looks, $0.026; the voice, the listen, the cast's portraits, the music bed, under half a
+ *   cent. ≈ $0.029 a second — a five-minute one is about $8.70. (The cut that moves the stills is our own ffmpeg.)
  * A Studio-plan token is worth $0.0433, and his rule is at least 20% profit on every generation: acted needs
- * $0.18 × 1.2 ÷ $0.0433 = 4.9 tokens a second or more, told $0.08 × 1.2 ÷ $0.0433 = 2.2. */
-export const FILM_TOKENS_PER_SECOND: Record<FilmWay, number> = { acted: 5, narrated: 2.5 };
+ * $0.18 × 1.2 ÷ $0.0433 = 4.9 tokens a second or more, told $0.08 × 1.2 ÷ $0.0433 = 2.2, told over stills
+ * $0.029 × 1.2 ÷ $0.0433 = 0.80 — so 1. A one-minute story: still 60 · moving 150 · acted 300. */
+export const FILM_TOKENS_PER_SECOND: Record<PriceWay, number> = { acted: 5, narrated: 2.5, still: 1 };
+
+/** WHAT A FILM IS PRICED AS — the two ways a film is made, and the cheapest rung of a told one: told over its
+ *  STILL pictures ("narrated" is a told story whose pictures move). */
+export type PriceWay = FilmWay | "still";
+/** The rung a film is priced at: a told story over still pictures is "still", anything else its way. */
+export const priceWay = (way: FilmWay, still?: boolean): PriceWay => (way === "narrated" && still ? "still" : way);
 
 /** What a film of this many seconds is estimated at, in tokens — rounded UP to a five. */
-export function tokensFor(way: FilmWay, seconds: number): number {
+export function tokensFor(way: PriceWay, seconds: number): number {
   const s = Number(seconds) || 0;
-  return s > 0 ? Math.ceil((s * FILM_TOKENS_PER_SECOND[way]) / 5 - 1e-9) * 5 : 0;
+  const rate = FILM_TOKENS_PER_SECOND[way];
+  return s > 0 && rate > 0 ? Math.ceil((s * rate) / 5 - 1e-9) * 5 : 0;
 }
 
 /* ---- HOW LONG IT TAKES TO MAKE ----

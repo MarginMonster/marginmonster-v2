@@ -15,7 +15,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   FILM_TOKENS_PER_SECOND, MAX_FILM_SECONDS, SHOT_SECONDS, WRITE_AT_ONCE, clampShots, clockLabel, filmPlaces, laneMinutes, lengthStops, maxShots, minShots, partBrief, planBrief, planSchema,
-  renderMinutes, scriptParts, secondsFor, takePlan, tokensFor, turnPart, type FilmWay,
+  priceWay, renderMinutes, scriptParts, secondsFor, takePlan, tokensFor, turnPart, type FilmWay,
 } from "../app/lib/film-length.ts";
 import { TYPICAL_SHOT_SECONDS, clipSecondsFor, estimateSpeakSeconds } from "../app/lib/speech-meter.ts";
 import { MOTION_USD_PER_SECOND, motionSeconds, storyTypicalSeconds } from "../app/lib/story-motion.ts";
@@ -140,7 +140,8 @@ test("a clock reads to the nearest five seconds, and a film is never said to be 
 });
 
 test("THE PRICE: an estimate, rounded up to a five — and at these rates every generation clears his 20%", () => {
-  assert.deepEqual(FILM_TOKENS_PER_SECOND, { acted: 5, narrated: 2.5 });
+  // (the still rung joined on 2026-11-25 — its own test below; the two ways' rates are what they were)
+  assert.deepEqual(FILM_TOKENS_PER_SECOND, { acted: 5, narrated: 2.5, still: 1 });
   assert.equal(tokensFor("acted", 20), 100);
   assert.equal(tokensFor("acted", 29), 145);
   assert.equal(tokensFor("acted", 29.1), 150);
@@ -163,6 +164,43 @@ test("THE PRICE: an estimate, rounded up to a five — and at these rates every 
   const told = (motionSeconds(SHOT_SECONDS.narrated) * MOTION_USD_PER_SECOND + 0.15 * 1.33 + 0.05) / SHOT_SECONDS.narrated + 0.004;
   assert.ok(told > 0.07 && told < 0.09, `$${told.toFixed(3)} a second`);
   assert.ok(FILM_TOKENS_PER_SECOND.narrated * TOKEN_USD >= told * 1.2, "told: at least 20% over what it costs");
+});
+
+test("THE STILL RUNG: a told story over its still pictures is the cheapest — 1 token a second, still clearing his 20%", () => {
+  // the owner, 2026-11-25: "we also need the timeless pictures with narration as an extremely cheap base tier"
+  const TOKEN_USD = 0.0433;
+  // the same story with nothing spent on motion: a 2K picture a scene (one in three twice) and its looks, the voice…
+  const still = (0.15 * 1.33 + 0.05) / SHOT_SECONDS.narrated + 0.004;
+  assert.ok(still > 0.025 && still < 0.035, `$${still.toFixed(3)} a second`);
+  assert.equal(Math.round(((still * 1.2) / TOKEN_USD) * 10) / 10, 0.8, "0.029 × 1.2 ÷ 0.0433 = 0.80 — so 1");
+  assert.ok(FILM_TOKENS_PER_SECOND.still * TOKEN_USD >= still * 1.2, "still: at least 20% over what it costs");
+  // the three rungs, cheapest first
+  assert.ok(FILM_TOKENS_PER_SECOND.still < FILM_TOKENS_PER_SECOND.narrated && FILM_TOKENS_PER_SECOND.narrated < FILM_TOKENS_PER_SECOND.acted);
+  // a one-minute story: still 60 · moving 150 · acted 300 — and five minutes of each
+  assert.equal(tokensFor("still", 60), 60);
+  assert.equal(tokensFor("narrated", 60), 150);
+  assert.equal(tokensFor("acted", 60), 300);
+  assert.equal(tokensFor("still", 300), 300);
+  assert.equal(tokensFor("still", 57), 60, "rounded UP to a five, as the others are");
+  assert.equal(tokensFor("still", 0), 0);
+  for (const s of [5, 37, 141, 299]) assert.equal(tokensFor("still", s) % 5, 0);
+  // which rung a film is priced at: only a TOLD story can be still; an acted film asked "still" is still acted
+  assert.equal(priceWay("narrated", true), "still");
+  assert.equal(priceWay("narrated", false), "narrated");
+  assert.equal(priceWay("narrated"), "narrated");
+  assert.equal(priceWay("acted", true), "acted");
+  assert.equal(priceWay("acted"), "acted");
+  // the slider's every stop, still: never more than moving, never going down as it goes up
+  const stops = lengthStops("narrated");
+  for (let i = 0; i < stops.length; i++) {
+    const s = secondsFor("narrated", stops[i]);
+    assert.ok(tokensFor("still", s) < tokensFor("narrated", s), `${stops[i]} scenes`);
+    if (i) assert.ok(tokensFor("still", s) >= tokensFor("still", secondsFor("narrated", stops[i - 1])));
+  }
+  // the arithmetic is said where the rate is
+  const src = read("app", "lib", "film-length.ts");
+  assert.ok(src.includes("$0.029 × 1.2 ÷ $0.0433 = 0.80 — so 1. A one-minute story: still 60 · moving 150 · acted 300."));
+  assert.ok(src.includes("export const FILM_TOKENS_PER_SECOND: Record<PriceWay, number> = { acted: 5, narrated: 2.5, still: 1 };"));
 });
 
 test("how long it takes: acted shots one after another; a told story by the sum the page already counts down from", () => {
