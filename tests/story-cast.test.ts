@@ -337,3 +337,14 @@ test("A STORY'S PICKED STARS REACH ITS WRITER WITH THEIR GENDERS (2026-11-26: th
   // …and the server hands them to the writer's CAST GENDERS line, whatever the template
   assert.ok(ui.includes("castGenders: parseCastGenders(form.get(\"filmCastGenders\") as string)"));
 });
+
+test("A MUSIC VIDEO'S ARTIST AND CO-STARS ARE THE MUSIC VIDEO'S — a story is never written with their names (2026-11-26)", () => {
+  // (picked in the Music Video builder earlier in the page's life, or by resuming a kept music video, they were posted
+  //  with every Write: the story's first invented character was renamed after the artist, and told "<artist> is MALE")
+  const ui = fs.readFileSync(path.join(root, "app", "routes", "web.film.tsx"), "utf8");
+  assert.ok(ui.includes("filmProductDescription: prodDesc, ...(tmpl?.lipSyncSinger ? { ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), filmArtistGender: artistGender } : {}),"), "the writer's ask sends them for a music video only");
+  assert.ok(ui.includes("genre, ...(tmpl.lipSyncSinger ? { artistName, castNames, artistGender: parseArtistGender(form.get(\"filmArtistGender\") as string) } : {}), castGenders:"), "the action passes them on for a music video only");
+  const eng = fs.readFileSync(path.join(root, "app", "lib", "film-engine.server.ts"), "utf8");
+  assert.ok(eng.includes("const artistName = tmpl.lipSyncSinger ? (opts.artistName || \"\").trim().slice(0, 60) : \"\";"), "…and the writer takes them for a music video only");
+  assert.ok(eng.includes("const castNames = tmpl.lipSyncSinger ? (opts.castNames || []).map((n) => (n || \"\").trim()).filter(Boolean).slice(0, 4) : [];"));
+});

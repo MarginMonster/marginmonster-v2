@@ -676,8 +676,9 @@ export async function previewFilmTreatment(opts: {
   const exLook = tmpl.childSafe
     ? "a cheerful 3-year-old boy with curly brown hair, round cheeks, a red-striped shirt and blue overalls"
     : "a wiry night-bus driver in her forties with a shaved head, round glasses, a mustard cardigan and a steel thermos";
-  const artistName = (opts.artistName || "").trim().slice(0, 60);
-  const castNames = (opts.castNames || []).map((n) => (n || "").trim()).filter(Boolean).slice(0, 4);
+  // (a music video's artist and co-stars are the music video's: a story never takes them)
+  const artistName = tmpl.lipSyncSinger ? (opts.artistName || "").trim().slice(0, 60) : "";
+  const castNames = tmpl.lipSyncSinger ? (opts.castNames || []).map((n) => (n || "").trim()).filter(Boolean).slice(0, 4) : [];
   const coStars = castNames.length
     ? ` Named co-stars who ALSO appear — use THESE EXACT names and NEVER invent other named people: ${castNames.join(", ")}. In every scene where more than the singer appears (a band, friends, a dance, a crowd of known faces), NAME which of them is there IN that scene's visual (e.g. "${castNames[0]} plays guitar beside ${artistName || "the singer"}"), so those scenes feature the real cast — not strangers. Everyone a VISUAL names is DRAWN in that picture: name someone only when they are IN the shot — never as the owner of a thing ("${castNames[0]}'s car"; say "a car").`
     // No co-stars picked = a SOLO artist. The old wording ("you may add ONE unnamed bandmate") still got a
