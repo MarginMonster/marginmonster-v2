@@ -360,8 +360,10 @@ test("every genre is on the shelves under its word: acted — and, but for Actio
   for (const h of FILM_HEROES) assert.ok(ui.includes(`.${h.tint}{background:`), `${h.id}: ${h.tint}`);
   // each kick is one plain line, and none names anybody else's film or show
   for (const h of FILM_HEROES) assert.ok(h.kick.length >= 10 && !/[.!?]$/.test(h.kick) && !/\b(Netflix|Disney|Marvel|Pixar|Mann|Peppa|Bluey|CoComelon)\b/i.test(h.kick), h.kick);
-  // two shelves of categories, in a film shelf's order
-  const [told, acted] = heroShelves(FILM_HEROES);
+  // two shelves of categories, in a film shelf's order (found by their keys: since 2026-11-26 the still shelf stands
+  // between them, re-listing the told ones)
+  const shelves = heroShelves(FILM_HEROES);
+  const told = shelves.find((s) => s.key === "told")!, acted = shelves.find((s) => s.key === "acted")!;
   assert.deepEqual(told.heroes.map((h) => h.tmpl), ["testmovie", "comedy", "horror", "thriller", "romance", "scifi", "fantasy", "mystery", "moral"]);
   assert.deepEqual(acted.heroes.map((h) => h.tmpl), GENRES);
 });

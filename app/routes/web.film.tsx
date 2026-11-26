@@ -51,6 +51,8 @@ import { storyThreat, threatFromWords } from "../lib/acted-staging";
 import { castEntry } from "../lib/story-picture";
 // (2026-11-24) the posters stand on three shelves: told · acted · sung
 import { heroShelves } from "../lib/film-heroes";
+// (2026-11-26) …and the told heroes again on a shelf of their still rung: a poster's key says which shelf it stands on
+import { posterKey } from "../lib/film-heroes";
 // (2026-11-24) THE LYRIC VIDEO: a member's own song, its words on screen — a poster on the sung shelf, its own builder
 import { LYRIC_HERO } from "../lib/film-heroes";
 // (2026-11-24) FOUND FOOTAGE has its own builder (web.found-footage.tsx): a door to it on the Films shelf, operators only
@@ -2817,12 +2819,18 @@ export default function FilmStudio() {
   const [anim, setAnim] = useState<"" | "in" | "out">("");
   // which format the hero's reel is showing off right now ("" = its opening clip)
   const [reelKey, setReelKey] = useState("");
-  const enterFormat = (key: string) => {
+  // THE RUNG A POSTER OPENS ON (film-heroes.ts → SHELVES, 2026-11-26 — the owner, of the still tier: "Maybe just make
+  // it an additional tier on the actual movie maker (would look like more options)"). A told hero stands on two
+  // shelves, Stories and Still Stories: `rung` is the shelf's, and the poster that pops is the one tapped (posterKey).
+  // It is set AFTER switchHero, whose own setPictures("moving") runs first in the same batch — so the shelf's rung wins.
+  // Re-entering the same hero from the other shelf changes ONLY the rung: its script, cast and storyboard are kept (a
+  // still story's pictures are the same pictures — Still and Moving are the two tiles of its Length step).
+  const enterFormat = (key: string, rung?: StoryPictures) => {
     // Clean, robust transition (the old fly-to-viewport-center math glitched the card up into the hero,
     // worse now the layout is full-bleed): the tapped card POPS in place + the others recede, then the
     // format's own banner + builder fade in where the hero was. No position math to get wrong.
     const reduce = typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    setZoomKey(key); setAnim("in");
+    setZoomKey(posterKey(key, rung)); setAnim("in");
     // (the Lyric Video is not a film hero — switchHero passes it by — so opening it is said here, and the format
     //  that was open before it is kept as it was)
     setLyricOn(key === LYRIC_HERO.id);
@@ -2830,7 +2838,7 @@ export default function FilmStudio() {
     //  come back blank — script, cast and pictures gone — because every entry reset the builder)
     // (`key` is a hero's id; two heroes can share a template — Horror Story and Horror Film — so the test
     //  is on the hero, not the template)
-    window.setTimeout(() => { if (key !== heroId) switchHero(key); setEntered(true); setAnim(""); setZoomKey(null); }, reduce ? 0 : 400);
+    window.setTimeout(() => { if (key !== heroId) switchHero(key); if (rung) setPictures(rung); setEntered(true); setAnim(""); setZoomKey(null); }, reduce ? 0 : 400);
   };
   const exitFormat = () => {
     setAnim("out");
@@ -4158,14 +4166,16 @@ export default function FilmStudio() {
           <div className={`fs-shelves${anim === "in" ? " throw" : ""}`}>
             {/* THE SHELVES (film-heroes.ts → heroShelves): what is TOLD by a narrator, what is ACTED on camera
                 and what is SUNG each stand under their own heading, which says in a line what every poster
-                on that shelf has in common — nobody has to open one to find out. */}
-            {heroShelves(heroes).map((sh) => (
+                on that shelf has in common — nobody has to open one to find out. (2026-11-26: and the told
+                heroes again, on the STILL shelf — the cheapest rung as "more options", the owner's words — where
+                pictures can move at all; elsewhere every story is told over stills already.) */}
+            {heroShelves(heroes, { still: d.storyMotion }).map((sh) => (
             <section key={sh.key} className={`fs-shelf is-${sh.key}`} aria-labelledby={`fs-shelf-${sh.key}`}>
               {/* the card's ENGRAVING (THE TICKET, in the stylesheet): a layer that covers the card and cuts
                   itself to the card's shape, so the card itself clips nothing — a picture only */}
               <span className="fs-shelf-wm" aria-hidden="true" />
               <header className="fs-shelf-h">
-                <span className="fs-shelf-ico" aria-hidden="true"><Ico n={sh.key === "told" ? "book" : sh.key === "acted" ? "film" : "music"} size={18} /></span>
+                <span className="fs-shelf-ico" aria-hidden="true"><Ico n={sh.key === "told" ? "book" : sh.key === "still" ? "image" : sh.key === "acted" ? "film" : "music"} size={18} /></span>
                 <span className="fs-shelf-txt">
                   <h2 className="fs-shelf-name" id={`fs-shelf-${sh.key}`}>{t(sh.name)}</h2>
                   <span>{t(sh.line)}</span>
@@ -4179,15 +4189,19 @@ export default function FilmStudio() {
                 (drama, horror, comedy, etch)"): "Comedy", not "Comedy Film" — the shelf it stands on says how it
                 is told. Two posters now carry the same word, one per shelf, so a screen reader is told the whole
                 name ("Comedy Film", "Comedy Story") with the line under it. */}
+            {/* A RUNG SHELF (sh.rung — the still one) re-lists the told heroes: each poster opens its hero ON THAT RUNG,
+                is the one chosen only while that rung is, and never plays a moving loop — its picture drifts the way a
+                still story's does (THE STILL SHELF, in the stylesheet), its badge is the shelf's picture where a
+                Story's is the book, and its note is "Still pictures". */}
             {sh.heroes.map((h) => (
-              <button type="button" role="tab" key={h.id} className={`fs-fmt${zoomKey === h.id ? " zoom" : ""}${h.told === "narrated" ? " is-told" : ""}`}
-                aria-selected={heroId === h.id} aria-label={[t(h.name), h.kick ? t(h.kick) : "", h.meta ? t(h.meta) : ""].filter(Boolean).join(" · ")} onClick={() => enterFormat(h.id)}>
+              <button type="button" role="tab" key={h.id} className={`fs-fmt${zoomKey === posterKey(h.id, sh.rung) ? " zoom" : ""}${h.told === "narrated" ? " is-told" : ""}`}
+                aria-selected={heroId === h.id && (!sh.rung || pictures === sh.rung)} aria-label={[t(h.name), h.kick ? t(h.kick) : "", sh.rung === "still" ? t("Still pictures") : h.meta ? t(h.meta) : ""].filter(Boolean).join(" · ")} onClick={() => enterFormat(h.id, sh.rung)}>
                 <span className="fs-fmt-cover">
-                  <LoopCover k={h.media} />
-                  <span className={`fs-fmt-ico ${h.tint}`} aria-hidden="true">{fmtIcon(h.tmpl, h.told === "narrated")}</span>
+                  <LoopCover k={h.media} loop={sh.rung === "still" ? false : undefined} />
+                  <span className={`fs-fmt-ico ${h.tint}`} aria-hidden="true">{sh.rung === "still" ? <Ico n="image" size={15} /> : fmtIcon(h.tmpl, h.told === "narrated")}</span>
                   <span className="fs-fmt-label"><b>{t(h.card)}</b></span>
                 </span>
-                {h.kick ? <span className="fs-fmt-sub">{t(h.kick)}{h.meta ? <em> · {t(h.meta)}</em> : null}</span> : null}
+                {h.kick ? <span className="fs-fmt-sub">{t(h.kick)}{sh.rung === "still" ? <em> · {t("Still pictures")}</em> : h.meta ? <em> · {t(h.meta)}</em> : null}</span> : null}
               </button>
             ))}
             {/* THE LYRIC VIDEO (film-heroes.ts → LYRIC_HERO): after the sung heroes — operators only until it has a price */}
@@ -5614,6 +5628,9 @@ ${CAST_ID_CSS}
 .fs-shelves{display:grid;gap:18px;margin:18px 0 6px;}
 .fs-shelf{position:relative;border-radius:22px;padding:14px 14px 14px;border:1px solid var(--line,#E4DFCF);background:linear-gradient(180deg,#FFFEFA,#FBF8F0);transition:background .3s ease,border-color .3s ease;}
 .fs-shelf.is-told{--shelf:#A8741B;--shelf-soft:rgba(168,116,27,.1);}
+/* (the STILL shelf, 2026-11-26: a cool steel blue — a still picture's own cold light, apart from the storybook gold,
+   the stage's green and the music video's violet. Its tag reads 5.0:1 on its plate, its icon 5.7:1) */
+.fs-shelf.is-still{--shelf:#3E6A8E;--shelf-soft:rgba(62,106,142,.09);}
 .fs-shelf.is-acted{--shelf:#0C7A46;--shelf-soft:rgba(12,122,70,.09);}
 .fs-shelf.is-sung{--shelf:#6B4BC8;--shelf-soft:rgba(107,75,200,.09);}
 .fs-shelf::before{content:"";position:absolute;left:0;top:18px;bottom:18px;width:4px;border-radius:0 4px 4px 0;background:var(--shelf);opacity:.85;}
@@ -5681,6 +5698,27 @@ ${CAST_ID_CSS}
 /* the format's loop, faded in over its still while the card is pointed at (see LoopCover) */
 .fs-fmt-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .35s ease;pointer-events:none;}
 .fs-fmt-vid.on{opacity:1;}
+/* THE STILL SHELF (2026-11-26): A STILL POSTER MOVES THE WAY A STILL STORY MOVES. The owner, of the still tier: "Maybe
+   just make it an additional tier on the actual movie maker (would look like more options)" — and nine posters the
+   Stories shelf already shows, standing still, read as the same shelf twice. So a poster on it plays no loop: its
+   picture drifts as the story's own default camera moves a picture — Gentle, S13b's mmCamGentle (push in, drift,
+   ease back) — slowly, 14 s a way and back again, a transform and nothing else (no video, no script). On a touch
+   screen it always moves, and its neighbours start at another point of the move, so the row breathes rather than
+   marching. Where there is a mouse it moves while the poster is pointed at or has the keyboard's focus, as a loop
+   plays — from the move's start, so a row at rest stands evenly framed (photographed at 1280: posters paused at
+   three points of the move read as three odd crops). Nothing moves for anyone who asks for less motion. (Within the
+   cover: at its widest the move shifts the picture 5.75% of its width at 115% — 7.5% to spare on each side; at its
+   end 3.2% at 107%, with 3.5% — no edge ever shows.) */
+.fs-shelf.is-still .fs-fmt-cover img{animation:mmCamGentle 14s ease-in-out infinite alternate;}
+@media not all and (hover:hover) and (pointer:fine){
+  .fs-shelf.is-still .fs-fmt:nth-child(3n+2) .fs-fmt-cover img{animation-delay:-4.7s;}
+  .fs-shelf.is-still .fs-fmt:nth-child(3n) .fs-fmt-cover img{animation-delay:-9.3s;}
+}
+@media(hover:hover) and (pointer:fine){
+  .fs-shelf.is-still .fs-fmt-cover img{animation-play-state:paused;}
+  .fs-shelf.is-still .fs-fmt:hover .fs-fmt-cover img,.fs-shelf.is-still :focus-visible > .fs-fmt-cover img{animation-play-state:running;}
+}
+@media(prefers-reduced-motion:reduce){.fs-shelf.is-still .fs-fmt-cover img{animation:none;}}
 /* the covers MOVE now, so the title has to win: a deeper, taller shade under it and a bigger, heavier name */
 .fs-fmt-cover::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(6,14,10,.94) 0%,rgba(6,14,10,.62) 24%,rgba(6,14,10,.14) 50%,transparent 68%);}
 .fs-fmt-ico{position:absolute;z-index:2;top:8px;left:8px;width:28px;height:28px;border-radius:9px;display:grid;place-items:center;box-shadow:0 5px 14px -5px rgba(0,0,0,.6);}
