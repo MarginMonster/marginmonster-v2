@@ -1197,9 +1197,23 @@ export function shapedAss(cards: Card[], look: "bold" | "highlight" | "subtitles
  * VISUAL names them (the writer is told to name everyone who is in it, and nobody who is not). */
 
 const NAME_SKIP = /^(the|a|an|mr|mrs|ms|miss|dr|sir|lady|lord|old|little|big|young|captain|king|queen|uncle|aunt|grandma|grandpa)$/i;
-/** The words of a name a scene might call the character by: "Mourning Mary" → Mourning, Mary; "The Ganve" → Ganve. */
+/* A NAME THAT ONLY DESCRIBES IS CALLED BY ITS HEAD WORD (2026-11-26, live): a horror story's creature was named "the
+ * claw machine ghost", and every scene that showed "the claw machine" — the machine, its glass still empty — counted
+ * the ghost as in it. The picture checks said "cast not in it", and the redraws drew the ghost's hands into a scene
+ * whose words had none and a pale figure into the last one: five redraws in a four-scene story, its reveal given away
+ * two scenes early. A proper name is called by any of its own words ("Mourning Mary" → Mary). A name that only
+ * describes — more than one word, none of them written with a capital: "the claw machine ghost", "the woman in grey",
+ * "the keeper's daughter" — is called by its HEAD word only: the ghost, the woman, the daughter. (A script with no
+ * capitals at all — Urdu, Chinese — keeps every word, as before.) */
+const ABOUT_HEAD = /\s+(?:in|with|of|from|who|that|on|at|under|behind|beside|by|near|wearing|holding|inside)\s+/i;
+const describes = (words: string[]): boolean => words.length > 1 && !words.some((w) => /^\p{Lu}/u.test(w)) && words.some((w) => /\p{Ll}/u.test(w));
+/** The words of a name a scene might call the character by: "Mourning Mary" → Mourning, Mary; "The Ganve" → Ganve;
+ *  "the claw machine ghost" → ghost. */
 export function nameWords(name: string): string[] {
-  return (name || "").split(/[^\p{L}\p{N}'’-]+/u).filter((w) => w.length >= 2 && !NAME_SKIP.test(w));
+  const words = (name || "").split(/[^\p{L}\p{N}'’-]+/u).filter((w) => w.length >= 2 && !NAME_SKIP.test(w));
+  if (!describes(words)) return words;
+  const head = (name || "").split(ABOUT_HEAD)[0].split(/[^\p{L}\p{N}'’-]+/u).filter((w) => w.length >= 2 && !NAME_SKIP.test(w));
+  return [head[head.length - 1] || words[words.length - 1]];
 }
 /** Is this character named in the text? The whole name in any case, or one of its own words exactly as
  *  written — as a word of its own, so "Dot" is not in "dotted", and "Howl" is not "a distant howl". */

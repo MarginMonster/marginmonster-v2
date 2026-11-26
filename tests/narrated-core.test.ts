@@ -192,6 +192,24 @@ test("who is in a scene's picture is whoever its VISUAL names — and nobody els
   assert.ok(namedIn("Mourning Mary", "the veil of mourning mary on the chair"));
   assert.ok(namedIn("The Ganve", "Ganve crouches in the reeds") && !namedIn("The Ganve", "The lake at dawn, empty"));
   assert.deepEqual(nameWords("The Ganve"), ["Ganve"]);
+  // A NAME THAT ONLY DESCRIBES is called by its head word (live 2026-11-26: "the claw machine ghost" was counted in
+  // every scene that showed the claw machine, and the redraws drew its hands into them)
+  assert.deepEqual(nameWords("the claw machine ghost"), ["ghost"]);
+  assert.deepEqual(nameWords("the woman in grey"), ["woman"]);
+  assert.deepEqual(nameWords("the keeper's daughter"), ["daughter"]);
+  assert.deepEqual(nameWords("the ghost of the pier"), ["ghost"]);
+  assert.deepEqual(nameWords("the skater"), ["skater"], "one word: as before");
+  assert.deepEqual(nameWords("Mourning Mary"), ["Mourning", "Mary"], "a proper name: every word, as before");
+  assert.deepEqual(nameWords("Old Tomas the ferryman"), ["Tomas", "ferryman"], "any capital makes it a proper name");
+  assert.deepEqual(nameWords("علی رضا"), ["علی", "رضا"], "a script with no capitals keeps every word");
+  const lit = "FROM BELOW: low angle looking up at the claw machine, its chipped mustard-yellow case glowing faintly, Girish standing beside it.";
+  assert.equal(presentIn("the claw machine ghost", lit), false, "the machine is not the ghost");
+  assert.equal(presentIn("the claw machine ghost", "WIDE: Girish stands frozen before the claw machine as every dead machine flickers alight."), false);
+  assert.equal(presentIn("the claw machine ghost", "CLOSE: the ghost presses its face to the glass of the claw machine."), true);
+  assert.equal(presentIn("the claw machine ghost", "the claw machine ghost watches from among the toys"), true, "the whole name");
+  assert.equal(presentIn("the claw machine ghost", "the ghost's long pale fingers spread on the glass"), true, "its hand is it");
+  assert.equal(namedIn("the woman in grey", "a grey coat hangs on the hook"), false);
+  assert.equal(namedIn("the woman in grey", "the woman turns from the window"), true);
   assert.equal(entryName("Marla, a tired night clerk in her forties"), "Marla");
   // the scene decides
   const others = ["Marla, a tired night clerk in her forties", "Denny, a lanky teenage stock boy"];
