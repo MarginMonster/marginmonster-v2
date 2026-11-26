@@ -9,10 +9,10 @@
  *   · the run-down look counts only where no words of the story ask for a worn place (story-picture.ts → wornAsked);
  *   · a stare counts only where the shot is not facing us — never in a WALKING, an OVER THE SHOULDER or a WIDE, nor where
  *     the scene's words have them look our way (story-picture.ts → stareCounts);
- *   · a story's redraws are capped at half its scenes, rounded up — the worst faults from all of it, a stare or a worn
- *     place from half (story-picture.ts → redrawCap, faultTier, spendRedraw);
+ *   · a story's redraws are capped at half its scenes, rounded up — a stare or a worn place from half of it; a hard fault
+ *     is never refused, and counted (story-picture.ts → redrawCap, faultTier, spendRedraw — review of S14b);
  *   · a band a crop puts right, with nothing else wrong, is covered at once and never drawn again (coverNow).
- * Replayed through these rules the same day draws 79 pictures, 1.34 a scene. */
+ * Replayed through these rules the same day draws 82 pictures, 1.39 a scene. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -143,36 +143,47 @@ test("the worst faults first: hard ones break the story or cannot be shown, a st
   assert.equal(coverNow(clean), false);
 });
 
-test("a story's redraws are capped at half its scenes — a stare or a worn place may spend only half of that", () => {
+test("a story's redraws are capped at half its scenes — a stare or a worn place may spend only half of that; a hard fault is never refused", () => {
   assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 13, 32].map(redrawCap), [0, 1, 1, 2, 2, 3, 3, 7, 16]);
-  // at most 1.5 draws a scene (1.6 at five, 2 for one re-rolled scene)
+  // soft faults alone: at most 1.5 draws a scene (1.6 at five, 2 for one re-rolled scene)
   for (const n of [4, 5, 6, 13, 32]) assert.ok((n + redrawCap(n)) / n <= 1.6, String(n));
   const p = redrawPurse(5);
   assert.deepEqual(p, { cap: 3, soft: 2, spent: 0, spentSoft: 0 });
   assert.equal(spendRedraw(p, "soft"), true);
   assert.equal(spendRedraw(p, "soft"), true);
   assert.equal(spendRedraw(p, "soft"), false, "the soft half is spent");
-  assert.equal(spendRedraw(p, "hard"), true, "…the rest is the hard faults'");
-  assert.equal(spendRedraw(p, "hard"), false, "all spent: the best try is kept");
+  assert.equal(spendRedraw(p, "hard"), true, "…a hard fault is drawn again");
+  // NEVER LET THROUGH TO SAVE MONEY (review of S14b): past the cap, somebody missing, bare, split or a stranger is still drawn again
+  assert.equal(spendRedraw(p, "hard"), true, "past the cap: still drawn again");
+  assert.equal(spendRedraw(p, "hard"), true);
+  assert.deepEqual(p, { cap: 3, soft: 2, spent: 5, spentSoft: 2 }, "…and counted");
   assert.equal(spendRedraw(redrawPurse(5), ""), false, "nothing wrong: nothing to spend");
-  // a hard fault can spend the whole cap
+  // the hard faults' spending leaves less for the soft ones — the cap cuts the soft faults first
   const q = redrawPurse(4);
   assert.equal(spendRedraw(q, "hard") && spendRedraw(q, "hard"), true);
-  assert.equal(spendRedraw(q, "soft"), false);
-  // one re-rolled scene: one redraw, for either
-  assert.equal(spendRedraw(redrawPurse(1), "soft"), true);
+  assert.equal(spendRedraw(q, "soft"), false, "hard faults spent the cap: no stare is drawn again");
+  assert.equal(spendRedraw(q, "hard"), true, "…a hard one still is");
+  // one re-rolled scene (or two): one redraw for a soft fault — and a hard one after it is not refused
+  const one = redrawPurse(1);
+  assert.equal(spendRedraw(one, "soft"), true);
+  assert.equal(spendRedraw(one, "soft"), false);
+  assert.equal(spendRedraw(one, "hard"), true, "a stare spent the only redraw: a scene with somebody missing is still drawn again");
+  const two = redrawPurse(2);
+  assert.equal(spendRedraw(two, "hard"), true);
+  assert.equal(spendRedraw(two, "soft"), false);
   // STORY_REDRAW_CAP=off: three goes a scene, as before
   assert.deepEqual(redrawPurse(5, false), { cap: 10, soft: 10, spent: 0, spentSoft: 0 });
 });
 
 /** The redraw loop's decisions over one story's logged goes, four scenes at a time (narrated-story.server.ts →
  *  narratedSceneSeeds): which go each scene keeps, and how many pictures it drew. `rules` false = as before. */
-function replay(s: Story, rules: boolean): { draws: number; kept: number[]; counted: Record<string, number> } {
+function replay(s: Story, rules: boolean): { draws: number; kept: number[]; counted: Record<string, number>; purse: ReturnType<typeof redrawPurse>; hardKept: number } {
   const words = wordsOf(s);
   const purse = redrawPurse(s.scenes.length, rules);
   const kept: number[] = new Array(s.scenes.length).fill(-1);
   const counted: Record<string, number> = {};
-  let draws = 0, next = 0;
+  // (a scene kept with a hard fault while it still had goes — what the budget must never do)
+  let draws = 0, next = 0, hardKept = 0;
   const lanes: Array<{ i: number; a: number } | null> = [null, null, null, null];
   const take = (w: number) => { lanes[w] = next < s.scenes.length ? { i: next++, a: 0 } : null; };
   for (let w = 0; w < 4; w++) take(w);
@@ -188,14 +199,15 @@ function replay(s: Story, rules: boolean): { draws: number; kept: number[]; coun
       const check: StoryCheck = { seen: [!f.includes("C")], panels: false, ...(f.includes("X") ? { extra: true } : {}), ...(f.includes("O") ? { outside: true } : {}), ...(f.includes("L") ? { lens: ["x"] } : {}), ...(f.includes("G") ? { grimy: true } : {}) };
       const tier = f.includes("B") ? "hard" : faultTier(check);
       if (tier && job.a < 2 && spendRedraw(purse, tier)) { job.a++; continue; }
+      if (tier === "hard" && job.a < 2) hardKept++;
       kept[job.i] = job.a;
       take(w);
     }
   }
-  return { draws, kept, counted };
+  return { draws, kept, counted, purse, hardKept };
 }
 
-test("the measured day, replayed: 122 pictures as it was, 79 with the checks that listen and the cap", () => {
+test("the measured day, replayed: 122 pictures as it was, 82 with the checks that listen and the cap", () => {
   let before = 0, after = 0, scenes = 0;
   const was: Record<string, number> = {}, now: Record<string, number> = {};
   for (const s of day.stories) {
@@ -203,16 +215,21 @@ test("the measured day, replayed: 122 pictures as it was, 79 with the checks tha
     before += a.draws; after += b.draws; scenes += s.scenes.length;
     for (const [k, v] of Object.entries(a.counted)) was[k] = (was[k] || 0) + v;
     for (const [k, v] of Object.entries(b.counted)) now[k] = (now[k] || 0) + v;
-    assert.ok(b.draws <= s.scenes.length + redrawCap(s.scenes.length), `${s.title}: within its cap`);
+    // (the soft faults within their half of the cap and within the cap; the hard ones never refused, every redraw a picture)
+    assert.ok(b.purse.spentSoft <= b.purse.soft && b.purse.spentSoft <= b.purse.cap, `${s.title}: the soft faults within the cap`);
+    assert.equal(b.hardKept, 0, `${s.title}: no hard fault kept while it had goes left`);
+    assert.equal(b.draws, s.scenes.length + b.purse.spent, `${s.title}: every redraw counted`);
     assert.ok(b.kept.every((k) => k >= 0), `${s.title}: every scene keeps a picture`);
   }
   assert.equal(scenes, 59);
   assert.equal(before, 122, "as the log drew them (one go read from the next)");
-  assert.equal(after, 79);
-  assert.ok(after / scenes < 1.35);
+  // (79 when the cap refused hard faults too — review of S14b: "The Dent in the Pillow" kept somebody missing to save 3)
+  assert.equal(after, 82);
+  assert.ok(after / scenes < 1.4);
   assert.equal(was.L, 58);
   assert.equal(was.G, 29);
-  // the hard faults are all still drawn for while the purse lasts — a stranger, the looker outside, somebody missing
+  // the hard faults are all still drawn for, whatever the purse holds — a stranger, the looker outside, somebody missing
+  // (fewer of them are SEEN: a go the old loop drew only for a stare is not drawn — the hardKept count above is the rule)
   assert.ok(now.C >= 7 && now.X >= 2 && now.O === 1, JSON.stringify(now));
   // THE PICTURES THAT WERE LOOKED AT: "Circling in the Dark" keeps its first walk at us, the second NEAR AND FAR — the
   // one with the skater behind her, the film's own — and the first "just past the camera's edge"; 5 pictures, not 10
@@ -244,7 +261,7 @@ test("wired: the loop listens to the story, spends from the story's purse, cover
   assert.ok(loop.indexOf("if (!best || faults < best.faults)") < loop.indexOf("const again = !cover"), "the go is weighed before the purse is asked");
   assert.ok(loop.includes("— ${then}`);\n        if (!again) break;\n      }"), "past the purse the loop ends on its best try, and says so");
   assert.ok(loop.includes("\"a band a crop puts right, and nothing else — covered, not drawn again\""));
-  assert.ok(loop.includes("the story's redraws${tier === \"soft\" ? \" for a stare or a worn place\" : \"\"} are spent"));
+  assert.ok(loop.includes("the story's redraws for a stare or a worn place are spent (${purse.spent} of ${purse.cap} in all, ${purse.spentSoft} of ${purse.soft} on these) — keeping its best try"), "only a soft fault is ever refused");
   // …and the cover is the one after the goes (S14): a sliver kept as best is cut to its content there
   assert.ok(loop.indexOf("if (!again) break;") < loop.indexOf("if (!img && best?.check.band) {"));
   // a letterboxed picture and a framed panel are hard faults that spend too

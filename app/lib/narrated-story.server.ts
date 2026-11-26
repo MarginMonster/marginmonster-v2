@@ -56,7 +56,7 @@ import { joinList } from "./acted-staging";
 import { NIGHT_LINE, nightSetting } from "./acted-staging";
 import { NIGHT_STYLE_LIGHT, parseStoryNight, storyNight } from "./story-picture";
 // A STORY'S REDRAWS ARE COUNTED, AND THE CHECKS LISTEN TO THE STORY (2026-11-26 — story-picture.ts: a worn place its words ask
-// for and a stare its shot asks for are no faults; at most half its scenes in redraws, the worst faults first)
+// for and a stare its shot asks for are no faults; at most half its scenes in redraws for a soft fault, a hard one always)
 import { coverNow, faultTier, redrawPurse, spendRedraw, stareCounts, wornAsked } from "./story-picture";
 import { streamSeconds } from "./film-join.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
@@ -266,8 +266,10 @@ export async function narratedSceneSeeds(o: {
   await alive();
   // A STORY'S REDRAWS ARE COUNTED (story-picture.ts → redrawCap, 2026-11-26: a day of live told stories drew 2.07 pictures
   // a scene, three of "Circling in the Dark"'s four scenes every go there was): this drawing of it may spend at most half
-  // its scenes, rounded up, on redraws — a hard fault from all of it, a stare or a run-down room from half. Past it, a
-  // picture keeps its best try and its fault is written down as ever. STORY_REDRAW_CAP=off: three goes a scene, as before.
+  // its scenes, rounded up, on redraws for a stare or a run-down room — and only half of that on them. A hard fault (somebody
+  // missing or bare, panels, a band no crop puts right, a stranger…) is always drawn again, up to its three goes, and counted
+  // against the same cap (review of S14b: never let through to save money). Past it, a picture keeps its best try and its
+  // fault is written down as ever. STORY_REDRAW_CAP=off: three goes a scene for every fault, as before.
   const purse = redrawPurse(todo.length, process.env.STORY_REDRAW_CAP !== "off");
   let drawnPictures = 0;
   // (…and everything the story says of its places — its idea, every scene's picture and narration, its places' own words:
@@ -409,8 +411,9 @@ export async function narratedSceneSeeds(o: {
         const got = await drawScene(`${first}${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect);
         await alive();
         if (got) drawnPictures++;
-        // (a letterboxed picture and a framed panel are hard faults: drawn again from the story's purse while it lasts —
-        //  story-picture.ts → spendRedraw; past it the letterboxed one is kept, its bars cropped in the cut, as when every go was)
+        // (a letterboxed picture and a framed panel are hard faults: drawn again up to the scene's three goes, counted in the
+        //  story's purse — story-picture.ts → spendRedraw; after the last, the letterboxed one is kept, its bars cropped in the
+        //  cut, as ever)
         if (got && (await letterboxed(got))) { barred = got; const more = a < 2 && spendRedraw(purse, "hard"); console.error(`[narrated] scene ${i + 1} came back letterboxed — ${more ? "drawing it again" : "keeping it, its bars cropped in the cut"}`); if (more) continue; break; }
         if (got && withPlace && (await framedPanel(got))) { framedGoes++; fix = FRAMED_FIX; const more = a < 2 && spendRedraw(purse, "hard"); console.error(`[narrated] scene ${i + 1} came back as a framed panel on a plain ground (${place?.name}) — ${more ? `drawing it again${framedGoes >= 2 ? " without the place's sheet" : ""}` : "not kept"}`); if (more) continue; break; }
         if (!got) { if (a >= 1) break; continue; } // two plain failures: stop asking this way
@@ -429,12 +432,13 @@ export async function narratedSceneSeeds(o: {
         fix = storyFix(seenAs!, here.map((c) => c.name), here.map((c) => c.kind || "person"));
         first = storyFirst(seenAs);
         // IS IT DRAWN AGAIN? A band a crop puts right, and nothing else wrong, is covered at once (story-picture.ts → coverNow:
-        // below, after the goes — review of S14). Anything else from the story's purse while it lasts, the worst first
-        // (story-picture.ts → faultTier, spendRedraw); past it, the best try is kept and its fault written down.
+        // below, after the goes — review of S14). A hard fault is drawn again whatever the purse holds; a stare or a run-down
+        // room only while the story's purse lasts (story-picture.ts → faultTier, spendRedraw); past it, the best try is kept
+        // and its fault written down.
         const cover = coverNow(seenAs);
         const tier = faultTier(seenAs);
         const again = !cover && a < 2 && spendRedraw(purse, tier);
-        const then = again ? "drawing it again" : cover ? "a band a crop puts right, and nothing else — covered, not drawn again" : a < 2 ? `the story's redraws${tier === "soft" ? " for a stare or a worn place" : ""} are spent (${tier === "soft" ? `${purse.spentSoft} of ${purse.soft}` : `${purse.spent} of ${purse.cap}`}) — keeping its best try` : "keeping its best try";
+        const then = again ? "drawing it again" : cover ? "a band a crop puts right, and nothing else — covered, not drawn again" : a < 2 ? `the story's redraws for a stare or a worn place are spent (${purse.spent} of ${purse.cap} in all, ${purse.spentSoft} of ${purse.soft} on these) — keeping its best try` : "keeping its best try";
         console.log(`[narrated] scene ${i + 1} try ${a + 1}: ${[seenAs!.unclothed ? `somebody unclothed (${seenAs!.unclothedWho || "somewhere in it"})` : "", seenAs!.panels ? "split into panels" : "", seenAs!.seen.includes(false) ? `cast not in it (${here.filter((_, n) => !seenAs!.seen[n]).map((c) => c.name).join(", ")})` : "", (seenAs!.twice || []).some(Boolean) ? "somebody drawn twice" : "", seenAs!.extra ? "somebody the words do not put there" : "", seenAs!.outside ? "whoever looks out stood outside" : "", seenAs!.lens?.length ? `${seenAs!.lens.join(" and ")} stared into the lens` : "", seenAs!.grimy ? "the place came out run-down" : "", seenAs!.inset ? "a smaller picture pasted into it" : "", seenAs!.notNight ? "a night scene drawn as dusk or day" : "", seenAs!.band ? `an empty band or a doubled strip (${[...seenAs!.band.sides, ...seenAs!.band.doubled.map((s) => `doubled ${s}`)].join(", ")})` : ""].filter(Boolean).join(", ")} — ${then}`);
         if (!again) break;
       }
