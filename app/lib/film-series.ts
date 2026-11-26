@@ -17,7 +17,7 @@
 
 import { FILM_HEROES, FORMER_HERO_NAMES, heroOf, type FilmHero } from "./film-heroes.ts";
 import { castCardsOf } from "./story-picture.ts";
-import { storyIsStill } from "./story-motion.ts";
+import { storyCameraOf, storyIsStill, type StillCamera } from "./story-motion.ts";
 import { posterOf } from "./story-poster.ts";
 import { nameTok } from "./character-prompts.ts";
 import { cameraLookOf, type CameraLook } from "./camera-dress.ts";
@@ -409,6 +409,9 @@ export type NextEpisodeCard = {
     /** a TOLD story made over STILL pictures (story-motion.ts → storyIsStill): its next episode stays the cheap
      *  still tier — it used to open as Moving (review of S13, 2026-11-26) */
     still?: boolean;
+    /** …and the CAMERA its stills were told with, when its maker picked one (story-motion.ts → storyCameraOf): the next
+     *  episode moves the same way (2026-11-26) */
+    camera?: StillCamera;
   };
 };
 
@@ -454,6 +457,7 @@ export function nextEpisodeCards(rows: ReadonlyArray<{ id: string; title?: strin
         cast: castForMeta(Array.isArray(meta.cast) ? (meta.cast as Array<{ name?: string }>) : []),
         returning: str(meta.kind) === "narrated" ? castCardsOf(meta).map((c) => ({ name: c.name, img: c.img })) : [],
         ...(str(meta.kind) === "narrated" && storyIsStill(meta) ? { still: true } : {}),
+        ...(str(meta.kind) === "narrated" && storyCameraOf(meta) !== "gentle" ? { camera: storyCameraOf(meta) } : {}),
       },
     });
   }

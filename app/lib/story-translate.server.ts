@@ -17,7 +17,7 @@ import { estimateFilmTokens } from "./plan-config";
 import { CONTENT_LANG_NATIVE, normalizeContentLang } from "./content-lang";
 import { castCardsOf, castToken, placesOf } from "./story-picture";
 import { canTellIn, isNarratedStory, storyLangOf, storyPicturesFrom, storyWordsToTranslate, toldFrom, translateAsk, translatedTreatment } from "./story-translate";
-import { storyIsStill } from "./story-motion";
+import { storyCameraOf, storyIsStill } from "./story-motion";
 
 /** Why nothing was started. The caller owns the sentence (and the member's language). */
 export type TellAgainFail = "gone" | "not-a-story" | "language" | "telling" | "no-pictures" | "write-failed" | "tokens" | "queue-failed";
@@ -156,6 +156,9 @@ export async function tellStoryAgain(opts: { shopId: string; assetId: string; la
       // (a story made over still pictures is told again over still pictures — story-motion.ts; `rung` since the
       //  review of S13, `pictures: "still"` on a story made before it)
       ...(storyIsStill(meta) ? { filmPictures: "still" } : {}),
+      // …with the CAMERA it was told with (story-motion.ts → storyCameraOf); each scene's own rides on its scene, in the
+      // treatment above (2026-11-26)
+      ...(storyCameraOf(meta) !== "gentle" ? { filmStillCamera: storyCameraOf(meta) } : {}),
       filmLang: lang,
       filmTranslatedFrom: asset.id,
       productTitle: (told.title || asset.title || "A story").slice(0, 60),
