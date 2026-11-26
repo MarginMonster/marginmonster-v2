@@ -97,8 +97,10 @@ test("a part's picture: each scene by the single cut's own chain, made exactly a
   for (const s of [
     "? `[${i}:v]${motionChain(m.fit, frames[i], o.W, o.H)}[c${i}]`",
     "? `[${i}:v]${stillHeld(frames[i], o.W, o.H)}[c${i}]`",
-    // (…and the stills' moves over the joined picture, before the words — as partGraph lays them)
-    "const still = moving ? stillMoves(norm.map((_, i) => ({ move: clipOf(i) ? null : stillMove(i), frames: frames[i] }))) : \"\";",
+    // (…and the stills' moves over the joined picture, before the words — as partGraph lays them; since 2026-11-26 each
+    //  still's move by its CAMERA, narrated-core.ts → cameraMove — none is Gentle, the four in turn, as before)
+    "const stillMoveOf = (i: number) => cameraMove(o.cameras?.[i], i);",
+    "const still = moving ? stillMoves(norm.map((_, i) => ({ move: clipOf(i) ? null : stillMoveOf(i), frames: frames[i] }))) : \"\";",
     "if (still) { f.push(`[vcat]${still}[vmv]`); v = \"[vmv]\"; }",
     "if (useCaptions && captions.length) { f.push(`${v}${(styled && cap.styled ? cap.styled : captions).join(\",\")}[vf]`); v = \"[vf]\"; }",
     ": `[${i}:v]scale=${o.W}:${o.H}:force_original_aspect_ratio=increase,crop=${o.W}:${o.H},setsar=1,fps=${FPS},format=yuv420p[c${i}]`);",
@@ -131,7 +133,8 @@ test("the cut is wired: a story of more than twelve scenes goes to the parts, do
   for (const s of [
     "const run = await runFfmpeg(storySoundArgs({ voice: o.voPath, music: music ? o.musicPath : null, total: o.total, tail: TAIL_S, out: sound }));",
     "const cap = rung.words === \"none\" ? null : captionGraph(cardsDuring(o.cards, from, from + part.frames / FPS), o.style, o.fontFile, o.W, o.H);",
-    "return sceneIn(i, { still: o.norm[i], clip: o.moves[i] }, o.frames[i], o.W, o.H, rung);",
+    // (…each scene with its camera, as the single cut has it — 2026-11-26)
+    "return sceneIn(i, { still: o.norm[i], clip: o.moves[i], camera: o.cameras?.[i] }, o.frames[i], o.W, o.H, rung);",
     "const run = await runFfmpeg(storyPartArgs(scenes, o.frames.slice(part.from, part.to), words, part.clock, files[p]));",
     "if (!(got && Math.abs(got - part.frames / FPS) <= 1.5 / FPS)) {",
     "fs.writeFileSync(list, joinList(files, parts.map((x) => x.frames)), \"utf8\");",

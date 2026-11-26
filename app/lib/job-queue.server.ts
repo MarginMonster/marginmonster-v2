@@ -1238,6 +1238,8 @@ async function runJob(
             castRef: typeof payload.filmCastRef === "string" ? payload.filmCastRef : undefined,
             // THE LADDER (story-motion.ts): told over still pictures, when its maker chose that
             pictures: typeof payload.filmPictures === "string" ? payload.filmPictures : undefined,
+            // …and, over its stills, how they move (story-motion.ts → StillCamera — checked again there)
+            stillCamera: typeof payload.filmStillCamera === "string" ? payload.filmStillCamera : undefined,
             // A CHARACTER'S SHOW (character-series.ts): the line it ends on, and which episode this is
             signoff: typeof payload.filmSignoff === "string" ? payload.filmSignoff : undefined,
             show: (await import("./character-series")).showMeta(payload.filmShow),

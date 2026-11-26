@@ -16,6 +16,7 @@
 
 import { hasRtl, needsShaping } from "./content-lang.ts";
 import type { ShapedFace } from "./caption-font.ts";
+import type { StillCamera } from "./story-motion.ts";
 
 /** `last` marks the final word of a scene (set by scriptWordTimes): a caption card never runs past it. */
 /** (`score` is the listener's own word for how sure it is of a HEARD word, 0 to 1 — see sureWords.) */
@@ -1311,11 +1312,107 @@ export const frameWords = (aspect: string): string =>
  * once — a move a scene again, which is the 735 MB above — and a long story's parts are put together by stream copy
  * (story-join.ts), so the scene that opens a part could never dissolve from the one before it: every sixth cut would
  * be hard, and a story would change its look mid-way. The moving rung cuts straight too.
- * Free — our own ffmpeg, nothing drawn. */
-export type StillMove = "in" | "right" | "out" | "left";
+ * Free — our own ffmpeg, nothing drawn.
+ *
+ * THE CAMERA OF A STILL STORY (2026-11-26). The owner, of this tier: "Image still story line needs optional selects
+ * for the image similar to other providers (shake, slight motion, etch etch)". So its maker may say how the pictures
+ * move (story-motion.ts → StillCamera: the whole story in the Length step, and one picture at a time on the
+ * storyboard), and every choice is a move of the SAME one `perspective` pass (stillMoves) — never a second filter,
+ * never one that holds frames (the 735 MB above):
+ *  · Gentle — the four moves in turn, above: what a still story does when its maker says nothing;
+ *  · Zoom in / Zoom out — every picture pushes in / pulls back (the push above); Pan — every picture drifts across,
+ *    right then left in turn (the drift above);
+ *  · Handheld — a camera in a hand: the window sways a little and slowly, and tilts a fraction of a degree — each a
+ *    sum of slow sines at unrelated frequencies, so it never settles into a loop the eye can learn (STILL_HANDS);
+ *  · Shake — a nervous hand, for scares and action: a slow sway under a quicker jitter that swells and settles. Small
+ *    enough that a face stays a face: at its very worst a frame moves a few pixels of a Full-HD frame;
+ *  · No move — the picture held, no pass over it at all.
+ * A HAND KEEPS THE STORY'S CLOCK: its sway is a function of the frame number counted from the story's first frame
+ * (a long story's part says where it starts — story-join.ts → partGraph), so it carries on across a cut as a hand
+ * would, across a part's edge too, and a story cut in parts is frame for frame the story cut once.
+ * THE WINDOW NEVER LEAVES THE PICTURE (`perspective` does not draw black past it: it smears the picture's last row
+ * across the gap — worse). A hand needs room to move in, so its window is cropped in: 1/1.07 of the picture each way
+ * (3.3% off every side) — and with every wave at its peak and the tilt at its most AT ONCE (which never quite
+ * happens), each corner still stays inside the picture: by 11 px of a 1080 × 1920 frame for Handheld, 15 for Shake
+ * (stillHandMargin, said for every frame shape; tests/story-still-camera.test.ts evaluates the very expressions ffmpeg
+ * is given at every frame of five minutes, and has ffmpeg cut the frames where each comes closest to an edge).
+ * MEASURED over five minutes at 1080 × 1920: a handheld window wanders ±18 px and moves at most 1.3 px a frame; a
+ * shaking one ±13 px, at most 7 px a frame and 2 on average — a jitter, never a lurch. */
+export type StillMove = "in" | "right" | "out" | "left" | "sway" | "shake";
+/** The four slow moves, in the turn Gentle takes them. */
 export const STILL_MOVES: ReadonlyArray<StillMove> = ["in", "right", "out", "left"];
 /** Scene `i`'s move (`i` counted through the whole story): the four in turn, from a push in. */
 export const stillMove = (i: number): StillMove => STILL_MOVES[(((Math.round(Number(i)) || 0) % 4) + 4) % 4];
+/** Scene `i`'s move under a story's CAMERA (story-motion.ts → StillCamera; none = Gentle, as it always was), or null
+ *  for a picture that does not move at all. Pan crosses right on the story's first scene, then left, in turn. */
+export function cameraMove(camera: StillCamera | null | undefined, i: number): StillMove | null {
+  const k = Math.round(Number(i)) || 0;
+  switch (camera) {
+    case "zoomin": return "in";
+    case "zoomout": return "out";
+    case "pan": return ((k % 2) + 2) % 2 === 0 ? "right" : "left";
+    case "handheld": return "sway";
+    case "shake": return "shake";
+    case "still": return null;
+    default: return stillMove(k);
+  }
+}
+
+/* THE HAND (Handheld and Shake). Each axis is a sum of sines, [hertz, weight, phase]: the weights of an axis add up to
+ * 1, so it never goes past ±1 — times `reach` (a share of the frame's SHORT side, so a hand moves as far on a tall
+ * frame as on a wide one) for the sway, times `tilt` (radians) for the turn. A shaking hand's quick waves (`nerves`)
+ * are scaled by a slow `swell` that runs between a quarter and all of them: bursts, then a breath. */
+type Wave = readonly [hz: number, weight: number, phase: number];
+type HandAxis = { calm: ReadonlyArray<Wave>; nerves?: ReadonlyArray<Wave> };
+export type StillHand = { z: number; reach: number; tilt: number; x: HandAxis; y: HandAxis; a: HandAxis; swell?: Wave };
+export const STILL_HANDS: Readonly<Record<"sway" | "shake", StillHand>> = {
+  // a camera in a hand: a breath's sway (one every eight seconds or so), a slower turn, a faint tremor on top
+  sway: {
+    z: 1.07, reach: 0.018, tilt: (0.3 * Math.PI) / 180,
+    x: { calm: [[0.13, 0.5, 0.9], [0.31, 0.35, 2.1], [0.83, 0.15, 3.3]] },
+    y: { calm: [[0.11, 0.5, 4.0], [0.27, 0.35, 0.4], [0.71, 0.15, 5.2]] },
+    a: { calm: [[0.09, 0.7, 1.3], [0.23, 0.3, 5.0]] },
+  },
+  // a nervous hand: a slow sway under a jitter of two to seven a second, swelling and settling every four seconds
+  shake: {
+    z: 1.07, reach: 0.013, tilt: (0.4 * Math.PI) / 180,
+    x: { calm: [[0.21, 0.3, 0.6]], nerves: [[1.9, 0.3, 1.7], [3.1, 0.25, 4.4], [4.7, 0.15, 2.8]] },
+    y: { calm: [[0.17, 0.3, 3.1]], nerves: [[2.4, 0.3, 0.2], [3.7, 0.25, 5.5], [5.3, 0.15, 1.1]] },
+    a: { calm: [[0.19, 0.6, 2.2]], nerves: [[2.7, 0.4, 0.9]] },
+    swell: [0.23, 0.375, 0.7],
+  },
+};
+const isHand = (m: StillMove | null | undefined): m is "sway" | "shake" => m === "sway" || m === "shake";
+/** The swell of a shaking hand at `t` seconds: between a quarter and the whole of its quick waves (1 for a calm hand). */
+const swellAt = (h: StillHand, t: number): number => (h.swell ? 1 - h.swell[1] + h.swell[1] * Math.sin(2 * Math.PI * h.swell[0] * t + h.swell[2]) : 1);
+const axisAt = (h: StillHand, ax: HandAxis, t: number): number => {
+  const sum = (ws: ReadonlyArray<Wave>) => ws.reduce((s, [hz, w, ph]) => s + w * Math.sin(2 * Math.PI * hz * t + ph), 0);
+  return sum(ax.calm) + (ax.nerves ? swellAt(h, t) * sum(ax.nerves) : 0);
+};
+
+/** WHERE THE WINDOW'S FOUR CORNERS ARE in a W×H frame, in pixels — top-left, top-right, bottom-left, bottom-right, as
+ *  `perspective` takes them — at frame `k` of a scene of `n` frames that starts at frame `T - k` of the story: the
+ *  slow moves by where they are in their scene (stillWindow), a hand by the story's own clock (`T`, frames at 30 a
+ *  second). The twin, in plain numbers, of what stillMoves tells ffmpeg. */
+export function stillCorners(move: StillMove, k: number, n: number, T: number, W: number, H: number): Array<[number, number]> {
+  if (!isHand(move)) {
+    const w = stillWindow(move, k / Math.max(1, n - 1));
+    const x0 = W * (w.cx - 0.5 / w.z), x1 = W * (w.cx + 0.5 / w.z), y0 = H * (w.cy - 0.5 / w.z), y1 = H * (w.cy + 0.5 / w.z);
+    return [[x0, y0], [x1, y0], [x0, y1], [x1, y1]];
+  }
+  const h = STILL_HANDS[move], t = T / 30, S = Math.min(W, H);
+  const cx = W / 2 + h.reach * S * axisAt(h, h.x, t), cy = H / 2 + h.reach * S * axisAt(h, h.y, t);
+  const th = h.tilt * axisAt(h, h.a, t), c = Math.cos(th), s = Math.sin(th);
+  const hw = W / (2 * h.z), hh = H / (2 * h.z);
+  return ([[-1, -1], [1, -1], [-1, 1], [1, 1]] as const).map(([sx, sy]) => [cx + sx * hw * c - sy * hh * s, cy + sx * hw * s + sy * hh * c] as [number, number]);
+}
+/** HOW CLOSE A HAND EVER COMES TO THE PICTURE'S EDGE in a W×H frame, in pixels: every wave at its peak and the tilt at
+ *  its most, all at once (which never quite happens) — the least room a corner of its window is ever left. */
+export function stillHandMargin(move: "sway" | "shake", W: number, H: number): number {
+  const h = STILL_HANDS[move], S = Math.min(W, H);
+  const reach = h.reach * S, c = Math.cos(h.tilt), s = Math.sin(h.tilt);
+  return Math.min(W / 2 - reach - (W * c + H * s) / (2 * h.z), H / 2 - reach - (W * s + H * c) / (2 * h.z));
+}
 /** How far a push goes (1 → 1.10, the reach it always had: ten seconds of it is a slow creep, not a lurch) and how
  *  close a drift sits (1.08: it crosses 7.4% of the picture — about 80 px of a phone frame in a scene). */
 export const STILL_PUSH = 0.1;
@@ -1325,6 +1422,8 @@ export const STILL_DRIFT_ZOOM = 1.08;
  *  centre, as fractions of the picture. The window is 1/z of the picture each way, and always inside it. */
 export function stillWindow(move: StillMove, p: number): { z: number; cx: number; cy: number } {
   const t = Math.max(0, Math.min(1, Number(p) || 0));
+  // (a hand is not a move from here to there: its window at rest — where it is is stillCorners', by the story's clock)
+  if (isHand(move)) return { z: STILL_HANDS[move].z, cx: 0.5, cy: 0.5 };
   if (move === "in" || move === "out") return { z: 1 + STILL_PUSH * (move === "in" ? t : 1 - t), cx: 0.5, cy: 0.5 };
   const f = 1 / STILL_DRIFT_ZOOM;
   return { z: STILL_DRIFT_ZOOM, cx: f / 2 + (1 - f) * (move === "right" ? t : 1 - t), cy: 0.5 };
@@ -1342,16 +1441,19 @@ export function stillHeld(frames: number, W: number, H: number): string {
 /** THE MOVES OF A RUN OF SCENES, laid over their joined picture in ONE pass: scene k (in order; `frames` long) moves by
  *  its `move` over its own frames, and a scene with none (a moving clip) is passed through untouched. "" when nothing
  *  moves. `perspective` numbers the frames it is given from 1 (`on`), and every frame of the run is given to it — the
- *  untouched ones too, so the numbering stays the run's own (they are only not redrawn: `enable`). */
-export function stillMoves(scenes: ReadonlyArray<{ move: StillMove | null; frames: number }>): string {
+ *  untouched ones too, so the numbering stays the run's own (they are only not redrawn: `enable`).
+ *  `from`: the frame of the STORY the run starts on (a long story's part — story-join.ts → partGraph): a hand keeps the
+ *  story's clock (THE CAMERA OF A STILL STORY, above); the slow moves are each their own scene's and never need it. */
+export function stillMoves(scenes: ReadonlyArray<{ move: StillMove | null; frames: number }>, from = 0): string {
   const runs: Array<{ move: StillMove | null; at: number; n: number }> = [];
   let at = 0;
   for (const s of scenes) { const n = Math.max(1, Math.round(Number(s.frames) || 0)); runs.push({ move: s.move, at, n }); at += n; }
   if (!runs.some((r) => r.move)) return "";
   const f = 1 / STILL_DRIFT_ZOOM;
   // each scene's four edges as expressions of the frame number (stillWindow, said for ffmpeg); untouched: the whole frame
+  // (a hand's scene too: its own formula is laid over the run below, and this is never reached on its frames)
   const edges = runs.map((r) => {
-    if (!r.move) return { x0: "0", x1: "W", y0: "0", y1: "H" };
+    if (!r.move || isHand(r.move)) return { x0: "0", x1: "W", y0: "0", y1: "H" };
     const p = `(on-${r.at + 1})/${Math.max(1, r.n - 1)}`;
     const q = r.move === "in" || r.move === "right" ? p : `(1-${p})`;
     const push = r.move === "in" || r.move === "out";
@@ -1359,13 +1461,49 @@ export function stillMoves(scenes: ReadonlyArray<{ move: StillMove | null; frame
     const cx = push ? "0.5" : `(${num(f / 2)}+${num(1 - f)}*${q})`;
     return { x0: `W*(${cx}-0.5/${z})`, x1: `W*(${cx}+0.5/${z})`, y0: `H*(0.5-0.5/${z})`, y1: `H*(0.5+0.5/${z})` };
   });
-  // …one expression an edge for the whole run: the scene whose frames `on` is in
-  const pick = (k: "x0" | "x1" | "y0" | "y1"): string =>
-    runs.slice(0, -1).reduceRight((rest, r, j) => `if(lt(on,${r.at + r.n + 1}),${edges[j][k]},${rest})`, edges[runs.length - 1][k]);
-  const x0 = pick("x0"), x1 = pick("x1"), y0 = pick("y0"), y1 = pick("y1");
+  // …one expression a corner for the whole run: the scene whose frames `on` is in (a slow move's window is upright: its
+  // top corners share the top edge, its left corners the left edge)
+  const edgeOf = (k: Corner): "x0" | "x1" | "y0" | "y1" => (k === "x0" || k === "x2" ? "x0" : k === "x1" || k === "x3" ? "x1" : k === "y0" || k === "y1" ? "y0" : "y1");
+  const pick = (k: Corner): string =>
+    runs.slice(0, -1).reduceRight((rest, r, j) => `if(lt(on,${r.at + r.n + 1}),${edges[j][edgeOf(k)]},${rest})`, edges[runs.length - 1][edgeOf(k)]);
+  // THE HANDS, over the scenes that are held in one: ONE formula a hand (it keeps the story's clock, so every scene it
+  // holds is the same formula — written once, however many scenes it holds), chosen by the frames it holds
+  const T = from > 0 ? `on+${Math.round(from) - 1}` : "on-1";
+  const corner = (k: Corner): string => {
+    let e = pick(k);
+    for (const kind of ["sway", "shake"] as const) {
+      const held = runs.filter((r) => r.move === kind);
+      if (!held.length) continue;
+      const formula = handCorner(STILL_HANDS[kind], k, T);
+      if (held.length === runs.length) return formula;
+      const spans: Array<[number, number]> = [];
+      for (const r of held) { const last = spans[spans.length - 1]; if (last && last[1] === r.at) last[1] = r.at + r.n; else spans.push([r.at, r.at + r.n]); }
+      e = `if(${spans.map(([a, b]) => `between(on,${a + 1},${b})`).join("+")},${formula},${e})`;
+    }
+    return e;
+  };
   const still = runs.filter((r) => r.move);
   const enable = still.length === runs.length ? "" : `:enable='${still.map((r) => `between(n,${r.at},${r.at + r.n - 1})`).join("+")}'`;
-  return `perspective=x0='${x0}':y0='${y0}':x1='${x1}':y1='${y0}':x2='${x0}':y2='${y1}':x3='${x1}':y3='${y1}':interpolation=cubic:eval=frame${enable}`;
+  return `perspective=${CORNERS.map((k) => `${k}='${corner(k)}'`).join(":")}:interpolation=cubic:eval=frame${enable}`;
+}
+
+/** `perspective`'s eight numbers, in the order it takes them: the window's top-left, top-right, bottom-left, bottom-right. */
+type Corner = "x0" | "y0" | "x1" | "y1" | "x2" | "y2" | "x3" | "y3";
+const CORNERS: ReadonlyArray<Corner> = ["x0", "y0", "x1", "y1", "x2", "y2", "x3", "y3"];
+/** One corner of a HAND's window, said for ffmpeg — stillCorners' twin: register 0 holds the story's frame (`T`), 2 the
+ *  swell, 1 the tilt; the window's centre sways by `reach` of the short side, and the window turns about it. */
+function handCorner(h: StillHand, k: Corner, T: string): string {
+  const w = (hz: number) => num((2 * Math.PI * hz) / 30);
+  const sum = (ws: ReadonlyArray<Wave>) => ws.map(([hz, wt, ph]) => `${num(wt)}*sin(${w(hz)}*ld(0)+${num(ph)})`).join("+");
+  const axis = (ax: HandAxis) => (ax.nerves?.length ? `${sum(ax.calm)}+${h.swell ? "ld(2)*" : ""}(${sum(ax.nerves)})` : sum(ax.calm));
+  const right = k === "x1" || k === "x3" || k === "y1" || k === "y3";
+  const bottom = k === "x2" || k === "x3" || k === "y2" || k === "y3";
+  const z2 = num(2 * h.z);
+  const pre = `st(0,${T});${h.swell ? `st(2,${num(1 - h.swell[1])}+${num(h.swell[1])}*sin(${w(h.swell[0])}*ld(0)+${num(h.swell[2])}));` : ""}st(1,${num(h.tilt)}*(${axis(h.a)}));`;
+  // x = centre ± half the width turned (cos) ∓ half the height turned (sin); y = centre ± half the width (sin) ± half the height (cos)
+  return k[0] === "x"
+    ? `${pre}W*(0.5+${num(h.reach)}*min(W,H)/W*(${axis(h.x)}))${right ? "+" : "-"}W/${z2}*cos(ld(1))${bottom ? "-" : "+"}H/${z2}*sin(ld(1))`
+    : `${pre}H*(0.5+${num(h.reach)}*min(W,H)/H*(${axis(h.y)}))${right ? "+" : "-"}W/${z2}*sin(ld(1))${bottom ? "+" : "-"}H/${z2}*cos(ld(1))`;
 }
 
 /** ONE STILL PICTURE, MOVING — scene `i`'s move (stillMove), exactly `frames` long, to W×H: the picture held and moved,

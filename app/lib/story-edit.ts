@@ -17,7 +17,7 @@ import { heroOf } from "./film-heroes.ts";
 import { trimTitle } from "./text-trim.ts";
 import { isNarratedStory, storyLangOf, toldFrom } from "./story-translate.ts";
 import { castCardsOf, castStillIn, castToken, placesOf, placesStillIn, type StoryCastRef } from "./story-picture.ts";
-import { storyIsStill } from "./story-motion.ts";
+import { stillCameraOf, storyCameraOf, storyIsStill, type StillCamera } from "./story-motion.ts";
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => !!v && typeof v === "object" && !Array.isArray(v);
@@ -33,7 +33,7 @@ const oneLine = (s: string): string => s.replace(/[\u0000-\u001f\u007f]+/g, " ")
 export const EDIT_MIN_SCENES = 3;
 export const EDIT_MAX_SCENES = 12;
 
-export type EditScene = { visual: string; caption: string; where?: string; shot?: string; tone?: string; kind?: "perform" | "broll"; /** how the scene is SEEN (story-shots.ts) — kept, so a story told again keeps its shot plan */ cam?: string };
+export type EditScene = { visual: string; caption: string; where?: string; shot?: string; tone?: string; kind?: "perform" | "broll"; /** how the scene is SEEN (story-shots.ts) — kept, so a story told again keeps its shot plan */ cam?: string; /** a still picture's OWN camera, when the storyboard gave it one (story-motion.ts → StillCamera) */ camera?: StillCamera };
 export type StoryToEdit = {
   /** the story it was opened from (this shop's own — the loader checked) */
   from: string;
@@ -61,6 +61,9 @@ export type StoryToEdit = {
   /** TOLD OVER STILL PICTURES (story-motion.ts → storyIsStill): opened to edit, it stays the cheap still tier — it
    *  used to open as Moving and be told again over paid motion (review of S13, 2026-11-26) */
   still: boolean;
+  /** …and THE CAMERA its stills were told with (story-motion.ts → storyCameraOf; Gentle when it never said): opened to
+   *  edit, it is told again with it — each scene's own comes back on the scene (2026-11-26) */
+  camera: StillCamera;
 };
 
 /**
@@ -88,6 +91,7 @@ export function storyToEditFrom(
     ...(str(s.tone) ? { tone: oneLine(str(s.tone)).slice(0, 60) } : {}),
     ...(s.kind === "perform" || s.kind === "broll" ? { kind: s.kind } : {}),
     ...(typeof s.cam === "string" && /^[a-z]{2,12}$/.test(s.cam) ? { cam: s.cam } : {}),
+    ...(stillCameraOf(s.camera) ? { camera: stillCameraOf(s.camera) as StillCamera } : {}),
   }));
   // (a story is told in the scenes that have something to say — as the render itself does)
   if (scenes.length !== tr.scenes.length || scenes.filter((s) => s.caption).length < EDIT_MIN_SCENES) return null;
@@ -127,6 +131,7 @@ export function storyToEditFrom(
     ownCast,
     castRef: castToken(ownCast, ownPlaces),
     still: storyIsStill(meta),
+    camera: storyCameraOf(meta),
   };
 }
 

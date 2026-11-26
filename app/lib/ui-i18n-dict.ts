@@ -9,6 +9,12 @@
 import type { UiLang } from "./ui-i18n";
 
 const es: Record<string, string> = {
+  "Gentle": "Suave",
+  "Pan": "Paneo",
+  "Shake": "Temblor",
+  "No move": "Fija",
+  "Story's camera": "La cámara de la historia",
+  "Scene {n} · camera: {name}": "Escena {n} · cámara: {name}",
   "Still pictures": "Imágenes fijas",
   "Moving pictures": "Imágenes en movimiento",
   "Cheapest": "La más barata",
@@ -3582,6 +3588,12 @@ const es: Record<string, string> = {
 };
 
 const fr: Record<string, string> = {
+  "Gentle": "Douce",
+  "Pan": "Pano­ramique",
+  "Shake": "Secousses",
+  "No move": "Fixe",
+  "Story's camera": "La caméra de l’histoire",
+  "Scene {n} · camera: {name}": "Scène {n} · caméra : {name}",
   "Still pictures": "Images fixes",
   "Moving pictures": "Images animées",
   "Cheapest": "La moins chère",
@@ -7136,6 +7148,12 @@ const fr: Record<string, string> = {
 };
 
 const de: Record<string, string> = {
+  "Gentle": "Sanft",
+  "Pan": "Schwenk",
+  "Shake": "Wackeln",
+  "No move": "Statisch",
+  "Story's camera": "Kamera der Geschichte",
+  "Scene {n} · camera: {name}": "Szene {n} · Kamera: {name}",
   "Still pictures": "Standbilder",
   "Moving pictures": "Bewegte Bilder",
   "Cheapest": "Am günstigsten",
@@ -10147,7 +10165,7 @@ const de: Record<string, string> = {
   "Worn on a chest: it bobs with every step.": "Auf der Brust getragen: Sie wippt bei jedem Schritt.",
   "Hallway": "Flur",
   "Nursery": "Kinderzimmer",
-  "Handheld": "Handkamera",
+  "Handheld": "Hand­kamera",
   "House cam": "Hauskamera",
   "Pick a camera.": "Wähle eine Kamera.",
   "Pick what happens.": "Wähle, was passiert.",
@@ -10700,6 +10718,12 @@ const de: Record<string, string> = {
 };
 
 const zh: Record<string, string> = {
+  "Gentle": "轻柔",
+  "Pan": "平移",
+  "Shake": "抖动",
+  "No move": "不动",
+  "Story's camera": "故事的镜头",
+  "Scene {n} · camera: {name}": "第 {n} 场 · 镜头：{name}",
   "Still pictures": "静态画面",
   "Moving pictures": "动态画面",
   "Cheapest": "最便宜",
@@ -14316,6 +14340,12 @@ const zh: Record<string, string> = {
 };
 
 const ur: Record<string, string> = {
+  "Gentle": "ہلکی",
+  "Pan": "پین",
+  "Shake": "لرزش",
+  "No move": "بغیر حرکت",
+  "Story's camera": "کہانی کا کیمرہ",
+  "Scene {n} · camera: {name}": "منظر {n} · کیمرہ: {name}",
   "Still pictures": "ساکن تصویریں",
   "Moving pictures": "متحرک تصویریں",
   "Cheapest": "سب سے سستی",

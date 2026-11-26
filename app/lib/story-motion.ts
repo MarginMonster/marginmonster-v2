@@ -66,6 +66,32 @@ export const storyPicturesOf = (v: unknown): StoryPictures => (String(v ?? "").t
  *  moved to a key of its own. Read by Another language, Edit story and Next episode, so each keeps the maker's rung. */
 export const storyIsStill = (meta: Record<string, unknown> | null | undefined): boolean =>
   !!meta && (meta.rung === "still" || meta.pictures === "still");
+
+/** THE CAMERA OF A STILL STORY (2026-11-26). The owner, of the still tier: "Image still story line needs optional
+ *  selects for the image similar to other providers (shake, slight motion, etch etch)". A story told over its STILL
+ *  pictures may say how they move — the story as a whole (the Length step, under Still) and, if its maker wants, one
+ *  picture at a time (the storyboard). Optional: a story that says nothing moves as it always did ("gentle": a push
+ *  in, a drift right, a pull back, a drift left, in turn). Each is a move of the cut's ONE perspective pass, made by
+ *  our own ffmpeg — narrated-core.ts → THE CAMERA OF A STILL STORY. A moving story is the engine's to animate: none
+ *  of this touches it. */
+export type StillCamera = "gentle" | "zoomin" | "zoomout" | "pan" | "handheld" | "shake" | "still";
+/** In the order the maker meets them — the default first, the calm ones, the hand, nothing at all last. */
+export const STILL_CAMERAS: ReadonlyArray<StillCamera> = ["gentle", "zoomin", "zoomout", "pan", "handheld", "shake", "still"];
+/** A camera named by the page, a job or a record — or null for anything that is not one (never trusted as sent). */
+export const stillCameraOf = (v: unknown): StillCamera | null => {
+  const s = String(v ?? "").trim().toLowerCase();
+  return (STILL_CAMERAS as ReadonlyArray<string>).includes(s) ? (s as StillCamera) : null;
+};
+/** What each is called where a maker picks it (short, as other apps name their presets; translated through t()).
+ *  "Still" is called "No move" — it sits right under the "Still pictures" tile, and two choices both called Still
+ *  would read as one choice made twice. */
+export const STILL_CAMERA_NAMES: Readonly<Record<StillCamera, string>> = {
+  gentle: "Gentle", zoomin: "Zoom in", zoomout: "Zoom out", pan: "Pan", handheld: "Handheld", shake: "Shake", still: "No move",
+};
+/** The camera a finished story was told with (its record's `stillCamera`; a story that never said is "gentle") — read
+ *  by Edit story, Next episode and Another language, so each tells it again with the camera its maker picked. */
+export const storyCameraOf = (meta: Record<string, unknown> | null | undefined): StillCamera =>
+  (meta && stillCameraOf(meta.stillCamera)) || "gentle";
 /** The three rungs, by what a piece is. */
 export type VideoRung = "simple" | "moving" | "acted";
 export const videoRung = (o: { narrated: boolean; pictures?: unknown }): VideoRung =>

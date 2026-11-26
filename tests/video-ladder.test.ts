@@ -113,8 +113,9 @@ test("the choice is in the Length step, under the slider: two tiles, Still and M
   // the form carries it only when it is "still"; the action puts it on the job only for a told story
   assert.ok(film.includes('{isStoryboard && narrated && pictures === "still" && <input type="hidden" name="filmPictures" value="still" />}'));
   assert.ok(film.includes('...(narrated && storyPicturesOf(form.get("filmPictures")) === "still" ? { filmPictures: "still" } : {}),'));
-  // the Length card says the rung too, and what the story comes to
-  assert.ok(film.includes('<span className={`mm-val mm-val-pics is-${pictures}`}>{t(pictures === "still" ? "Still pictures" : "Moving pictures")} · <b>{t("≈ {n} tokens", { n: lenTokens(scenes).toLocaleString("en-US") })}</b></span>'));
+  // the Length card says the rung too, and what the story comes to (and, since 2026-11-26, a still story's CAMERA when
+  // its maker picked other than Gentle: tests/story-still-camera-page.test.ts)
+  assert.ok(film.includes('<span className={`mm-val mm-val-pics is-${pictures}`}>{t(pictures === "still" ? "Still pictures" : "Moving pictures")}{pictures === "still" && stillCamera !== "gentle" ? <> · {t(STILL_CAMERA_NAMES[stillCamera])}</> : null} · <b>{t("≈ {n} tokens", { n: lenTokens(scenes).toLocaleString("en-US") })}</b></span>'));
   // every word of it in all five languages
   const dict = read("app", "lib", "ui-i18n-dict.ts");
   for (const k of ["The pictures", "Still pictures", "Moving pictures", "Cheapest", "a slow camera move on each · ready sooner", "every picture comes to life", "≈ {n} tokens"]) {
