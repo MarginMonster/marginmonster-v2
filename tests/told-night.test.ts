@@ -165,7 +165,8 @@ test("THE WORDS: a night scene's picture is told the night right behind its word
   const genres = read("app", "lib", "film-genres.ts");
   assert.ok(genres.includes("pools of lamplight in a dim room, or flat grey daylight through rain") && genres.includes("soft window light or golden hour"));
   // the lenient last path: said FIRST (its prompt is cut at 500 characters — the night must not be what is cut)
-  assert.ok(nar.includes("renderCreativeSeed(`${safe}${night ? `${NIGHT_LINE} ` : \"\"}${dressedInWater((scene.visual || \"\").slice(0, 300))}. ${tmpl.sceneHint}`, aspect);"));
+  // (…and a drawn story's cut is longer by its lead, said before the night, 2026-11-26 — tests/anime-shelf.test.ts)
+  assert.ok(nar.includes("renderCreativeSeed(`${safe}${night ? `${NIGHT_LINE} ` : \"\"}${dressedInWater((scene.visual || \"\").slice(0, 300))}. ${tmpl.sceneHint}`, aspect, 500 + (tmpl.drawn ? drawnLead(tmpl.key).length : 0));"));
 });
 
 test("WIRING: decided once a scene, from its words, its narration, its place and the idea; looked at in the place question; the idea reaches every draw", () => {

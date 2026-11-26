@@ -338,7 +338,9 @@ export async function narratedSceneSeeds(o: {
           const { anthropicVision } = await import("./anthropic.server");
           const [castRaw, panelsRaw, extrasRaw, grimeRaw] = await Promise.all([
             castPics.length ? anthropicVision(storyCastPrompt(castPics.length), [pic, ...castPics], { maxTokens: 500, model: "claude-sonnet-4-6" }) : Promise.resolve(""),
-            twoMoments ? anthropicVision(storyPanelsPrompt(), [pic], { maxTokens: 320, model: "claude-sonnet-4-6" }) : Promise.resolve(""),
+            // (…and of EVERY drawn picture, 2026-11-26: anime and manga styling invites panels whatever the words say —
+            //  anime-styles.ts → ANIME_TAIL says "never a manga page, panels", and this looks; about a cent a go)
+            (twoMoments || tmpl.drawn) ? anthropicVision(storyPanelsPrompt(), [pic], { maxTokens: 320, model: "claude-sonnet-4-6" }) : Promise.resolve(""),
             // (…its answer a line longer since it also says whether anybody is unclothed: story-picture.ts → UNCLOTHED_ASKED)
             anthropicVision(storyExtrasPrompt(visual, whoIsWho), [pic], { maxTokens: 600, model: "claude-sonnet-4-6" }).catch(() => ""),
             // (…and a place drawn run-down that its words do not call one — a grown-up story's — or a smaller picture
@@ -349,13 +351,16 @@ export async function narratedSceneSeeds(o: {
           const seen = castPics.length ? parseStoryCast(String(castRaw || ""), castPics.length) : [];
           // (…and whoever is drawn TWICE — the little brother on the sofa and again on the porch: story-picture.ts)
           const twice = castPics.length ? parseStoryTwice(String(castRaw || ""), castPics.length) : null;
-          const panels = twoMoments ? parseStoryPanels(String(panelsRaw || "")) : false;
+          const panels = (twoMoments || tmpl.drawn) ? parseStoryPanels(String(panelsRaw || "")) : false;
           const extra = parseStoryExtras(String(extrasRaw || ""));
           // (…and whoever looks OUT, drawn standing out there with what they look at: story-picture.ts)
           const outside = parseStoryOutside(String(extrasRaw || ""));
           // (…and whoever stares into the lens: story-picture.ts → parseStoryLens)
           const lens = parseStoryLens(String(extrasRaw || ""));
-          const grimy = tmpl.childSafe ? null : parseStoryGrime(String(grimeRaw || ""));
+          // (…never for a DRAWN story, 2026-11-26: watercolour washes, analogue grain and ink hatching read as "stained,
+          //  dusty" to a reader tuned on photographs, and it cannot be re-tuned without real anime stills — so its verdict
+          //  is not counted; the inset and the night sky, the other halves of the same question, still are)
+          const grimy = tmpl.childSafe || tmpl.drawn ? null : parseStoryGrime(String(grimeRaw || ""));
           const inset = parseStoryInset(String(grimeRaw || ""));
           // (…and anybody UNCLOTHED — any story's, a children's too: story-picture.ts → parseStoryUnclothed)
           const bare = parseStoryUnclothed(String(extrasRaw || ""));
@@ -451,7 +456,9 @@ export async function narratedSceneSeeds(o: {
       // (…and a night scene's night said FIRST: this prompt is cut at 500 characters, and the night must not be what is cut)
       if (!img) {
         try {
-          const lenient = await renderCreativeSeed(`${safe}${night ? `${NIGHT_LINE} ` : ""}${dressedInWater((scene.visual || "").slice(0, 300))}. ${tmpl.sceneHint}`, aspect);
+          // (…and a DRAWN story's cut is longer by its lead, 2026-11-26 — review of S15a: the lead, said first, took 171–186 of
+          //  the 500 characters, and on a night scene the lead and NIGHT_LINE left 130–145 of the scene's own words)
+          const lenient = await renderCreativeSeed(`${safe}${night ? `${NIGHT_LINE} ` : ""}${dressedInWater((scene.visual || "").slice(0, 300))}. ${tmpl.sceneHint}`, aspect, 500 + (tmpl.drawn ? drawnLead(tmpl.key).length : 0));
           img = lenient ? await keepClothed({ url: lenient, ref: (u) => abs(u) || u, edit: (u, bare) => clothedEditOn(u, bare, aspect), log: (l) => console.log(`[narrated] scene ${i + 1} (the lenient path): ${l}`) }) : null;
           // (…and never shown with a band either: cut to its content and covered — full-frame.ts)
           // (…flagged like the others when cutting it off does not leave a right picture — review of S14: the lenient
