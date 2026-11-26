@@ -339,6 +339,9 @@ test("a genre is a promise about what happens and how it ends — and a look tha
   assert.deepEqual(GENRE_FILMS.filter((g) => g.faceMood).map((g) => g.key), ["comedy", "thriller", "action", "mystery"]);
   // DRAMA, sharpened: one relationship, a choice that costs, small actions, a decision and not a speech
   assert.ok(/^a short DRAMA, acted: ONE relationship under pressure/.test(DRAMA_BRIEF) && DRAMA_BRIEF.includes("a choice that will cost one of them something") && DRAMA_BRIEF.includes("small physical actions") && DRAMA_BRIEF.endsWith("It ends on a decision being MADE, never on a speech about it"));
+  // (2026-11-26: its examples are things DONE, from where each one stands — "a coat kept on" is no action, and "a chair
+  //  pulled closer" closes the distance the acted rules keep: acted-staging.ts → happensBrief, CAMERA_IS_DEALT)
+  assert.ok(!/kept on|pulled closer|key put down/.test(DRAMA_BRIEF));
 });
 
 test("a new genre's LOOK reaches its ACTED film: its light and colour, no lens — and nothing changes for any other", () => {

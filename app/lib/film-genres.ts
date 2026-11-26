@@ -550,7 +550,7 @@ const NOTHING_TO_READ = "real-looking people; a clean, uncluttered set with NO r
  *  SHORT FILM where your cast actually SPEAKS real dialogue … The flagship movie maker." — which told the
  *  writer nothing about what happens. */
 export const DRAMA_BRIEF =
-  "a short DRAMA, acted: ONE relationship under pressure — two people who matter to each other, and a choice that will cost one of them something. They say less than they mean; what they feel shows in small physical actions (a key put down, a coat kept on, a chair pulled closer). It ends on a decision being MADE, never on a speech about it";
+  "a short DRAMA, acted: ONE relationship under pressure — two people who matter to each other, and a choice that will cost one of them something. They say less than they mean, in full spoken lines; what they feel shows in small physical actions each of them does from where they stand (a suitcase snapped shut, a drawer emptied onto the table, a coat pulled on). It ends on a decision being MADE, never on a speech about it";
 /* (told by a narrator, a Drama's brief is written in the engine's own list — NARRATED_BRIEF.testmovie — beside
  *  horror's and the moral's, where a test of the shows reads it.) */
 
