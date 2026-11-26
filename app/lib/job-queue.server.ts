@@ -1225,6 +1225,7 @@ async function runJob(
             captions: typeof payload.filmCaptions === "string" ? payload.filmCaptions : undefined,
             aspect: (payload.filmAspect as string | undefined) || undefined,
             cast: Array.isArray(payload.cast) ? (payload.cast as Array<{ name: string; faceUrl?: string | null; kind?: "person" | "cartoon" | "monster"; look?: string }>) : undefined,
+            castGenders: Array.isArray(payload.filmCastGenders) ? (payload.filmCastGenders as Array<{ name: string; gender: "m" | "f" }>) : undefined,
             approvedSceneImgs: Array.isArray(payload.approvedSceneImgs) ? (payload.approvedSceneImgs as (string | null)[]) : undefined,
             section: (payload.section as string) || "creator",
             jobId: payload.__jobId as string | undefined,
@@ -1332,6 +1333,7 @@ async function runJob(
             cast: payload.cast as Array<{ name: string; faceUrl?: string | null; voiceId?: string | null; kind?: "person" | "cartoon" | "monster"; look?: string }> | undefined,
             // "Lock these voices": re-voice each line with the voice picked for that character.
             lockVoices: payload.filmLockVoices === true,
+            castGenders: Array.isArray(payload.filmCastGenders) ? (payload.filmCastGenders as Array<{ name: string; gender: "m" | "f" }>) : undefined,
             // Captions on the finished film: "bold" / "subtitles" (unset = none).
             captions: typeof payload.filmCaptions === "string" ? payload.filmCaptions : undefined,
             // Swappable renderer: Kling 3 Omni is the DEFAULT (owner A/B win); "veo"

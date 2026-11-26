@@ -651,6 +651,7 @@ export async function generateTestMovie(opts: {
    *  present in it (locked identity), and the speaker's voice timbre is pinned into
    *  the Veo prompt so the voice stays consistent across shots. */
   cast?: Array<{ name: string; faceUrl?: string | null; voiceId?: string | null; kind?: "person" | "cartoon" | "monster"; look?: string; /** THE FILM'S THING (dialogue-cast.ts → castThreat): the member's chosen monster, or the portrait they had drawn of the story's own threat — one entry at most; an old payload has none */ role?: "threat" }>;
+  castGenders?: Array<{ name: string; gender: "m" | "f" }>;
   /** Which renderer runs the dialogue clips — the ONE thing that differs between the
    *  otherwise-identical engine pipelines. "kling3" (default, cheaper) or "veo" (premium,
    *  native audio). Recorded on the asset so the Archive shows which model made the film. */
@@ -700,7 +701,7 @@ export async function generateTestMovie(opts: {
   // (written here = made in one press: the writer is told who the maker CAST, so the script is for them —
   //  untold, it invented two people of its own and the picked cast matched nobody: dialogue-cast.ts)
   // (a five-minute script is written here in ten answers or more, the job saying it is at work as each comes back)
-  else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: tmpl.key, topic: opts.topic, sceneCount: opts.sceneCount, beat: alive, ...(castForWriter(opts.cast).length ? { cast: castForWriter(opts.cast) } : {}), series: opts.series });
+  else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: tmpl.key, topic: opts.topic, sceneCount: opts.sceneCount, beat: alive, ...(castForWriter(opts.cast).length ? { cast: castForWriter(opts.cast) } : {}), ...(opts.castGenders?.length ? { castGenders: opts.castGenders } : {}), series: opts.series });
   // an episode is called "<Series> — Episode <N>", however its script was written (film-series.ts)
   if (opts.series) treatment.title = episodeTitle(opts.series.title, opts.series.episode, treatment.title);
   // (THE ONE LIMIT — film-length.ts, through film-engine's filmShots: as many shots as the page could ask for and

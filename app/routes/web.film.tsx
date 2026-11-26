@@ -866,7 +866,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (narrated) {
         // NARRATED: one picture a scene; picked cast are drawn from their own pictures.
         let tr0 = approvedTreatment as unknown as import("../lib/film-engine.server").FilmTreatment | undefined;
-        if (!tr0) tr0 = await previewFilmTreatment({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, contentLang: writeLang, mode: "narrated", cast: storyCast.map((c) => ({ name: c.name, desc: c.look, kind: c.kind })), series });
+        if (!tr0) tr0 = await previewFilmTreatment({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, contentLang: writeLang, mode: "narrated", cast: storyCast.map((c) => ({ name: c.name, desc: c.look, kind: c.kind })), castGenders: parseCastGenders(form.get("filmCastGenders") as string), series });
         const { narratedSceneSeeds } = await import("../lib/narrated-story.server");
         // (the story's own cast is drawn here — a portrait each — unless it is the next episode of a series,
         //  which opens with the faces the last one had)
@@ -5638,6 +5638,7 @@ export default function FilmStudio() {
           {narrated && langOn && <input type="hidden" name="filmLang" value={storyLang} />}
           {isStoryboard && <input type="hidden" name="filmCaptions" value={captions} />}
           {isStoryboard && pickedCast.length > 0 && <input type="hidden" name="filmCast" value={filmCastJson} />}
+          {isStoryboard && storyGenders.length > 0 && <input type="hidden" name="filmCastGenders" value={JSON.stringify(storyGenders)} />}
           {tmpl?.lipSyncSinger && <input type="hidden" name="filmGenre" value={filmGenre} />}
           {tmpl?.lipSyncSinger && songSource === "upload" && filmSongUrl && <input type="hidden" name="filmSongUrl" value={filmSongUrl} />}
           {tmpl?.lipSyncSinger && filmProps.length > 0 && <input type="hidden" name="filmProps" value={JSON.stringify(filmProps)} />}

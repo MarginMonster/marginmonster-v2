@@ -336,6 +336,17 @@ test("A STORY'S PICKED STARS REACH ITS WRITER WITH THEIR GENDERS (2026-11-26: th
   assert.ok(!ui.includes("...(castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {})"));
   // …and the server hands them to the writer's CAST GENDERS line, whatever the template
   assert.ok(ui.includes("castGenders: parseCastGenders(form.get(\"filmCastGenders\") as string)"));
+  // …and a film made IN ONE PRESS is written with them too (2026-11-26): Generate posts them, the job carries them to
+  // the acted and the told engine, each hands them to its writer — and the storyboard's own told write takes them
+  assert.ok(ui.includes("{isStoryboard && storyGenders.length > 0 && <input type=\"hidden\" name=\"filmCastGenders\" value={JSON.stringify(storyGenders)} />}"));
+  assert.ok(ui.includes("cast: storyCast.map((c) => ({ name: c.name, desc: c.look, kind: c.kind })), castGenders: parseCastGenders(form.get(\"filmCastGenders\") as string), series });"));
+  const jq = fs.readFileSync(path.join(root, "app", "lib", "job-queue.server.ts"), "utf8");
+  assert.equal(jq.split("castGenders: Array.isArray(payload.filmCastGenders)").length - 1, 3, "the music video, the told story and the acted film");
+  for (const f of ["film-dialogue.server.ts", "narrated-story.server.ts"]) {
+    const src = fs.readFileSync(path.join(root, "app", "lib", f), "utf8");
+    assert.ok(src.includes("...(opts.castGenders?.length ? { castGenders: opts.castGenders } : {})"), f);
+    assert.ok(src.includes("  castGenders?: Array<{ name: string; gender: \"m\" | \"f\" }>;"), f);
+  }
 });
 
 test("A MUSIC VIDEO'S ARTIST AND CO-STARS ARE THE MUSIC VIDEO'S — a story is never written with their names (2026-11-26)", () => {
