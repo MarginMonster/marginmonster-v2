@@ -36,7 +36,7 @@ import { heroName } from "./film-heroes";
 import { posterFilters, posterLayout, posterName, posterScene } from "./story-poster";
 import { trimTitle } from "./text-trim";
 import { readVoiceSound } from "./voice-sound.server";
-import { MOTION_MAX_SCENES, STORY_MOTION_ENGINE, fitMotion, motionChain, seedName, storyPicturesOf } from "./story-motion";
+import { MOTION_MAX_SCENES, STORY_MOTION_ENGINE, fitMotion, motionChain, seedName, stillCameraOf, storyPicturesOf, type StillCamera } from "./story-motion";
 import { animateScenes, storyMotionOn, type MotionResult } from "./story-motion.server";
 import { cameraLine, sceneShot } from "./story-shots";
 // EVERYBODY IN EVERY PICTURE IS CLOTHED (2026-11-25 — clothed.server.ts → keepClothed; story-picture.ts → UNCLOTHED_ASKED)
@@ -53,7 +53,7 @@ import { NIGHT_STYLE_LIGHT, parseStoryNight, storyNight } from "./story-picture"
 import { streamSeconds } from "./film-join.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
 import { episodeOwnName, type ShowMeta } from "./character-series";
-import { barBox, barsIn, boldCards, keepToldScenes, captionFilters, captionStyleOf, entryName, frameWords, namedIn, presentIn, sceneCast, sceneWindows, scriptWordTimes, stillHeld, stillMove, stillMoves, storyFrame, subtitleCards, subtitleChars, type CaptionStyle, type Card, type Window, type WordT } from "./narrated-core";
+import { barBox, barsIn, boldCards, cameraMove, keepToldScenes, captionFilters, captionStyleOf, entryName, frameWords, namedIn, presentIn, sceneCast, sceneWindows, scriptWordTimes, stillHeld, stillMoves, storyFrame, subtitleCards, subtitleChars, type CaptionStyle, type Card, type Window, type WordT } from "./narrated-core";
 
 const RENDERS = () => path.join(process.cwd(), "data", "renders");
 const rid = () => crypto.randomBytes(6).toString("hex");
@@ -550,6 +550,10 @@ export async function assembleNarrated(o: {
   /** THE PICTURES MOVE (story-motion.ts): a scene's clip, where it has one — it plays in place of the
    *  still. Index-aligned with `stills`; a scene without one keeps its still and its slow push-in. */
   clips?: (string | null)[];
+  /** THE CAMERA OF A STILL STORY (story-motion.ts → StillCamera): how each still picture moves, index-aligned with
+   *  `stills` — given only for a story told over its stills; none, or a scene with none, moves as it always did
+   *  (Gentle: narrated-core.ts → cameraMove). */
+  cameras?: (StillCamera | null)[];
 }): Promise<void> {
   const beat = async () => { if (o.jobId) await checkpointJob(o.jobId, { ckBeat: Date.now() }); };
   const N = o.stills.length;
@@ -574,6 +578,8 @@ export async function assembleNarrated(o: {
   // A LONG STORY IS CUT IN PARTS (story-join.ts): more scenes than one cut has ever had here are never opened by one
   // ffmpeg. A story of twelve scenes or fewer is cut below, exactly as it always was.
   if (N > STORY_ONE_CUT) return cutInParts({ ...o, norm, frames, moves, total, hasMusic, beat });
+  // (each still's move, by its camera — narrated-core.ts → THE CAMERA OF A STILL STORY)
+  const stillMoveOf = (i: number) => cameraMove(o.cameras?.[i], i);
   // the look that was asked for (Highlight is a file for the subtitle renderer), and the same cards as
   // plain drawn text behind it: a renderer that fails must not cost the story its words (caption-burn)
   const cap = captionGraph(o.cards, o.style, o.fontFile, o.W, o.H);
@@ -605,7 +611,7 @@ export async function assembleNarrated(o: {
     let v = "[vcat]";
     // THE STILLS' SLOW MOVES (narrated-core.ts → A STILL PICTURE'S SLOW MOVE): each held picture moved by its own move
     // over its own frames, in ONE pass over the joined picture — before the words, which stay where they are
-    const still = moving ? stillMoves(norm.map((_, i) => ({ move: clipOf(i) ? null : stillMove(i), frames: frames[i] }))) : "";
+    const still = moving ? stillMoves(norm.map((_, i) => ({ move: clipOf(i) ? null : stillMoveOf(i), frames: frames[i] }))) : "";
     if (still) { f.push(`[vcat]${still}[vmv]`); v = "[vmv]"; }
     if (useCaptions && captions.length) { f.push(`${v}${(styled && cap.styled ? cap.styled : captions).join(",")}[vf]`); v = "[vf]"; }
     f.push(`[${N}:a]aresample=44100,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=44100,apad=pad_dur=${TAIL_S}[vo]`);
@@ -672,6 +678,7 @@ export async function assembleNarrated(o: {
 async function cutInParts(o: {
   voPath: string; musicPath: string | null; cards: Card[]; style: CaptionStyle; fontFile: string; W: number; H: number; outPath: string;
   norm: string[]; frames: number[]; moves: Array<{ file: string; fit: { speed: number; hold: number } } | null>; total: number; hasMusic: boolean; beat: () => Promise<void>;
+  cameras?: (StillCamera | null)[];
 }): Promise<void> {
   const FPS = 30;
   const parts = storyParts(o.frames);
@@ -713,7 +720,7 @@ async function cutInParts(o: {
           const words = !cap ? [] : rung.words === "styled" ? cap.styled || cap.plain : cap.plain;
           const scenes = Array.from({ length: part.to - part.from }, (_, k) => {
             const i = part.from + k;
-            return sceneIn(i, { still: o.norm[i], clip: o.moves[i] }, o.frames[i], o.W, o.H, rung);
+            return sceneIn(i, { still: o.norm[i], clip: o.moves[i], camera: o.cameras?.[i] }, o.frames[i], o.W, o.H, rung);
           });
           const run = await runFfmpeg(storyPartArgs(scenes, o.frames.slice(part.from, part.to), words, part.clock, files[p]));
           const got = run.status === 0 && fs.existsSync(files[p]) ? streamSeconds(files[p]).video : null;
@@ -784,6 +791,9 @@ export async function generateNarratedStory(opts: {
   /** THE LADDER's first two rungs (story-motion.ts): "still" = told over its still pictures; anything
    *  else = they move. */
   pictures?: string | null;
+  /** …and, told over its stills, how they move (story-motion.ts → StillCamera; unset = Gentle). A scene of the
+   *  approved story may name its own (`camera` on the scene: the storyboard's chip on its picture). */
+  stillCamera?: string | null;
   resume?: { ckTreatment?: string; ckApproved?: string; ckVoPath?: string; ckVoUrl?: string; ckWords?: string; ckImages?: string; ckMusic?: string; ckMotion?: string; ckCast?: string; ckPictureFaults?: string };
 }): Promise<string> {
   const tmpl = filmTemplate(opts.template);
@@ -982,7 +992,13 @@ export async function generateNarratedStory(opts: {
   catch (e) { wordsDrawable = false; console.error(`[narrated] no font for these words — told without captions: ${e instanceof Error ? e.message.slice(0, 140) : e}`); }
   const outName = `nar-${Date.now()}-${rid()}.mp4`;
   const outPath = path.join(RENDERS(), outName);
-  await assembleNarrated({ stills, clips: motion?.clips, windows, voPath, musicPath, cards: wordsDrawable ? cards : [], style, fontFile, W, H, outPath, jobId });
+  // THE CAMERA OF A STILL STORY (story-motion.ts → StillCamera; the owner, 2026-11-26: "optional selects for the image
+  // similar to other providers (shake, slight motion, etch etch)") — for a story told over its stills, and only then: a
+  // moving story is the engine's to animate, and a scene of one whose clip could not be made keeps its gentle move.
+  // Each scene by its own camera when the storyboard gave it one, else the story's.
+  const stillCamera = stillCameraOf(opts.stillCamera) || "gentle";
+  const cameras = !storyMotionOn(opts.pictures) ? treatment.scenes.map((s) => stillCameraOf((s as { camera?: unknown }).camera) || stillCamera) : undefined;
+  await assembleNarrated({ stills, clips: motion?.clips, windows, voPath, musicPath, cards: wordsDrawable ? cards : [], style, fontFile, W, H, outPath, jobId, cameras });
   try { await mirrorRender(outName, fs.readFileSync(outPath)); } catch { /* non-fatal */ }
 
   // THE POSTER — who is billed: the cast the maker picked, then the story's own. It never fails the film:
@@ -1043,6 +1059,9 @@ export async function generateNarratedStory(opts: {
         //  `pictures: "still"`, over the picture list just above — so a still story lost its pictures, and
         //  Another language, Edit story and its Archive cover had none to reuse. Found in review of S13.)
         ...(storyPicturesOf(opts.pictures) === "still" ? { rung: "still" } : {}),
+        // …and THE CAMERA its stills were told with, when its maker picked one (Edit story, Next episode and Another
+        // language tell it again with it — story-motion.ts → storyCameraOf); a scene's own stays on the scene
+        ...(cameras && stillCamera !== "gentle" ? { stillCamera } : {}),
         ...(motion ? { motion: { engine: STORY_MOTION_ENGINE, scenes: motion.clips.filter(Boolean).length, of: stills.length, made: motion.made, reused: motion.reused, seconds: motion.seconds, ...(motion.faults.length ? { faults: motion.faults.slice(0, 8) } : {}), ...(motion.looks.length ? { looks: motion.looks.slice(0, 12) } : {}) } } : {}),
       }),
     },

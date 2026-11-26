@@ -98,11 +98,13 @@ test("the wiring: the single cut and the parts lay the same moves, and nothing e
   const nar = read("app", "lib", "narrated-story.server.ts");
   const single = nar.slice(nar.indexOf("export async function assembleNarrated("), nar.indexOf("async function cutInParts("));
   assert.ok(single.includes("? `[${i}:v]${stillHeld(frames[i], o.W, o.H)}[c${i}]`"));
-  assert.ok(single.includes("const still = moving ? stillMoves(norm.map((_, i) => ({ move: clipOf(i) ? null : stillMove(i), frames: frames[i] }))) : \"\";"));
+  // (each still's move by its camera since 2026-11-26 — none is Gentle, the four in turn: tests/story-still-camera.test.ts)
+  assert.ok(single.includes("const stillMoveOf = (i: number) => cameraMove(o.cameras?.[i], i);"));
+  assert.ok(single.includes("const still = moving ? stillMoves(norm.map((_, i) => ({ move: clipOf(i) ? null : stillMoveOf(i), frames: frames[i] }))) : \"\";"));
   assert.ok(!/zoompan/.test(read("app", "lib", "narrated-core.ts").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "")), "no zoompan in the move");
   assert.ok(!nar.includes("kenBurns("), "the cut holds and moves; the one-scene kenBurns is the move said for one scene");
   const join = read("app", "lib", "story-join.ts");
-  assert.ok(join.includes("if (how.moving) return { input: [\"-i\", s.still], chain: stillHeld(frames, W, H), move: stillMove(i) };"));
+  assert.ok(join.includes("if (how.moving) { const move = cameraMove(s.camera, i); return { input: [\"-i\", s.still], chain: stillHeld(frames, W, H), ...(move ? { move } : {}) }; }"));
   assert.ok(join.includes("partGraph(scenes.map((s) => s.chain), frames, captions, clock, scenes.map((s) => s.move))"));
 });
 

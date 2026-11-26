@@ -16,8 +16,8 @@
  * Pure (no server file): tests/story-join.test.ts cuts a story of fifteen stand-in scenes both ways, with the very
  * arguments below, and compares the two frame by frame. */
 
-import { stillHeld, stillMove, stillMoves, type StillMove } from "./narrated-core.ts";
-import { motionChain } from "./story-motion.ts";
+import { cameraMove, stillHeld, stillMoves, type StillMove } from "./narrated-core.ts";
+import { motionChain, type StillCamera } from "./story-motion.ts";
 
 const FPS = 30;
 
@@ -83,17 +83,22 @@ export function cardsDuring<C extends CardLike>(cards: ReadonlyArray<C>, from: n
 
 /** A scene as it goes into a cut: its picture, and the clip that plays in place of it where it has one (with how
  *  that clip fills the scene: story-motion.ts → fitMotion). */
-export type StoryScene = { still: string; clip?: { file: string; fit: { speed: number; hold: number } } | null };
+export type StoryScene = {
+  still: string; clip?: { file: string; fit: { speed: number; hold: number } } | null;
+  /** how its picture moves when it is a still (story-motion.ts → StillCamera; none = Gentle, the four in turn) */
+  camera?: StillCamera | null;
+};
 
 /** HOW SCENE `i` GOES INTO A CUT — its input and its picture's chain, exactly as the single cut takes it
  *  (narrated-story.server.ts → assembleNarrated → build): its clip, when clips are used and it has one; else its
  *  picture held for the scene with its slow MOVE (`moving` — the move is laid over the part's joined picture, by
  *  partGraph: narrated-core.ts → A STILL PICTURE'S SLOW MOVE; `move` says which, scene `i` counted through the whole
- *  story so that no two neighbours move alike across a part's edge); else its picture held for the scene. */
+ *  story so that no two neighbours move alike across a part's edge — by the scene's CAMERA, when its story has one:
+ *  narrated-core.ts → cameraMove; a picture that does not move at all has no `move`); else its picture held. */
 export function sceneIn(i: number, s: StoryScene, frames: number, W: number, H: number, how: { clips: boolean; moving: boolean }): { input: string[]; chain: string; move?: StillMove } {
   const m = how.clips && how.moving ? s.clip : null;
   if (m) return { input: ["-i", m.file], chain: motionChain(m.fit, frames, W, H) };
-  if (how.moving) return { input: ["-i", s.still], chain: stillHeld(frames, W, H), move: stillMove(i) };
+  if (how.moving) { const move = cameraMove(s.camera, i); return { input: ["-i", s.still], chain: stillHeld(frames, W, H), ...(move ? { move } : {}) }; }
   return { input: ["-loop", "1", "-t", (frames / FPS).toFixed(3), "-i", s.still], chain: `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1,fps=${FPS},format=yuv420p` };
 }
 
@@ -109,11 +114,14 @@ export const exactly = (frames: number): string =>
  *  millionths of a second from `clock` (StoryPart → clock: where one cut's clock stands at the part's first frame),
  *  and from 0 again after. Out: [v].
  *  `moves` (sceneIn → move, for input k): the still scenes' slow moves, laid over the joined picture in one pass before
- *  the words (narrated-core.ts → stillMoves: one `perspective` for the part, not one a scene — measured). */
+ *  the words (narrated-core.ts → stillMoves: one `perspective` for the part, not one a scene — measured). A HAND
+ *  (Handheld, Shake) keeps the story's clock as the words do: the part's first frame is the story's frame `clock`
+ *  says (whole frames at 30 a second, so the millionths round back to it exactly), and a story cut in parts sways
+ *  frame for frame as the story cut once. */
 export function partGraph(chains: ReadonlyArray<string>, frames: ReadonlyArray<number>, captions: ReadonlyArray<string>, clock = 0, moves: ReadonlyArray<StillMove | null | undefined> = []): string {
   const g = chains.map((c, k) => `[${k}:v]${c},${exactly(frames[k])}[c${k}]`);
   g.push(`${chains.map((_, k) => `[c${k}]`).join("")}concat=n=${chains.length}:v=1:a=0[vcat]`);
-  const mv = stillMoves(chains.map((_, k) => ({ move: moves[k] || null, frames: frames[k] })));
+  const mv = stillMoves(chains.map((_, k) => ({ move: moves[k] || null, frames: frames[k] })), Math.round((Math.max(0, clock) * FPS) / 1e6));
   g.push(captions.length ? `[vcat]${mv ? `${mv},` : ""}settb=AVTB,setpts=PTS+${Math.max(0, Math.round(clock))},${captions.join(",")},setpts=PTS-STARTPTS[v]` : `[vcat]${mv || "null"}[v]`);
   return g.join(";");
 }
