@@ -122,7 +122,8 @@ test("a story picture has nobody the words do not put there, and everybody in it
   assert.equal(sp.storyFaults({ seen: [true, true], panels: false }), 0, "an older reading: nothing more");
   assert.ok(sp.storyFix({ seen: [true, true], panels: false, twice: [false, true] }, ["Nessa", "Dovey"]).includes("Dovey was drawn TWICE in the last try — they appear exactly ONCE in this picture, nowhere else in it"));
   const nar = read("app", "lib", "narrated-story.server.ts");
-  assert.ok(nar.includes("const twice = castPics.length ? parseStoryTwice(String(castRaw || \"\"), castPics.length) : null;") && nar.includes("panels: panels === true, ...(twice ? { twice } : {}), ...(extra ? { extra: true } : {}), ...(outside ? { outside: true } : {}), ...(lens?.length ? { lens } : {}), ...(grimy ? { grimy: true } : {}), ...(inset ? { inset: true } : {}), ...(dark === false ? { notNight: true } : {}), ...(bare?.unclothed ? { unclothed: true, unclothedWho: bare.who } : {}) };"));
+  // (…a stare counted only where the shot is not facing us — story-picture.ts → stareCounts, 2026-11-26)
+  assert.ok(nar.includes("const twice = castPics.length ? parseStoryTwice(String(castRaw || \"\"), castPics.length) : null;") && nar.includes("panels: panels === true, ...(twice ? { twice } : {}), ...(extra ? { extra: true } : {}), ...(outside ? { outside: true } : {}), ...(lens?.length && stareHere ? { lens } : {}), ...(grimy ? { grimy: true } : {}), ...(inset ? { inset: true } : {}), ...(dark === false ? { notNight: true } : {}), ...(bare?.unclothed ? { unclothed: true, unclothedWho: bare.who } : {}) };"));
 });
 
 test("a told story's picture says which side of a door or a window everybody is on", () => {
@@ -384,7 +385,8 @@ test("a run-down place is looked for and drawn again; a face is a face's size; a
   // (asked of every picture — the inset is anybody's fault; a run-down place counts only in a grown-up story)
   // (…and, for a night scene only, its sky in the same question since 2026-11-25 — tests/told-night.test.ts)
   assert.ok(nar.includes("anthropicVision(storyGrimePrompt(visual, night), [pic], { maxTokens: night ? 420 : 360, model: \"claude-sonnet-4-6\" }).catch(() => \"\"),"));
-  assert.ok(nar.includes("const grimy = tmpl.childSafe ? null : parseStoryGrime(String(grimeRaw || \"\"));") && nar.includes("const inset = parseStoryInset(String(grimeRaw || \"\"));"));
+  // (…and not where the story's words ask for a worn place — story-picture.ts → wornAsked, 2026-11-26)
+  assert.ok(nar.includes("const grimy = tmpl.childSafe || wornHere ? null : parseStoryGrime(String(grimeRaw || \"\"));") && nar.includes("const inset = parseStoryInset(String(grimeRaw || \"\"));"));
   const film = read("app", "routes", "web.film.tsx");
   assert.ok(film.includes("if (c.grimy === true) return t(\"Looks run-down\");"));
   assert.equal(read("app", "lib", "ui-i18n-dict.ts").split("\"Looks run-down\":").length - 1, 5, "es, fr, de, zh and ur");
