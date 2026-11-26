@@ -5719,6 +5719,13 @@ ${CAST_ID_CSS}
   .fs-shelf.is-still .fs-fmt:hover .fs-fmt-cover img,.fs-shelf.is-still :focus-visible > .fs-fmt-cover img{animation-play-state:running;}
 }
 @media(prefers-reduced-motion:reduce){.fs-shelf.is-still .fs-fmt-cover img{animation:none;}}
+/* (…and a still poster's badge and note are the shelf's own steel blue, the same on every poster of the row. Reviewed
+   at 390 px, 2026-11-26: with each genre's own badge tint the row under the Stories was the same nine pictures in the
+   same nine colours, a small glyph apart: it read as the Stories twice. One blue across the row, under the blue
+   heading, says "another tier" before a word is read. White on the badge reads 4.5:1 at its lighter end, 8.4:1 at its
+   darker; the note's blue on the card's white, 5.7:1.) */
+.fs-shelf.is-still .fs-fmt-ico{background:linear-gradient(135deg,#4A7BA3,#2D506E);}
+.fs-shelf.is-still .fs-fmt-sub em{color:var(--shelf);}
 /* the covers MOVE now, so the title has to win: a deeper, taller shade under it and a bigger, heavier name */
 .fs-fmt-cover::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(6,14,10,.94) 0%,rgba(6,14,10,.62) 24%,rgba(6,14,10,.14) 50%,transparent 68%);}
 .fs-fmt-ico{position:absolute;z-index:2;top:8px;left:8px;width:28px;height:28px;border-radius:9px;display:grid;place-items:center;box-shadow:0 5px 14px -5px rgba(0,0,0,.6);}

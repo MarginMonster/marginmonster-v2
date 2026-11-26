@@ -106,8 +106,16 @@ test("the page: one map draws every shelf; a still poster opens its hero on the 
   assert.ok(block.includes("{t(h.kick)}{sh.rung === \"still\" ? <em> · {t(\"Still pictures\")}</em> : h.meta ? <em> · {t(h.meta)}</em> : null}"));
   assert.ok(block.includes("sh.rung === \"still\" ? t(\"Still pictures\") : h.meta ? t(h.meta) : \"\"].filter(Boolean).join(\" · \")}"));
   // its badge is the shelf's picture where a Story's is the told book (the row reads as pictures at a glance); its
-  // word and its tint are the Story's
+  // word is the Story's. Its badge's COLOUR and its note's are the shelf's own blue, one across the row (the stylesheet,
+  // below: reviewed at 390 px — with each genre's tint the row read as the Stories twice)
   assert.ok(block.includes("<span className={`fs-fmt-ico ${h.tint}`} aria-hidden=\"true\">{sh.rung === \"still\" ? <Ico n=\"image\" size={15} /> : fmtIcon(h.tmpl, h.told === \"narrated\")}</span>"));
+  assert.equal(count(FS_STYLE, ".fs-shelf.is-still .fs-fmt-ico{background:linear-gradient(135deg,#4A7BA3,#2D506E);}\n.fs-shelf.is-still .fs-fmt-sub em{color:var(--shelf);}\n"), 1);
+  // (three classes: it outranks a genre's one-class tint, `.t-film{background:…}`, wherever either stands)
+  assert.ok(FS_STYLE.includes(".t-film{background:"));
+  // white on the badge, and the note's blue on the poster's white foot, read at 4.5:1 or better
+  const lum = (h: string) => { const c = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+  const ratio = (a: string, b: string) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+  for (const [fg, bg] of [["#FFFFFF", "#4A7BA3"], ["#FFFFFF", "#2D506E"], ["#3E6A8E", "#FFFFFF"]]) assert.ok(ratio(fg, bg) >= 4.5, `${fg} on ${bg}: ${ratio(fg, bg).toFixed(2)}`);
   assert.ok(block.includes("<span className=\"fs-fmt-label\"><b>{t(h.card)}</b></span>"));
   assert.ok(page.includes("// (2026-11-26) …and the told heroes again on a shelf of their still rung: a poster's key says which shelf it stands on\nimport { posterKey } from \"../lib/film-heroes\";"));
 });
