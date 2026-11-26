@@ -50,6 +50,8 @@ import { takeSeen, unseenAsk, unseenLines } from "./dialogue-cast";
 import { WHAT_FRIGHTENS, inheritPlaces, keepGuess, placeNamed, placesAsk, takePlaces } from "./story-picture";
 import { HORROR_SAFETY, IDEA_CHECK, IDEA_MAX, PREMISE_WINS, REAL_WORLD, STORY_SAFETY, chosenThreat } from "./premise-rules";
 import { DRAMA_BRIEF, GENRE_FILMS, genreTemplate, nudgeFor, startLine } from "./film-genres";
+// (2026-11-26) the anime maker: six drawn styles, each a told template of its own
+import { ANIME_STYLES, DRAWN_WORLD, animeBrief, animeTemplate } from "./anime-styles";
 import { tellerVisual } from "./character-series";
 import { planShots, shotInWords, shotListBrief } from "./story-shots";
 import { dealFresh, freshBrief, freshKeys, usedBefore, type Fresh, type Used } from "./story-variety";
@@ -89,6 +91,10 @@ export interface FilmTemplate {
   /** The genre's world is its own, not today's (Fantasy — film-genres.ts → GenreFilm.ownWorld): its writer is
    *  not told "IT IS TODAY'S REAL WORLD … no castle, no cottage" (premise-rules.ts → REAL_WORLD). */
   ownWorld?: boolean;
+  /** THE TEMPLATE'S PICTURES ARE DRAWN — an anime style (anime-styles.ts → animeTemplate), never photographed: every
+   *  picture of it is told so first (narrated-story.server.ts → `safe`), and its writer is told so after REAL_WORLD
+   *  (DRAWN_WORLD). Told only: an acted film is welded to photographs or a 3D cartoon, and is never offered one. */
+  drawn?: boolean;
   /** Music mood the track generator falls back to. */
   musicHint: string;
   defaultScenes: number;
@@ -333,6 +339,10 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
 // every pipeline that takes a template key (the acted engine, the narrator, the storyboard, the Archive)
 // makes it with no code of its own, and its lengths are the Short Film's by construction (genreTemplate).
 for (const g of GENRE_FILMS) FILM_TEMPLATES[g.key] = genreTemplate(FILM_TEMPLATES.testmovie, g);
+// THE ANIME STYLES (anime-styles.ts; the owner, 2026-11-26: "also would like to add an Anime maker with different
+// styles"): each is its KIN's template — a movie category above, so it exists by now — with the style's own key, name,
+// drawn look and score, and `drawn`. Told only: its faces, world, brief and lengths are the kin's.
+for (const s of ANIME_STYLES) FILM_TEMPLATES[s.key] = animeTemplate(FILM_TEMPLATES[s.kin], s);
 
 export function filmTemplate(key: string | undefined): FilmTemplate {
   return (key && FILM_TEMPLATES[key]) || FILM_TEMPLATES.musicvideo;
@@ -452,6 +462,8 @@ const NARRATED_BRIEF: Record<string, string> = {
   // …and every new movie category can be told too, each to its own brief (film-genres.ts → GENRE_FILMS)
   ...Object.fromEntries(GENRE_FILMS.map((g) => [g.key, g.narrated])),
 };
+// …and every anime style is told as its kin is told, with every picture of it a drawn frame (anime-styles.ts)
+for (const s of ANIME_STYLES) NARRATED_BRIEF[s.key] = animeBrief(NARRATED_BRIEF[s.kin], s);
 /** The templates that can be told by a narrator (for the page that offers the choice). */
 export const NARRATABLE_KEYS: string[] = Object.keys(NARRATED_BRIEF);
 /* (HOW a format is told is no longer a default plus a switch: it is the HERO that was picked — one format
@@ -889,7 +901,11 @@ export async function previewFilmTreatment(opts: {
     // TODAY'S REAL WORLD (premise-rules.ts): never a fairytale cottage for "a house" — not in a children's format
     // (…nor in a genre whose world is its own: said to a Fantasy, "no castle, no lone stone cottage, no cabin"
     //  forbids the genre — film-genres.ts → ownWorld, 2026-11-25)
+    // (…and right after it, A DRAWN STORY — an anime style, whatever its world — is told what that rule means for it:
+    //  "look like a photograph of a real place" is a real place's shapes and materials, said in words; the picture is
+    //  drawn, and no VISUAL asks for a photograph — anime-styles.ts → DRAWN_WORLD, 2026-11-26)
     (storyFormat && !tmpl.childSafe && !tmpl.ownWorld ? `${REAL_WORLD}\n` : "") +
+    (tmpl.drawn ? `${DRAWN_WORLD}\n` : "") +
     `Also give musicMood (a short phrase for the backing track) and a short title.${langLine}\n` +
     safetyLine +
     // (the idea checked last of all — premise-rules.ts → IDEA_CHECK)
@@ -915,7 +931,9 @@ export async function previewFilmTreatment(opts: {
       freshLine +
       (tmpl.key === "horror" ? `${WHAT_FRIGHTENS}\n` : "") +
       // (a genre whose world is its own is never told today's real world — not in its plan either: film-genres.ts → ownWorld)
+      // (…and a drawn story's plan is told it is drawn, as its whole is: DRAWN_WORLD)
       (!tmpl.childSafe && !tmpl.ownWorld ? `${REAL_WORLD}\n` : "") +
+      (tmpl.drawn ? `${DRAWN_WORLD}\n` : "") +
       `Also give musicMood (a short phrase for the backing track) and a short title.${langLine}\n` +
       safetyLine +
       (topic ? `\n${IDEA_CHECK}` : "")
@@ -950,7 +968,9 @@ export async function previewFilmTreatment(opts: {
     (narrated && opens ? freshLine : "") +
     (tmpl.key === "horror" ? `${WHAT_FRIGHTENS}\n` : "") +
     // (…nor in any of its parts: a Fantasy told "no castle" in scene 4 of 9 is the genre forbidden halfway through)
+    // (…and every part of a drawn story is told it is drawn: DRAWN_WORLD)
     (!tmpl.childSafe && !tmpl.ownWorld ? `${REAL_WORLD}\n` : "") +
+    (tmpl.drawn ? `${DRAWN_WORLD}\n` : "") +
     `Also give musicMood (a short phrase for the backing track) and a short title.${langLine}\n` +
     safetyLine
   );

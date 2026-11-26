@@ -25,7 +25,10 @@
  * `brief` that is a promise about what HAPPENS and how it ends — never an adjective — the brief for when it
  * is told by a narrator, a photographed LOOK (light, lens, palette), a score, and how the faces are.
  *
- * Pure: no imports. tests/film-genres.test.ts. */
+ * Pure: its one import is the anime table, itself pure (an anime style is told as its kin genre — `genreOf`).
+ * tests/film-genres.test.ts. */
+
+import { ANIME_STYLES } from "./anime-styles.ts";
 
 export type Backdrop = { key: string; label: string; where: string };
 export type DirectorNote = { key: string; label: string; ask: string };
@@ -392,8 +395,14 @@ export const FILM_GENRES: readonly FilmGenre[] = [
 ];
 
 const BY_TMPL: Record<string, FilmGenre> = Object.fromEntries(FILM_GENRES.map((g) => [g.tmpl, g]));
-/** The genre a template is shown as — undefined for a format that is not a story genre (a music video). */
-export const genreOf = (tmplKey: string | null | undefined): FilmGenre | undefined => (tmplKey ? BY_TMPL[tmplKey] : undefined);
+/* AN ANIME STYLE IS TOLD AS ITS KIN (anime-styles.ts, 2026-11-26): "Dark Ink" is a mystery, drawn. It has no row of its
+ * own in the table above — its look is not photographed and it has no acted film — so it is given its kin's: the
+ * starter chips under the idea box and the writer's nudge (the owner: "atleast need a starter "nudge" couple sentences
+ * to hand to the writer") must not silently vanish for a style, and its places and director's notes are its kin's too. */
+const ANIME_KIN: Record<string, string> = Object.fromEntries(ANIME_STYLES.map((s) => [s.key, s.kin]));
+/** The genre a template is shown as — undefined for a format that is not a story genre (a music video). An anime
+ *  style is its kin's genre. */
+export const genreOf = (tmplKey: string | null | undefined): FilmGenre | undefined => (tmplKey ? BY_TMPL[tmplKey] || BY_TMPL[ANIME_KIN[tmplKey]] : undefined);
 /** The word on the shelf for a template ("Drama" for `testmovie`); "" when it is not a story genre. */
 export const categoryOf = (tmplKey: string | null | undefined): string => genreOf(tmplKey)?.card || "";
 /** The nine places a scene of this genre is offered; a format with none of its own is offered Drama's — the
