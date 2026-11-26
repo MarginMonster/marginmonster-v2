@@ -386,7 +386,9 @@ test("a run-down place is looked for and drawn again; a face is a face's size; a
   // (…and, for a night scene only, its sky in the same question since 2026-11-25 — tests/told-night.test.ts)
   assert.ok(nar.includes("anthropicVision(storyGrimePrompt(visual, night), [pic], { maxTokens: night ? 420 : 360, model: \"claude-sonnet-4-6\" }).catch(() => \"\"),"));
   // (…and not where the story's words ask for a worn place — story-picture.ts → wornAsked, 2026-11-26)
-  assert.ok(nar.includes("const grimy = tmpl.childSafe || wornHere ? null : parseStoryGrime(String(grimeRaw || \"\"));") && nar.includes("const inset = parseStoryInset(String(grimeRaw || \"\"));"));
+  // (…and not in a DRAWN story, 2026-11-26: washes, grain and hatching read as "stained, dusty" to a reader tuned on
+  //  photographs; its inset and night halves are still read — tests/anime-shelf.test.ts)
+  assert.ok(nar.includes("const grimy = tmpl.childSafe || tmpl.drawn || wornHere ? null : parseStoryGrime(String(grimeRaw || \"\"));") && nar.includes("const inset = parseStoryInset(String(grimeRaw || \"\"));"));
   const film = read("app", "routes", "web.film.tsx");
   assert.ok(film.includes("if (c.grimy === true) return t(\"Looks run-down\");"));
   assert.equal(read("app", "lib", "ui-i18n-dict.ts").split("\"Looks run-down\":").length - 1, 5, "es, fr, de, zh and ur");
