@@ -693,8 +693,9 @@ test("the Movie Maker's door to Found Footage: on the Films shelf, operators onl
   assert.equal(FOUND_FOOTAGE_DOOR.href, "/web/found-footage");
   assert.ok(!FILM_HEROES.some((h) => h.id === FOUND_FOOTAGE_DOOR.id), "a door, not a hero this page builds");
   // (nine Stories and eleven Films since the genres became movie categories, 2026-11-25 — it was [3, 4, 2]; the
-  //  door is still not one of them. Since 2026-11-26 the nine Stories stand again on the Still Stories shelf.)
-  assert.deepEqual(heroShelves(FILM_HEROES).map((s) => s.heroes.length), [9, 9, 11, 2], "the shelves' own heroes are as they were");
+  //  door is still not one of them. Since 2026-11-26 the nine Stories stand again on the Still Stories shelf, and the six
+  //  anime styles on the Anime shelf after it.)
+  assert.deepEqual(heroShelves(FILM_HEROES).map((s) => s.heroes.length), [9, 9, 6, 11, 2], "the shelves' own heroes are as they were");
   assert.ok(`${FOUND_FOOTAGE_DOOR.kick} · ${FOUND_FOOTAGE_DOOR.meta}`.length <= 45, "its two lines fit a phone card");
   for (const f of [FOUND_FOOTAGE_DOOR.still, FOUND_FOOTAGE_DOOR.clip]) assert.ok(fs.existsSync(path.join(root, "public", f)), f);
   const ui = read("app", "routes", "web.film.tsx");

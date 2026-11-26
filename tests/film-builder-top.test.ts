@@ -52,11 +52,13 @@ test("a poster says its movie category; the shelf says how it is told; a screen 
   // (2026-11-26: on the still shelf the screen reader hears "Still pictures" where a Story's poster says "narrated in minutes")
   assert.ok(grid.includes("aria-label={[t(h.name), h.kick ? t(h.kick) : \"\", sh.rung === \"still\" ? t(\"Still pictures\") : h.meta ? t(h.meta) : \"\"].filter(Boolean).join(\" · \")}"));
   // the words are the categories, the same on both shelves — and the two that share a word differ by their name
-  // (2026-11-26: the told ones stand again on the still shelf — the same heroes, so the same names)
+  // (2026-11-26: the told ones stand again on the still shelf — the same heroes, so the same names; and the Anime shelf's
+  //  posters say their STYLE, a word of its own each: "an Anime maker with different styles", the owner)
   const shelves = heroShelves(FILM_HEROES);
   assert.deepEqual(shelves.map((s) => s.heroes.map((h) => h.card)), [
     ["Drama", "Comedy", "Horror", "Thriller", "Romance", "Sci-Fi", "Fantasy", "Mystery", "Moral"],
     ["Drama", "Comedy", "Horror", "Thriller", "Romance", "Sci-Fi", "Fantasy", "Mystery", "Moral"],
+    ["Dream", "Retro", "Neon City", "Skyglow", "Dark Ink", "Pastel Days"],
     ["Drama", "Comedy", "Horror", "Thriller", "Action", "Romance", "Sci-Fi", "Fantasy", "Mystery", "Moral", "Kids Cartoon"],
     ["Music Video", "Kids Music Video"],
   ]);
@@ -124,8 +126,8 @@ test("a wide screen shows that a shelf runs on: the fifth poster peeks in, and a
   assert.ok(fx.includes("rows.forEach((row) => row.removeEventListener(\"scroll\", onScroll)); window.removeEventListener(\"resize\", place);"), "and lets go of them when the shelves go");
   assert.ok(!/scrollBy|scrollTo|scrollLeft\s*=|scrollIntoView/.test(fx));
   // with today's shelves the long ones get arrows on a wide screen, Music videos does not (2026-11-26: Still Stories,
-  // nine posters, is one of the long ones)
-  assert.deepEqual(heroShelves(FILM_HEROES).map((s) => s.heroes.length > 4), [true, true, true, false]);
+  // nine posters, is one of the long ones — and Anime, six, the same day)
+  assert.deepEqual(heroShelves(FILM_HEROES).map((s) => s.heroes.length > 4), [true, true, true, true, false]);
 });
 
 /* ---- THE WRITER'S NUDGE ---------------------------------------------------------------------------------- */
