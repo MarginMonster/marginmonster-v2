@@ -409,8 +409,21 @@ export const categoryOf = (tmplKey: string | null | undefined): string => genreO
 /** The nine places a scene of this genre is offered; a format with none of its own is offered Drama's — the
  *  general nine, as the page did (`BACKDROPS_BY_FORMAT[format] || FILM_BACKDROPS`). */
 export const backdropsOf = (tmplKey: string | null | undefined): readonly Backdrop[] => (genreOf(tmplKey) || BY_TMPL.testmovie).backdrops;
-/** The genre's eight starter ideas; none for a format that is not a story genre. */
-export const startersOf = (tmplKey: string | null | undefined): readonly string[] => genreOf(tmplKey)?.starters || [];
+/** STARTERS AN ACTED FILM CANNOT FILM (2026-11-26) — dealt to a told story only: in a car there is no staging (a Horror
+ *  Film made there has no reveal), a talking wolf is lip-synced as a person, a voice on the phone is never heard, a page
+ *  or a letter cannot be read, and two "side by side" is what CAMERA_IS_DEALT forbids. Word for word (a test holds it). */
+export const TOLD_ONLY: ReadonlySet<string> = new Set([
+  "A woman is driving her husband home from the last train when her phone rings. It is her husband, still waiting at the station.",
+  "A stunt driver has to get a witness across the city in twenty minutes, with two cars behind them and every bridge closing.",
+  "Two exes are seated side by side at a friend's wedding. Each has a speech to give, and neither has said they kept the letters.",
+  "A woman gets a call from herself, eleven minutes in the future, begging her not to open the door to her brother.",
+  "A shepherd finds that the wolf at his fire can speak, and that it will trade one winter of safety for one name.",
+  "A librarian finds the same book returned every Friday with one more page missing. Tonight she and the caretaker wait to see who brings it.",
+  "A village postman notices that one house has had no post for a month, though he puts a letter through its door every single day.",
+]);
+/** The genre's eight starter ideas; none for a format that is not a story genre. An ACTED film's are those it can
+ *  film (all but the TOLD_ONLY ones). */
+export const startersOf = (tmplKey: string | null | undefined, o: { acted?: boolean } = {}): readonly string[] => { const all = genreOf(tmplKey)?.starters || []; return o.acted ? all.filter((s) => !TOLD_ONLY.has(s)) : all; };
 /** The director's four notes for rewriting a scene of this genre; Drama's for a format with none of its own. */
 export const notesOf = (tmplKey: string | null | undefined): readonly DirectorNote[] => (genreOf(tmplKey) || BY_TMPL.testmovie).notes;
 
@@ -428,9 +441,9 @@ function diceOf(seed: number): () => number {
 
 /** A FEW STARTERS, DEALT: `n` of the genre's eight (three unless said), a different few for another seed and
  *  never the same one twice in a deal. Fewer than `n` only when the genre has fewer; none for a format that is
- *  not a story genre. */
-export function dealStarters(tmplKey: string | null | undefined, seed: number, n = 3): string[] {
-  const left = [...startersOf(tmplKey)];
+ *  not a story genre. `acted`: only those an acted film can film (TOLD_ONLY). */
+export function dealStarters(tmplKey: string | null | undefined, seed: number, n = 3, o: { acted?: boolean } = {}): string[] {
+  const left = [...startersOf(tmplKey, o)];
   const dice = diceOf(seed);
   const out: string[] = [];
   const want = Math.max(0, Math.floor(n));
@@ -470,10 +483,10 @@ export type Nudge = {
  *  lighthouse one) and, when none has — or the one taken does not hold them all ("werewolf cabin"), 2026-11-26 —
  *  the words ride along to be worked in. null: the idea stands as it is
  *  (three words or more), or the format is not a story genre and has no starters. */
-export function nudgeFor(tmplKey: string | null | undefined, idea: string | null | undefined, seed: number): Nudge | null {
+export function nudgeFor(tmplKey: string | null | undefined, idea: string | null | undefined, seed: number, o: { acted?: boolean } = {}): Nudge | null {
   const typed = String(idea || "").replace(/\s+/g, " ").trim();
   if (ideaWords(typed) >= IDEA_MIN_WORDS) return null;
-  const all = startersOf(tmplKey);
+  const all = startersOf(tmplKey, o);
   if (!all.length) return null;
   // (a word of four letters or more: "the" and "and" are at the start of a word in every starter)
   const words = typed.toLowerCase().split(" ").map((w) => w.replace(/[^\p{L}\p{N}]/gu, "")).filter((w) => w.length >= 4);

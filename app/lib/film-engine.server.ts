@@ -613,7 +613,7 @@ export async function previewFilmTreatment(opts: {
   //  dragon" is told "a martial artist fights a dragon", before a starter is chosen from it, so the word never reaches a
   //  model; the writer is told why, too — ORIGINAL_CAST, below)
   const typedIdea = scrubFranchise((opts.topic || "").trim(), keepNames);
-  const nudged = series ? null : nudgeFor(tmpl.key, typedIdea, Math.floor(Math.random() * 0x7fffffff));
+  const nudged = series ? null : nudgeFor(tmpl.key, typedIdea, Math.floor(Math.random() * 0x7fffffff), { acted: !!tmpl.dialogue && !narrated });
   const topic = nudged ? nudged.topic : typedIdea;
   if (nudged) console.log(`[film] ${typedIdea ? `the idea was only "${typedIdea.slice(0, 40)}"` : "no idea was given"} — a ${tmpl.key} starter was dealt: "${nudged.nudge.slice(0, 80)}…"`);
   // Lip-sync Music Video: the chosen genre drives the song style, the artist and

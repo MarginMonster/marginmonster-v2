@@ -5021,7 +5021,7 @@ export default function FilmStudio() {
           placeholder={isStoryboard && series ? t("What happens next? (or leave it — we pick up where it ended)") : tmpl?.needsProduct ? t("the joke, the vibe, who's in it… or leave blank and we'll write one") : nudgeable ? t("a sentence or two: who, where, what goes wrong") : t("a theme, a story, a mood… or leave blank and we'll surprise you")} maxLength={IDEA_MAX} />
         {/* the genre's starters, under the box, until there is a script (or the box is asked about again) */}
         {nudgeable && (nudgeUrge || (!treatment && !seeds)) && (
-          <StarterNudges starters={dealStarters(template, nudgeSeed, 3)} urge={nudgeUrge} disabled={writing}
+          <StarterNudges starters={dealStarters(template, nudgeSeed, 3, { acted: !narrated })} urge={nudgeUrge} disabled={writing}
             onPick={(text) => { setTopic(text); setNudgeUrge(false); if (window.matchMedia?.("(hover:hover) and (pointer:fine)").matches) document.getElementById("fs-topic-in")?.focus({ preventScroll: true }); }}
             onMore={() => setNudgeSeed((s) => s + 1)} t={t} />
         )}

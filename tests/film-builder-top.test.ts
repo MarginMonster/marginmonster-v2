@@ -155,7 +155,8 @@ test("under the box, three of the genre's starters; a tap puts one IN the box; M
   assert.ok(at > ui.indexOf("<textarea id=\"fs-topic-in\""), "under the box");
   const jsx = ui.slice(at, ui.indexOf("onMore={() => setNudgeSeed((s) => s + 1)} t={t} />", at) + 60);
   assert.ok(jsx.includes("{nudgeable && (nudgeUrge || (!treatment && !seeds)) && ("));
-  assert.ok(jsx.includes("<StarterNudges starters={dealStarters(template, nudgeSeed, 3)} urge={nudgeUrge} disabled={writing}"));
+  // (…for an acted film, only the starters it can film: film-genres.ts → TOLD_ONLY, 2026-11-26)
+  assert.ok(jsx.includes("<StarterNudges starters={dealStarters(template, nudgeSeed, 3, { acted: !narrated })} urge={nudgeUrge} disabled={writing}"));
   // (the component hands over the starter already in the member's language; on a phone the keyboard is not
   //  thrown up at them — the box is focused only where there is a mouse)
   assert.ok(jsx.includes("onPick={(text) => { setTopic(text); setNudgeUrge(false); if (window.matchMedia?.(\"(hover:hover) and (pointer:fine)\").matches) document.getElementById(\"fs-topic-in\")?.focus({ preventScroll: true }); }}"));
@@ -207,7 +208,7 @@ test("EXCEPT A NEXT EPISODE: its empty box is the normal case — the writer is 
   // …and the series is sent to the writer as before
   assert.ok(ui.includes("...(series && isStoryboard ? { seriesFrom: series.from } : {})"));
   // (the server deals no starter for an episode either: film-engine.server.ts)
-  assert.ok(read("app", "lib", "film-engine.server.ts").includes("const nudged = series ? null : nudgeFor(tmpl.key, typedIdea, Math.floor(Math.random() * 0x7fffffff));"));
+  assert.ok(read("app", "lib", "film-engine.server.ts").includes("const nudged = series ? null : nudgeFor(tmpl.key, typedIdea, Math.floor(Math.random() * 0x7fffffff), { acted: !!tmpl.dialogue && !narrated });"));
   // the ask is dropped when the format or the series changes
   assert.ok(ui.includes("useEffect(() => { setNudgeUrge(false); }, [template, series?.from]);"));
 });

@@ -15,7 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  DRAMA_BRIEF, FILM_GENRES, GENRE_FILMS, IDEA_MIN_WORDS, backdropsOf, categoryOf, dealStarters, genreLook, genreOf, genreTemplate, ideaWords, notesOf, nudgeFor, startLine, startersOf,
+  DRAMA_BRIEF, FILM_GENRES, GENRE_FILMS, IDEA_MIN_WORDS, TOLD_ONLY, backdropsOf, categoryOf, dealStarters, genreLook, genreOf, genreTemplate, ideaWords, notesOf, nudgeFor, startLine, startersOf,
 } from "../app/lib/film-genres.ts";
 import { FILM_HEROES, FORMER_HERO_NAMES, LOOP_MEDIA, TALL_STILL_MEDIA, heroName, heroOf, heroShelves } from "../app/lib/film-heroes.ts";
 import { isFormatName } from "../app/lib/film-series.ts";
@@ -165,6 +165,33 @@ test("a few starters are DEALT: a different few each time, never one twice in a 
   for (const seed of [0, -5, 1.5, 2 ** 40, NaN]) assert.equal(new Set(dealStarters("horror", seed)).size, 3);
 });
 
+test("an ACTED film is dealt only the starters it can film; a told story keeps all eight", () => {
+  // (2026-11-26: a car has no staging, a talking wolf is lip-synced as a person, a voice on the phone is never heard,
+  //  a page or a letter cannot be read, and two "side by side" is what the acted camera forbids)
+  assert.equal(TOLD_ONLY.size, 7);
+  const all = FILM_GENRES.flatMap((g) => g.starters);
+  for (const s of TOLD_ONLY) assert.ok(all.includes(s), `a real starter, word for word: ${s}`);
+  for (const g of FILM_GENRES) {
+    const acted = startersOf(g.tmpl, { acted: true });
+    assert.ok(acted.length >= 6, `${g.tmpl}: ${acted.length}`);
+    assert.ok(!acted.some((s) => TOLD_ONLY.has(s)), g.tmpl);
+    assert.equal(startersOf(g.tmpl).length, 8, `${g.tmpl}: told, all eight`);
+    assert.deepEqual(startersOf(g.tmpl, { acted: false }), startersOf(g.tmpl));
+    for (let seed = 1; seed <= 40; seed++) {
+      const hand = dealStarters(g.tmpl, seed, 3, { acted: true });
+      assert.equal(hand.length, 3);
+      assert.ok(!hand.some((s) => TOLD_ONLY.has(s)), `${g.tmpl} seed ${seed}`);
+      assert.ok(!TOLD_ONLY.has(nudgeFor(g.tmpl, "", seed, { acted: true })!.nudge), `${g.tmpl} seed ${seed}: the fallback`);
+    }
+  }
+  // (Drama, Moral and the Kids Cartoon lose none; Horror only its car)
+  for (const k of ["testmovie", "moral", "kidstv"]) assert.equal(startersOf(k, { acted: true }).length, 8, k);
+  assert.equal(startersOf("horror", { acted: true }).length, 7);
+  // (…a typed word an acted film cannot film is still the maker's: it rides along on another starter)
+  for (const seed of [1, 2, 3]) { const n = nudgeFor("fantasy", "wolf", seed, { acted: true })!; assert.ok(!TOLD_ONLY.has(n.nudge) && n.typed === "wolf"); }
+  assert.deepEqual(startersOf("musicvideo", { acted: true }), []);
+});
+
 test("the starter fallback fires only under three words", () => {
   assert.equal(IDEA_MIN_WORDS, 3);
   // how many words an idea has
@@ -245,7 +272,7 @@ test("the fallback is in the one place every unwritten film comes through, and t
   // (…with nobody else's character in it, since 2026-11-26 — SPEC-S16, tests/character-mark.test.ts)
   // (…and never the name of a character the maker picked — review of S16a)
   assert.ok(fn.includes("const typedIdea = scrubFranchise((opts.topic || \"\").trim(), keepNames);"));
-  assert.ok(fn.includes("const nudged = series ? null : nudgeFor(tmpl.key, typedIdea, Math.floor(Math.random() * 0x7fffffff));"));
+  assert.ok(fn.includes("const nudged = series ? null : nudgeFor(tmpl.key, typedIdea, Math.floor(Math.random() * 0x7fffffff), { acted: !!tmpl.dialogue && !narrated });"));
   assert.ok(fn.includes("const topic = nudged ? nudged.topic : typedIdea;"));
   assert.ok(fn.indexOf("const series = ") < fn.indexOf("const nudged = ") && fn.indexOf("const picked = ") < fn.indexOf("const nudged = "));
   // said right after the theme, before the rule that holds a story to its idea
