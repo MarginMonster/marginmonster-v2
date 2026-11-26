@@ -18,6 +18,8 @@
 import { firstJson } from "./first-json.ts";
 // EVERY PICTURE FILLS ITS FRAME (2026-11-26, the bakery with an empty cream band under it): measured, not asked — full-frame.ts
 import { bandCuttable, bandFault, bandFix, type FrameBand } from "./full-frame.ts";
+// WHAT A CHARACTER ALWAYS HAS (2026-11-26, SPEC-S16): a tag at the end of the cast entry, peeled off before the look is read
+import { peelMark, portraitHas, type CharacterMark } from "./character-mark.ts";
 
 /** Words that start a SECOND moment in a picture's description. */
 const NEXT_MOMENT = /[\s,;—–-]+(?:and then|then|until|moments? later|seconds? later|minutes? later|a (?:moment|beat|second) later|soon after|shortly after|afterwards?|later on|later|before (?:finally|eventually))\b/i;
@@ -727,13 +729,35 @@ const OWN_RENDER = /^\/renders\/[a-zA-Z0-9_-]+\.(?:jpe?g|png|webp)$/;
 
 /** A cast-list entry as a character: "Walter, an elderly night watchman with…" → his name and his look.
  *  The name is what the entry STARTS with, up to the first comma, colon, dash or bracket — the same rule
- *  the scenes are matched by (narrated-core's entryName), so a portrait is always found for its entry. */
-export function castEntry(entry: string): { name: string; look: string } {
-  const e = String(entry || "").replace(/\s+/g, " ").trim();
+ *  the scenes are matched by (narrated-core's entryName), so a portrait is always found for its entry.
+ *  WHAT THEY ALWAYS HAVE rides at the END of the entry as a tag (character-mark.ts, SPEC-S16 — the owner, 2026-11-26:
+ *  "specific clothing's - specific props … that often show in scenes"): "…a black undercut [always: a long cobalt scarf
+ *  | move: the Paper Gale — …]". It is PEELED OFF FIRST and handed back as `mark` (only when there is one), so the look
+ *  stays exactly what it was for everything that reads it — the cast token and the Starring row, the scene note, whoIsWho,
+ *  and characterKind, which reads "the thing itself" from the look's first words: unpeeled, "Kai [always: a wolf-fur
+ *  cloak]" reads as a cartoon (`wol(f)`), and "Kai [always: a mask with glowing eyes]" as a monster (UNNATURAL) — a hero
+ *  made a creature, photographed and hidden in the dark. */
+export function castEntry(entry: string): { name: string; look: string; mark?: CharacterMark } {
+  const peeled = peelMark(String(entry || ""));
+  const e = peeled.text.replace(/\s+/g, " ").trim();
   const head = e.split(/[,:—–(]/)[0] || "";
   const bracketed = e.charAt(head.length) === "(";
   const rest = e.slice(head.length).replace(/^[\s,:—–(]+/, "");
-  return { name: head.trim().slice(0, 40).trim(), look: (bracketed ? rest.replace(/\)\s*\.?\s*$/, "") : rest).trim() };
+  return { name: head.trim().slice(0, 40).trim(), look: (bracketed ? rest.replace(/\)\s*\.?\s*$/, "") : rest).trim(), ...(peeled.mark ? { mark: peeled.mark } : {}) };
+}
+
+/** WHAT EACH OF A STORY'S CHARACTERS ALWAYS HAS (character-mark.ts): each named entry's mark, keyed by its name in lower
+ *  case — an entry with no tag has none. It is the ONE place a story's marks are read from: an invented character's AND
+ *  a picked face's, whose entry the writer returns "followed by that fixed look", its tag word for word
+ *  (film-engine.server.ts → pickedLine). */
+export function castMarks(cast: ReadonlyArray<string>): Map<string, CharacterMark> {
+  const out = new Map<string, CharacterMark>();
+  for (const e of cast || []) {
+    const c = castEntry(typeof e === "string" ? e : "");
+    const key = c.name.trim().toLowerCase();
+    if (key && c.mark && !out.has(key)) out.set(key, c.mark);
+  }
+  return out;
 }
 
 /** Are two names the same character's? (As they are written, whatever the capitals.) */
@@ -789,13 +813,21 @@ export function characterKind(name: string | null | undefined, look: string | nu
 
 /** What the picture model is asked for: THIS one character, whole, on a plain ground, in the story's style. */
 export function portraitPrompt(entry: string, sceneHint: string, safe = ""): string {
+  // WHAT THEY ALWAYS HAVE (character-mark.ts, SPEC-S16) is drawn INTO the portrait — the one picture every scene of theirs
+  // is drawn from, and CAST_LOCK holds what a reference shows ("the same … clothing, and nothing added to what it wears";
+  // the places proved that words alone draw a thing differently every time, and one reference picture draws it the same).
+  // The entry is said WITHOUT its tag, and the thing in a line of its own after the ground. Never the move: a portrait is
+  // a standing figure. An entry with no tag is asked for exactly as before.
+  const { text: said, mark } = peelMark(String(entry || ""));
+  const who = castEntry(said);
+  const has = mark?.has ? portraitHas(who.name || "This character", mark.has) : "";
   // A CREATURE A GROWN-UP STORY INVENTS is photographed, not illustrated (below): its portrait is what
   // every scene is drawn from, and a clean, evenly lit, rendered monster stays one in all of them.
   // (…a creature by its NAME as well: "the ghost lady, a tall woman who…" — characterKind)
-  if (!safe && characterKind(castEntry(entry).name, castEntry(entry).look || entry) === "monster") {
-    return `${sceneHint}. ${CREATURE_REAL} A wardrobe-test photograph of ${String(entry || "").replace(/\s+/g, " ").trim().slice(0, 320)} — this ONE creature alone, the whole figure from head to feet, standing, turned a little toward the camera, against a plain dark wall under one hard light from above, so that everything about it can be seen. ${NOTHING_WRITTEN}`;
+  if (!safe && characterKind(who.name, who.look || said) === "monster") {
+    return `${sceneHint}. ${CREATURE_REAL} A wardrobe-test photograph of ${said.replace(/\s+/g, " ").trim().slice(0, 320)} — this ONE creature alone, the whole figure from head to feet, standing, turned a little toward the camera, against a plain dark wall under one hard light from above, so that everything about it can be seen.${has} ${NOTHING_WRITTEN}`;
   }
-  return `${safe}${sceneHint}. A character portrait of ${String(entry || "").replace(/\s+/g, " ").trim().slice(0, 320)} — this ONE character alone, the whole body from head to feet, standing, turned a little toward the viewer, the face clearly seen, on a plain neutral background. In the exact art style of the story. ${NOTHING_WRITTEN}`;
+  return `${safe}${sceneHint}. A character portrait of ${said.replace(/\s+/g, " ").trim().slice(0, 320)} — this ONE character alone, the whole body from head to feet, standing, turned a little toward the viewer, the face clearly seen, on a plain neutral background.${has} In the exact art style of the story. ${NOTHING_WRITTEN}`;
 }
 
 /* A TOLD STORY IS DRAWN ON THE GOOD MODEL — every picture of it: its portraits, its places' sheets and its scenes.
