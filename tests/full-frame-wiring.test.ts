@@ -55,7 +55,9 @@ test("wired: every told picture is measured, a band is a fault and its sheet is 
   assert.ok(loop.indexOf("if (got && withPlace && (await framedPanel(got)))") < loop.indexOf("const band = await bandOf(got);"));
   assert.ok(loop.indexOf("const band = await bandOf(got);") < loop.indexOf("if (!faults) { img = got; break; }"));
   // after the goes: covered, its fault gone only when cutting it off leaves a right picture
-  assert.ok(loop.includes("if (!img && best?.check.band) {") && loop.includes("const covered = await coverBand(was.img, cut);") && loop.includes("const check = bandCuttable(cut) ? rest : was.check;") && loop.includes("best = { img: covered, faults: storyFaults(check), check };"));
+  assert.ok(loop.includes("if (!img && best?.check.band) {") && loop.includes("const cut = await bandOf(was.img);\n        const covered = cut ? await coverBand(was.img, cut) : null;"), "measured again: an edit may have dressed the picture kept");
+  assert.ok(loop.includes("if (!cut) { best = { img: was.img, faults: storyFaults(rest), check: rest }; if (!best.faults) img = was.img; }"), "no band left: no band fault");
+  assert.ok(loop.includes("const check = bandCuttable(cut) ? rest : { ...rest, band: cut };") && loop.includes("best = { img: covered, faults: storyFaults(check), check };"));
   assert.ok(loop.indexOf("if (!img && best?.check.unclothed) {") < loop.indexOf("if (!img && best?.check.band) {"), "dressed first, then cut");
   assert.ok(loop.indexOf("if (!img && best?.check.band) {") < loop.indexOf("if (!img && best) { img = best.img;"));
   // …the lenient path's picture too

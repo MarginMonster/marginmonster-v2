@@ -411,13 +411,15 @@ export async function narratedSceneSeeds(o: {
       // content and that content's middle is scaled to cover the frame. Cutting off a sliver leaves it right, and its fault
       // goes; a narrow middle of a wide picture (under COVER_MOST of it kept), or views on a plain ground, is still flagged
       // for the maker to draw again — but no film ever pushes in on an empty cream band.
+      // (measured again first: the picture kept may be the one an edit dressed — its band need not be where it was)
       if (!img && best?.check.band) {
         const was = best;
-        const cut = was.check.band!;
-        const covered = await coverBand(was.img, cut);
-        if (covered) {
-          const { band: _band, ...rest } = was.check;
-          const check = bandCuttable(cut) ? rest : was.check;
+        const { band: _band, ...rest } = was.check;
+        const cut = await bandOf(was.img);
+        const covered = cut ? await coverBand(was.img, cut) : null;
+        if (!cut) { best = { img: was.img, faults: storyFaults(rest), check: rest }; if (!best.faults) img = was.img; }
+        else if (covered) {
+          const check = bandCuttable(cut) ? rest : { ...rest, band: cut };
           best = { img: covered, faults: storyFaults(check), check };
           if (!best.faults) img = covered;
           console.log(`[narrated] scene ${i + 1}: kept with an empty band or a doubled strip — cut to its content and covered (${Math.round(cut.keeps * 100)}% of it kept)${bandCuttable(cut) ? "" : ", still flagged"}`);
