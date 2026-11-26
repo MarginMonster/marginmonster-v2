@@ -256,22 +256,26 @@ test("the fallback is in the one place every unwritten film comes through, and t
   assert.ok(read("app", "routes", "web.film.tsx").includes("try { treatment = await previewFilmTreatment(args); }"));
 });
 
-test("the seven new genres are templates made like the Short Film: live, acted, told, at its lengths", () => {
+test("the seven new genres are templates made like the Short Film: live, acted, told — at their own acted lengths", () => {
   assert.deepEqual(GENRE_FILMS.map((g) => g.key), NEW);
   assert.deepEqual(GENRE_FILMS.map((g) => g.name), ["Comedy Film", "Thriller Film", "Action Film", "Romance Film", "Sci-Fi Film", "Fantasy Film", "Mystery Film"]);
   // a stand-in for the Short Film's template: whatever its numbers are (they are another stream's to set), a
-  // genre has the same ones — and everything that makes it acted, captioned and live
+  // genre has the same ceiling — its own usual and fewest shots where it says them — and everything that makes it
+  // acted, captioned and live
   const base = { key: "testmovie", name: "Drama Film", brief: "b", sceneHint: "s", musicHint: "m", defaultScenes: 7, minScenes: 3, maxScenes: 31, captions: true, castBible: true, dialogue: true, live: true, faceMood: "a mood that is the base's" };
   for (const g of GENRE_FILMS) {
     const t = genreTemplate(base, g);
     assert.deepEqual([t.key, t.name, t.brief, t.sceneHint, t.musicHint], [g.key, g.name, g.brief, g.sceneHint, g.musicHint]);
-    assert.deepEqual([t.defaultScenes, t.minScenes, t.maxScenes, t.captions, t.castBible, t.dialogue, t.live], [7, 3, 31, true, true, true, true], `${g.key} inherits the Short Film's scene counts`);
+    assert.deepEqual([t.defaultScenes, t.minScenes, t.maxScenes, t.captions, t.castBible, t.dialogue, t.live], [g.defaultScenes ?? 7, g.minScenes ?? 3, 31, true, true, true, true], `${g.key}: its own acted lengths, the Short Film's ceiling`);
     assert.equal(t.faceMood, g.faceMood, "the faces are the genre's own, or nobody's — never inherited");
     assert.equal("faceMood" in t, !!g.faceMood);
     // …and so is the world: only a genre that says its world is its own has one (Fantasy)
     assert.equal(genreTemplate({ ...base, ownWorld: true }, g).ownWorld, g.ownWorld);
     assert.equal("ownWorld" in t, !!g.ownWorld);
   }
+  // (2026-11-26: a brief built on beats — three times worse, a question then its answer — opens with room for them,
+  //  four shots and two at the fewest, as Horror, Moral and the Kids Cartoon do; Drama stays at its own)
+  assert.deepEqual(GENRE_FILMS.map((g) => [g.key, g.defaultScenes, g.minScenes]), NEW.map((k) => [k, 4, 2]));
   assert.equal(base.key, "testmovie", "the base is not changed");
   // THE WIRING (film-engine.server.ts cannot be loaded in a test — it opens the database): each genre is the
   // Short Film's own template spread under its words, added before the list of live templates is taken…

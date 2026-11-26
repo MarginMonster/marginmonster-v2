@@ -340,7 +340,8 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
 // THE NEW MOVIE CATEGORIES (film-genres.ts → GENRE_FILMS): Comedy, Thriller, Action, Romance, Sci-Fi, Fantasy,
 // Mystery. Each is the Short Film's template with its own key, name, briefing, look, score and faces — so
 // every pipeline that takes a template key (the acted engine, the narrator, the storyboard, the Archive)
-// makes it with no code of its own, and its lengths are the Short Film's by construction (genreTemplate).
+// makes it with no code of its own. Its most shots are the Short Film's by construction; its usual and fewest
+// are its own where it says them (genreTemplate — four and two, 2026-11-26: a brief built on beats needs room).
 for (const g of GENRE_FILMS) FILM_TEMPLATES[g.key] = genreTemplate(FILM_TEMPLATES.testmovie, g);
 // THE ANIME STYLES (anime-styles.ts; the owner, 2026-11-26: "also would like to add an Anime maker with different
 // styles"): each is its KIN's template — a movie category above, so it exists by now — with the style's own key, name,
