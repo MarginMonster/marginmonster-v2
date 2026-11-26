@@ -26,7 +26,7 @@ test("the picture of a change: an edit of the shot's OWN start picture, looked a
   assert.ok(eng.includes("const changing = !!placeChange && changesState(placeBefore, placeChange);"), "only what is not already so");
   // nano-banana-pro, then Seedream 4.5, on the shot's own start picture (flux-kontext-pro left the door open: not asked)
   const pro = eng.indexOf("[\"google/nano-banana-pro\", { prompt: ask, image_input: [seedAbs], aspect_ratio: aspect, output_format: \"jpg\", resolution: \"2K\" }],", at);
-  const sd = eng.indexOf("[\"bytedance/seedream-4.5\", { prompt: ask, image_input: [seedAbs], aspect_ratio: aspect, size: \"2K\", max_images: 1 }],", at);
+  const sd = eng.indexOf("[\"bytedance/seedream-4.5\", { prompt: fitStoryPrompt(ask), image_input: [seedAbs], aspect_ratio: aspect, size: \"2K\", max_images: 1 }],", at);
   assert.ok(pro > at && sd > pro);
   const block = eng.slice(at, eng.indexOf("// Does this shot CONTINUE the last one", at));
   assert.ok(!block.includes("flux-kontext-pro"), "the editor that left the door open is not asked");

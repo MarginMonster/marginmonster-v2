@@ -316,7 +316,7 @@ test("the engine: the thing's one picture before the first shot, the sighting's 
   assert.ok(eng.includes("const base = abs(shownAt(i) || master.url);"));
   const pro = eng.indexOf("[\"google/nano-banana-pro\", { prompt: ask, image_input: [base, ...(ref ? [ref.url] : [])], aspect_ratio: aspect, output_format: \"jpg\", resolution: \"2K\" }],", sight);
   const kontext = eng.indexOf("[\"black-forest-labs/flux-kontext-pro\", { prompt: askOne, input_image: base, aspect_ratio: aspect, output_format: \"jpg\", output_quality: 92 }],", sight);
-  const seedream = eng.indexOf("[\"bytedance/seedream-4.5\", { prompt: ask, image_input: [base, ...(ref ? [ref.url] : [])], aspect_ratio: aspect, size: \"2K\", max_images: 1 }],", sight);
+  const seedream = eng.indexOf("[\"bytedance/seedream-4.5\", { prompt: fitStoryPrompt(ask), image_input: [base, ...(ref ? [ref.url] : [])], aspect_ratio: aspect, size: \"2K\", max_images: 1 }],", sight);
   assert.ok(pro > sight && kontext > pro && seedream > kontext && seedream < branches, "nano-banana-pro, then flux-kontext-pro (never told of a second picture), then Seedream 4.5");
   assert.ok(eng.includes("const drawn = await removeLetterbox(await persistRemote(await repRun(model, input, 180_000), \"jpg\"));") && eng.includes("pic = drawn ? (await clothedOrDropped(drawn, aspect)) || \"\" : \"\";"), "letterbox off, clothed or dropped");
   // its picture is checkpointed the moment it is drawn, and a restarted film takes it back
