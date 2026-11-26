@@ -6125,7 +6125,7 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-cam-hand img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 30%;}
 .mm-cam-chk{position:absolute;z-index:2;top:4px;inset-inline-end:4px;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;background:var(--green,#0C7A46);box-shadow:0 0 0 2px #fff;}
 .mm-cam-chk svg{stroke:#fff;stroke-width:2.8;fill:none;stroke-linecap:round;stroke-linejoin:round;}
-.mm-cam-nm{display:flex;align-items:center;justify-content:center;min-height:2.4em;font-size:11px;font-weight:800;line-height:1.2;overflow-wrap:anywhere;}
+.mm-cam-nm{display:flex;align-items:center;justify-content:center;min-height:2.4em;font-size:10.5px;font-weight:800;line-height:1.2;overflow-wrap:break-word;-webkit-hyphens:auto;hyphens:auto;}
 .mm-cam.on .mm-cam-nm{color:var(--green,#0C7A46);}
 .mm-cam.is-gentle img{animation:mmCamGentle 9s ease-in-out infinite alternate;}
 .mm-cam.is-zoomin img{animation:mmCamIn 3.6s ease-in-out infinite;}
