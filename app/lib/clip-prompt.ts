@@ -36,12 +36,15 @@ export type ClipRules = { look: string; lookTight: string; lookShort: string; st
  *  as a bare, glowing white body under a blue beam from nowhere — the pictures were told NOTHING_GLOWS, the clips were
  *  told nothing). */
 export const HORROR_CLIP_REAL = "Anyone in the shot — the living and the dead alike — is clothed, and lit only by the lights already there: nothing glows from within.";
-export function clipRules(o: { cartoon: boolean; sing: boolean; horror?: boolean }): ClipRules {
+/** …AND A FANTASY'S OR A SCI-FI FILM'S (2026-11-26): their looks promise nothing glows, and the scene's own words go to the
+ *  clip as they are ("the lantern turns toward the door") — the master was told NOTHING_GLOWS, the clip was told nothing. */
+export const NO_GLOW_CLIP = "Nothing glows, sparkles or beams unless it is a real light — a lamp, a candle, a fire, a screen.";
+export function clipRules(o: { cartoon: boolean; sing: boolean; horror?: boolean; noGlow?: boolean }): ClipRules {
   const { cartoon, sing } = o;
   if (!cartoon && !sing) {
     // (said BEFORE "The speakers hold their places" / "nobody moves except": a staged or wordless shot keeps only what comes
     //  before those words — acted-staging.ts → lockOf — and that is most of a horror film's shots)
-    const real = o.horror ? ` ${HORROR_CLIP_REAL}` : "";
+    const real = o.horror ? ` ${HORROR_CLIP_REAL}` : o.noGlow ? ` ${NO_GLOW_CLIP}` : "";
     return {
       look: `Keep EVERYONE and the setting EXACTLY as in the starting image — identical faces, hair, skin tone, clothing, lighting and place throughout; every beard, mustache and bit of stubble stays exactly as it is, never fading, growing, appearing or vanishing. Do NOT morph, age or redraw anyone.${real} The speakers hold their places — only natural talking and small head and expression shifts. The background stays alive with gentle natural motion; nothing new enters. Add NO new object; anything already held keeps its exact size and shape in the same hand.`,
       lookTight: `Keep EVERYONE and the setting EXACTLY as in the starting image — same faces, hair, facial hair, skin tone, clothing, lighting and place, never morphing, aging or changing.${real} The speakers hold their places — only talking and small head and expression shifts; the background stays gently alive, nothing new enters. Add NO new object; anything already held stays the same size and shape in the same hand.`,
