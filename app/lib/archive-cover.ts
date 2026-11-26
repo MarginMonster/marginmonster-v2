@@ -35,6 +35,7 @@
  * archive-cover.server.ts draws them; tests/archive-cover.test.ts holds this file. */
 import { billable, posterDress, posterLayout, posterFilters, posterTitle, POSTER_H, POSTER_W, type PosterLayout } from "./story-poster.ts";
 import { drawable, hasWide } from "./narrated-core.ts";
+import { ANIME_STYLES } from "./anime-styles.ts";
 
 /** A cover is a poster's size: the shelf's own 4:5, twice a phone tile's width. */
 export const COVER_W = POSTER_W;
@@ -69,6 +70,10 @@ const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 /** The movie categories a film's name can begin with since 2026-11-25 ("Drama Film — …", "Sci-Fi Story — …":
  *  film-heroes.ts) — as a pattern. Horror and Moral were names before that and are spelled out where they are read. */
 const GENRE_WORDS = "drama|comedy|thriller|action|romance|sci-fi|fantasy|mystery";
+/** …and the anime styles' names since 2026-11-26 ("Dream Anime Story — …", "Neon City Anime Story — …": film-heroes.ts,
+ *  built from anime-styles.ts) — read off the table, never copied, each escaped as the words it is. Every one is a told
+ *  story, so a piece that says nothing about itself but its name is a "story". */
+const ANIME_NAMES = ANIME_STYLES.map((s) => s.name.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
 
 /** A piece as the cover reads it: its type, its title, and the two records it carries. */
 export type CoverPiece = { type: string; title?: string | null; meta?: unknown; body?: unknown };
@@ -97,7 +102,7 @@ export function coverKind(p: CoverPiece): CoverKind | null {
   // TOLD: a narrated story, and the older engine's films (stills and clips under one voice)
   // (the genres became movie categories on 2026-11-25 — film-heroes.ts: a "Comedy Story" is told, a "Comedy
   //  Film" acted; "Short …" is what a Drama was called before, and the Archive still holds those)
-  if (kind === "narrated" || style === "NARRATED" || kind === "film" || style === "FILM" || new RegExp(`^(moral|short|kids|${GENRE_WORDS}) story\\b`, "i").test(title)) return { family: "story", kids };
+  if (kind === "narrated" || style === "NARRATED" || kind === "film" || style === "FILM" || new RegExp(`^(?:(moral|short|kids|${GENRE_WORDS}) story|${ANIME_NAMES})\\b`, "i").test(title)) return { family: "story", kids };
   // ACTED: the cast speak on camera — and the tests of it
   if (kind === "testmovie" || kind === "avatardialogue" || kind === "enginetest" || style === "TESTMOVIE" || style === "AVATARDIALOGUE" || style === "ENGINETEST"
     || new RegExp(`^(short|moral|${GENRE_WORDS}) film\\b|^kids cartoon\\b|^dialogue\\b|^engine test\\b`, "i").test(title)) return { family: "film", kids };
@@ -119,7 +124,7 @@ export const posterIsCover = (family: CoverFamily): boolean => family === "story
 /* ---- THE WORDS ---- */
 
 /** The name a pipeline puts in front of a title ("Music Video — Neon Hearts"): the cover says the title. */
-const KIND_PREFIX = new RegExp(`^(?:kids music video|music video|horror film|horror story|moral film|moral story|short film|short story|(?:${GENRE_WORDS}) (?:film|story)|kids cartoon|kids story|found footage|faceless video|commercial|anthem|product video|edited video|video|dialogue \\(actors\\)|dialogue · actors|skit|youtube video)\\s*[—–-]\\s*`, "i");
+const KIND_PREFIX = new RegExp(`^(?:kids music video|music video|horror film|horror story|moral film|moral story|short film|short story|(?:${GENRE_WORDS}) (?:film|story)|${ANIME_NAMES}|kids cartoon|kids story|found footage|faceless video|commercial|anthem|product video|edited video|video|dialogue \\(actors\\)|dialogue · actors|skit|youtube video)\\s*[—–-]\\s*`, "i");
 
 /** WHAT THE COVER SAYS: the piece's own title — without the kind its pipeline put in front of it — and the
  *  names it bills (three at most): the cast of a story or a film, who sang a verse, who presents. */

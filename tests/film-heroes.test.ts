@@ -83,7 +83,12 @@ test("a page is offered only the heroes it can make", () => {
   assert.deepEqual(heroesFor(all, ["horror", "moral", "kidstv", "testmovie"]).map((h) => h.id), ["musicvideo", "kidsmusicvideo", "shortstory", "testmovie", "horror", "horrorfilm", "moral", "moralfilm", "kidstv"]);
   // …and with the seven new templates, every hero there is
   const genres = ["comedy", "thriller", "action", "romance", "scifi", "fantasy", "mystery"];
-  assert.deepEqual(heroesFor([...all, ...genres], ["horror", "moral", "kidstv", "testmovie", ...genres]).map((h) => h.id), FILM_HEROES.map((h) => h.id));
+  // (…and the six anime styles, 2026-11-26, which follow them — a page that is offered their templates: an operator's)
+  const anime = ["animedream", "animeretro", "animeneon", "animesky", "animeink", "animepastel"];
+  assert.deepEqual(heroesFor([...all, ...genres, ...anime], ["horror", "moral", "kidstv", "testmovie", ...genres, ...anime]).map((h) => h.id), FILM_HEROES.map((h) => h.id));
+  assert.deepEqual(FILM_HEROES.slice(-6).map((h) => h.id), anime);
+  // a page that is not offered them (every member's, until the owner prices anime) has no anime hero at all
+  assert.ok(!heroesFor([...all, ...genres], ["horror", "moral", "kidstv", "testmovie", ...genres]).some((h) => h.shelf));
   // a template that cannot be narrated offers no told hero; a template the account lacks offers none at all
   assert.deepEqual(heroesFor(all, ["moral"]).map((h) => h.id), ["musicvideo", "kidsmusicvideo", "testmovie", "horrorfilm", "moral", "moralfilm", "kidstv"]);
   assert.deepEqual(heroesFor(["musicvideo"], ["horror"]).map((h) => h.id), ["musicvideo"]);
@@ -195,37 +200,44 @@ test("the posters stand on three shelves — told, acted, sung — and each says
   const shelves = heroShelves(FILM_HEROES);
   // (2026-11-26, the still tier — the owner: "Maybe just make it an additional tier on the actual movie maker (would
   //  look like more options)": "Still Stories" stands right after the Stories, re-listing them on their cheapest rung)
-  assert.deepEqual(shelves.map((s) => [s.key, s.name, s.tag]), [["told", "Stories", "Narrated"], ["still", "Still Stories", "Cheapest"], ["acted", "Films", "Acted"], ["sung", "Music videos", "Sung"]]);
+  // (…and right after it, the same day, "Anime" — the owner: "also would like to add an Anime maker with different
+  //  styles": a poster per style, each a told hero on a shelf of its own)
+  assert.deepEqual(shelves.map((s) => [s.key, s.name, s.tag]), [["told", "Stories", "Narrated"], ["still", "Still Stories", "Cheapest"], ["anime", "Anime", "Narrated"], ["acted", "Films", "Acted"], ["sung", "Music videos", "Sung"]]);
   // THE GENRES ARE MOVIE CATEGORIES. The owner, 2026-11-25: "Our genres need to be movie categories (drama,
   // horror, comedy, etch)". The shelves read "Moral Story, Horror Story, Short Story" and "Kids Cartoon, Moral
   // Film, Horror Film, Short Film" — our formats. Now each is a film shelf, in a film shelf's order, and the WORD
   // on a poster is its category (the shelf says how it is told); the Archive's name still says Film or Story.
   // (the still shelf's posters are the Stories', in the same order: the same row of genres, on the cheapest rung)
+  // (the Anime shelf's posters: a word for each STYLE, its Archive name a story's — "Dream Anime Story")
   assert.deepEqual(shelves.map((s) => s.heroes.map((h) => h.card)), [
     ["Drama", "Comedy", "Horror", "Thriller", "Romance", "Sci-Fi", "Fantasy", "Mystery", "Moral"],
     ["Drama", "Comedy", "Horror", "Thriller", "Romance", "Sci-Fi", "Fantasy", "Mystery", "Moral"],
+    ["Dream", "Retro", "Neon City", "Skyglow", "Dark Ink", "Pastel Days"],
     ["Drama", "Comedy", "Horror", "Thriller", "Action", "Romance", "Sci-Fi", "Fantasy", "Mystery", "Moral", "Kids Cartoon"],
     ["Music Video", "Kids Music Video"],
   ]);
   assert.deepEqual(shelves.map((s) => s.heroes.map((h) => h.name)), [
     ["Drama Story", "Comedy Story", "Horror Story", "Thriller Story", "Romance Story", "Sci-Fi Story", "Fantasy Story", "Mystery Story", "Moral Story"],
     ["Drama Story", "Comedy Story", "Horror Story", "Thriller Story", "Romance Story", "Sci-Fi Story", "Fantasy Story", "Mystery Story", "Moral Story"],
+    ["Dream Anime Story", "Retro Anime Story", "Neon City Anime Story", "Skyglow Anime Story", "Dark Ink Anime Story", "Pastel Days Anime Story"],
     ["Drama Film", "Comedy Film", "Horror Film", "Thriller Film", "Action Film", "Romance Film", "Sci-Fi Film", "Fantasy Film", "Mystery Film", "Moral Film", "Kids Cartoon"],
     ["Music Video", "Kids Music Video"],
   ]);
   assert.deepEqual(shelves.map((s) => s.heroes.map((h) => h.id)), [
     ["shortstory", "comedy", "horror", "thriller", "romance", "scifi", "fantasy", "mystery", "moral"],
     ["shortstory", "comedy", "horror", "thriller", "romance", "scifi", "fantasy", "mystery", "moral"],
+    ["animedream", "animeretro", "animeneon", "animesky", "animeink", "animepastel"],
     ["testmovie", "comedyfilm", "horrorfilm", "thrillerfilm", "actionfilm", "romancefilm", "scififilm", "fantasyfilm", "mysteryfilm", "moralfilm", "kidstv"],
     ["musicvideo", "kidsmusicvideo"],
   ]);
-  // every poster on exactly one WAY shelf (told, acted, sung — how it is made); a way shelf holds one way of telling
-  // and nothing else. The still shelf is a RUNG shelf: it re-lists the Stories, and adds no hero.
+  // every poster on exactly one HOME shelf: its WAY's (told, acted, sung — how it is made) or, for an anime style, its
+  // own (2026-11-26: told too, but picked by its look); a way shelf holds one way of telling and nothing else. The still
+  // shelf is a RUNG shelf: it re-lists the Stories, and adds no hero.
   const way = shelves.filter((s) => s.key !== "still");
-  assert.deepEqual(way.map((s) => s.key), ["told", "acted", "sung"]);
+  assert.deepEqual(way.map((s) => s.key), ["told", "anime", "acted", "sung"]);
   assert.equal(way.flatMap((s) => s.heroes).length, FILM_HEROES.length);
   assert.equal(new Set(way.flatMap((s) => s.heroes.map((h) => h.id))).size, FILM_HEROES.length);
-  assert.ok(way[0].heroes.every((h) => h.told === "narrated") && way[1].heroes.every((h) => h.told === "acted") && way[2].heroes.every((h) => h.told === null));
+  assert.ok(way[0].heroes.every((h) => h.told === "narrated" && !h.shelf) && way[1].heroes.every((h) => h.told === "narrated" && h.shelf === "anime") && way[2].heroes.every((h) => h.told === "acted") && way[3].heroes.every((h) => h.told === null));
   assert.deepEqual(shelves[1].heroes, shelves[0].heroes, "the still shelf re-lists the Stories");
   // the line under each name is what nobody should have to click to learn
   // (the Stories' line said "ready in minutes" until 2026-11-25; every poster on it still says "narrated in minutes".
@@ -238,10 +250,13 @@ test("the posters stand on three shelves — told, acted, sung — and each says
   // (two lines of a phone's heading at most, as the line it replaced: "…moving or still pictures · stills are cheapest"
   //  ran to three at 390 px, seen on the TEST page)
   for (const sh of shelves) assert.ok(sh.line.length <= 58, `${sh.name}: a heading's line, not a paragraph`);
-  assert.ok(/actors/i.test(shelves[2].line) && /camera/.test(shelves[2].line));
-  assert.ok(/sings/.test(shelves[3].line));
+  // (the Anime shelf's line says it is told, and drawn)
+  assert.ok(/narrator/i.test(shelves[2].line) && /hand-drawn anime/.test(shelves[2].line));
+  assert.ok(/actors/i.test(shelves[3].line) && /camera/.test(shelves[3].line));
+  assert.ok(/sings/.test(shelves[4].line));
   // a page that offers fewer formats shows fewer shelves — never an empty one
-  assert.deepEqual(heroShelves(FILM_HEROES.filter((h) => h.told !== "acted")).map((s) => s.key), ["told", "still", "sung"]);
+  assert.deepEqual(heroShelves(FILM_HEROES.filter((h) => h.told !== "acted")).map((s) => s.key), ["told", "still", "anime", "sung"]);
+  assert.deepEqual(heroShelves(FILM_HEROES.filter((h) => !h.shelf)).map((s) => s.key), ["told", "still", "acted", "sung"], "no anime template offered, no Anime shelf");
   assert.deepEqual(heroShelves(FILM_HEROES.filter((h) => h.told !== "narrated")).map((s) => s.key), ["acted", "sung"], "no Stories, no still shelf");
   assert.deepEqual(heroShelves([]), []);
 
@@ -254,7 +269,7 @@ test("the posters stand on three shelves — told, acted, sung — and each says
   assert.ok(ui.includes("<div className={`fs-fmtgrid${anim === \"in\" ? \" throw\" : \"\"}`} role=\"tablist\" aria-label={t(sh.name)}>"), "each shelf is its own list of formats");
   assert.ok(ui.includes("{sh.heroes.map((h) => ("));
   // each shelf has its own accent, and the trays fall away when a format is entered (the chosen poster flies)
-  for (const k of [".fs-shelf.is-told{--shelf:", ".fs-shelf.is-still{--shelf:", ".fs-shelf.is-acted{--shelf:", ".fs-shelf.is-sung{--shelf:", ".fs-shelves.throw .fs-shelf{background:transparent;border-color:transparent;}"]) assert.ok(ui.includes(k), k);
+  for (const k of [".fs-shelf.is-told{--shelf:", ".fs-shelf.is-still{--shelf:", ".fs-shelf.is-anime{--shelf:", ".fs-shelf.is-acted{--shelf:", ".fs-shelf.is-sung{--shelf:", ".fs-shelves.throw .fs-shelf{background:transparent;border-color:transparent;}"]) assert.ok(ui.includes(k), k);
   // four to a row on a wide screen: the four Films stand in one line
   assert.ok(ui.includes("@media(min-width:980px){.fs-shelf .fs-fmtgrid{grid-template-columns:repeat(4,minmax(0,1fr));}}"));
   // every word on the headings is in all five languages

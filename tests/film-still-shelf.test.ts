@@ -35,14 +35,16 @@ const between = (hay: string, a: string, b: string) => { const i = hay.indexOf(a
 
 test("the still shelf stands right after the Stories and re-lists exactly the told heroes, in their order", () => {
   const shelves = heroShelves(FILM_HEROES);
-  assert.deepEqual(shelves.map((s) => s.key), ["told", "still", "acted", "sung"]);
+  // (2026-11-26: the Anime shelf follows it — the owner's "an Anime maker with different styles": tests/anime-shelf.test.ts)
+  assert.deepEqual(shelves.map((s) => s.key), ["told", "still", "anime", "acted", "sung"]);
   const [told, still] = shelves;
   assert.deepEqual([still.name, still.tag, still.line, still.rung], ["Still Stories", "Cheapest", "A narrator tells it over still pictures that slowly move", "still"]);
   // the Stories open on moving pictures: that is what their line says now
   assert.equal(told.rung, "moving");
   assert.equal(told.line, "A narrator tells it over moving pictures");
-  // the very told heroes, in the heroes' own order — and nothing else
-  const toldHeroes = FILM_HEROES.filter((h) => h.told === "narrated");
+  // the very told heroes, in the heroes' own order — and nothing else (the told heroes of the Stories: an anime style
+  // stands on its own shelf, and is told over stills by picking Still in its Length panel)
+  const toldHeroes = FILM_HEROES.filter((h) => h.told === "narrated" && !h.shelf);
   assert.deepEqual(still.heroes.map((h) => h.id), toldHeroes.map((h) => h.id));
   assert.deepEqual(still.heroes, told.heroes);
   // a way shelf carries no rung but the told one's
@@ -66,7 +68,8 @@ test("the still posters are NOT heroes of their own: a piece made from one reads
 
 test("where a server's pictures cannot move, every story is told over stills already: no still shelf repeats the Stories", () => {
   assert.ok(!heroShelves(FILM_HEROES, { still: false }).some((s) => s.key === "still" || s.rung === "still"));
-  assert.deepEqual(heroShelves(FILM_HEROES, { still: false }).map((s) => s.key), ["told", "acted", "sung"]);
+  // (the Anime shelf, 2026-11-26, carries no rung: it stays, its stories told over stills there too)
+  assert.deepEqual(heroShelves(FILM_HEROES, { still: false }).map((s) => s.key), ["told", "anime", "acted", "sung"]);
   // the Stories stay — and there they are told over stills (the builder's own words there are the still ones, S13:
   // lenStill), so their heading says so, in the still shelf's own words, never "moving pictures" (review of S13c: the
   // kill switch STORY_MOTION=off would have left the heading promising motion)
@@ -75,8 +78,8 @@ test("where a server's pictures cannot move, every story is told over stills alr
   assert.deepEqual([toldOff.key, toldOff.name, toldOff.tag, toldOff.line], ["told", "Stories", "Narrated", "A narrator tells it over still pictures that slowly move"]);
   assert.equal(heroShelves(FILM_HEROES)[0].line, "A narrator tells it over moving pictures", "…and only there");
   assert.equal(heroShelves(FILM_HEROES, { still: true })[0].line, "A narrator tells it over moving pictures");
-  assert.deepEqual(heroShelves(FILM_HEROES, { still: true }).map((s) => s.key), ["told", "still", "acted", "sung"]);
-  assert.deepEqual(heroShelves(FILM_HEROES, {}).map((s) => s.key), ["told", "still", "acted", "sung"], "the shelf is there unless asked away");
+  assert.deepEqual(heroShelves(FILM_HEROES, { still: true }).map((s) => s.key), ["told", "still", "anime", "acted", "sung"]);
+  assert.deepEqual(heroShelves(FILM_HEROES, {}).map((s) => s.key), ["told", "still", "anime", "acted", "sung"], "the shelf is there unless asked away");
   // the page asks with the loader's own fact
   assert.equal(count(page, "{heroShelves(heroes, { still: d.storyMotion }).map((sh) => ("), 1);
   assert.ok(page.includes("    storyMotion: storyMotionOn(),\n"));
@@ -90,7 +93,8 @@ test("a poster's key says which shelf it stands on, so the same hero pops only w
   // every poster on the page has a key of its own
   const keys = heroShelves(FILM_HEROES).flatMap((s) => s.heroes.map((h) => posterKey(h.id, s.rung)));
   assert.equal(new Set(keys).size, keys.length);
-  assert.equal(keys.length, 9 + 9 + 11 + 2);
+  // (…the six anime styles' too, on their own shelf since 2026-11-26)
+  assert.equal(keys.length, 9 + 9 + 6 + 11 + 2);
 });
 
 test("the page: one map draws every shelf; a still poster opens its hero on the still rung, plays no loop, and says so", () => {
@@ -100,7 +104,8 @@ test("the page: one map draws every shelf; a still poster opens its hero on the 
   assert.equal(count(block, "{sh.heroes.map((h) => ("), 1);
   assert.equal(count(block, "className=\"fs-shelf-arrow "), 2);
   // its heading's icon: a picture
-  assert.ok(block.includes("<Ico n={sh.key === \"told\" ? \"book\" : sh.key === \"still\" ? \"image\" : sh.key === \"acted\" ? \"film\" : \"music\"} size={18} />"));
+  // (2026-11-26: and the Anime shelf's, a spark — tests/anime-shelf.test.ts)
+  assert.ok(block.includes("<Ico n={sh.key === \"told\" ? \"book\" : sh.key === \"still\" ? \"image\" : sh.key === \"anime\" ? \"sparkle\" : sh.key === \"acted\" ? \"film\" : \"music\"} size={18} />"));
   // each poster: its zoom by its own key; chosen only while its rung is; opened on its shelf's rung
   assert.ok(block.includes("className={`fs-fmt${zoomKey === posterKey(h.id, sh.rung) ? \" zoom\" : \"\"}"));
   assert.ok(block.includes("aria-selected={heroId === h.id && (!sh.rung || pictures === sh.rung)}"));
@@ -250,7 +255,10 @@ test("the still shelf has its own accent — a cool steel blue — and its words
   }
   for (const lang of ["es", "fr", "de", "zh", "ur"]) {
     const open = `const ${lang}: Record<string, string> = {\n`;
-    assert.ok(dict.includes(`${open}  "Still Stories": `), `${lang}: inserted at the top of its block`);
+    // (inserted at the top of its block — above the words that stood there first, S13b's camera, "Gentle". Since
+    //  2026-11-26 the Anime shelf's words stand above these, inserted at the top the same way: tests/anime-shelf.test.ts)
+    const block = dict.slice(dict.indexOf(open));
+    assert.ok(block.indexOf("\n  \"Still Stories\": ") > 0 && block.indexOf("\n  \"Still Stories\": ") < block.indexOf("\n  \"Gentle\": "), `${lang}: inserted at the top of its block`);
   }
 });
 

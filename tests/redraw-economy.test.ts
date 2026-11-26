@@ -271,7 +271,7 @@ test("wired: the loop listens to the story, spends from the story's purse, cover
   assert.ok(fn.includes("const wornHere = cam === \"detail\" || wornAsked(`${written} ${scene.caption || \"\"} ${setAt ? `${setAt.name}: ${setAt.look}` : \"\"}`, storyWords, idea);"));
   assert.ok(fn.indexOf("const cam = sceneShot(scene);") < fn.indexOf("const wornHere = cam === \"detail\""), "the shot is read before");
   assert.ok(fn.includes("const stareHere = stareCounts(cam, written);"));
-  assert.ok(fn.includes("const grimy = tmpl.childSafe || wornHere ? null : parseStoryGrime(String(grimeRaw || \"\"));"));
+  assert.ok(fn.includes("const grimy = tmpl.childSafe || tmpl.drawn || wornHere ? null : parseStoryGrime(String(grimeRaw || \"\"));"), "a worn place asked for is not a fault (and a drawn story's grime is not read at all: tests/anime-shelf.test.ts)");
   assert.ok(fn.includes("...(lens?.length && stareHere ? { lens } : {})"));
   // the decision after a faulted go: cover a sliver now, else spend — the worst first — else keep the best try
   const loop = fn.slice(fn.indexOf("for (let a = 0; a < 3 && !img; a++) {"), fn.indexOf("out[i] = img;"));

@@ -175,7 +175,8 @@ test("an acted film made in one press is cast with the people the maker picked",
   assert.ok(at > 0 && branch.includes("else if (tmpl.dialogue && !approvedTreatment) {"), "one press only: with a storyboard the page sends the cast it shows");
   assert.ok(branch.includes("const acted = pickedAsCast(storyCast, (v) => AVATAR_VOICE_IDS.has(v) || isCharacterVoice(v) || mine.has(v));"));
   assert.ok(branch.includes("if (acted.length) cast = acted;"));
-  assert.ok(page.includes("const storyCast = tmpl.lipSyncSinger ? [] : parseStoryCast(form.get(\"filmCast\") as string);"), "a music video's cast is its own affair");
+  // (…and an anime story's, since 2026-11-26: it draws its own cast in its style — tests/anime-shelf.test.ts)
+  assert.ok(page.includes("const storyCast = tmpl.lipSyncSinger || tmpl.drawn ? [] : parseStoryCast(form.get(\"filmCast\") as string);"), "a music video's cast is its own affair");
   assert.ok(page.includes("{isStoryboard && pickedCast.length > 0 && <input type=\"hidden\" name=\"filmCast\" value={filmCastJson} />}"), "the picks ride with the form");
   assert.ok(page.includes("...(cast ? { cast } : {}),"), "…and on to the job");
   // THE FILM: when it writes its own script, the writer hears who was cast

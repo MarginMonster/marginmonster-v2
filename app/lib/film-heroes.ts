@@ -39,8 +39,20 @@
  * Film", "Drama Story"). Seven genres are new templates (film-genres.ts → GENRE_FILMS); each is acted and,
  * but for Action, told. What a genre offers inside the builder — its places, starter ideas and director's
  * notes — is film-genres.ts, by template key.
+ *
+ * THE ANIME MAKER (2026-11-26). The owner: "Maybe just make it an additional tier on the actual movie maker (would
+ * look like more options) also would like to add an Anime maker with different styles". A poster is how the home
+ * offers an option, so the anime maker is ONE MORE SHELF — "Anime", a poster per style — and each poster opens the
+ * SAME story builder the Stories use, already in its style. One style is one template is one hero (SPEC-S15,
+ * anime-styles.ts): the style rides the TEMPLATE KEY through the job, `meta.template`, the Archive's name ("Dream
+ * Anime Story — …"), Edit story, Next episode and Another language, as every Story's genre does — no new field, no
+ * new carry. So the heroes are built FROM the table, never copied by hand: id = template = poster media = the
+ * style's key, told by a narrator (an anime style is never acted: S15d), each standing on a shelf of its own
+ * (`shelf: "anime"`). Its kick promises what HAPPENS — the kind of story it is told as, its kin — and its card names
+ * the look.
  */
 import type { StoryPictures } from "./story-motion.ts";
+import { ANIME_STYLES } from "./anime-styles.ts";
 
 export type Told = "acted" | "narrated";
 export type FilmHero = {
@@ -61,6 +73,8 @@ export type FilmHero = {
   kick: string;
   meta: string;
   tint: string;
+  /** a hero that stands on a shelf of its OWN rather than its way's: the anime styles (heroShelves) */
+  shelf?: "anime";
 };
 
 /* THE ORDER HERE IS THE ORDER ON EACH SHELF (heroShelves keeps it): Drama, Comedy, Horror, Thriller, Action,
@@ -94,6 +108,9 @@ export const FILM_HEROES: FilmHero[] = [
   { id: "moral", tmpl: "moral", told: "narrated", media: "moralstory", card: "Moral", name: "Moral Story", kick: "A story with a lesson", meta: "narrated in minutes", tint: "t-moral" },
   { id: "moralfilm", tmpl: "moral", told: "acted", media: "moral", card: "Moral", name: "Moral Film", kick: "A lesson, scripted and acted out", meta: "", tint: "t-moral" },
   { id: "kidstv", tmpl: "kidstv", told: "acted", media: "kidstv", card: "Kids Cartoon", name: "Kids Cartoon", kick: "A cartoon for little ones", meta: "acted out", tint: "t-kids" },
+  // THE ANIME STYLES (anime-styles.ts → ANIME_STYLES, in the table's order — the Anime shelf's): one told hero each,
+  // built from the row — Dream, Retro, Neon City, Skyglow, Dark Ink, Pastel Days
+  ...ANIME_STYLES.map((s): FilmHero => ({ id: s.key, tmpl: s.key, told: "narrated", media: s.key, card: s.card, name: s.name, kick: s.kick, meta: "narrated in minutes", tint: s.tint, shelf: "anime" })),
 ];
 
 /** What a hero's films were called before 2026-11-25. The Archive still holds pieces titled "Short Film — …"
@@ -105,11 +122,14 @@ export const FORMER_HERO_NAMES: readonly string[] = ["Short Film", "Short Story"
  * (film-still-<media>-tall.jpg, 4:5) — but for the two whose wide picture is simply cropped on a phone. Only
  * the first nine have a LOOP (film-loop-<media>.mp4 / -tall.mp4 / .jpg): the genres added on 2026-11-25 stand
  * on their still until a real film of each has been made to cut one from. The page and the sign-in lobby
- * keep their own lists of these keys; tests/film-genres.test.ts holds the files to them. */
+ * keep their own lists of these keys; tests/film-genres.test.ts holds the files to them.
+ * (2026-11-26: the six anime styles' covers too — cut from the style's own TEST pictures, drawn with the told
+ *  engine's real prompt pieces: three upright moments wide, one for a phone. No loop: no anime story has moved yet.) */
 export const LOOP_MEDIA: readonly string[] = ["musicvideo", "testmovie", "shortstory", "kidstv", "moralstory", "moral", "horrorstory", "horror", "kidsmusicvideo"];
 export const TALL_STILL_MEDIA: readonly string[] = [
   "kidstv", "kidsmusicvideo", "testmovie", "moral", "horrorstory", "shortstory", "moralstory",
   "comedy", "comedystory", "thriller", "thrillerstory", "action", "romance", "romancestory", "scifi", "scifistory", "fantasy", "fantasystory", "mystery", "mysterystory",
+  "animedream", "animeretro", "animeneon", "animesky", "animeink", "animepastel",
 ];
 
 export const heroById = (id: string | null | undefined): FilmHero | undefined => FILM_HEROES.find((h) => h.id === id);
@@ -177,9 +197,17 @@ export function heroesFor(templateKeys: string[], narratableKeys: string[]): Fil
  * Where a server's pictures cannot move at all (no motion engine), every story is told over stills and the still
  * shelf would only repeat the Stories: heroShelves(…, { still: false }) leaves it out.
  *
- * The still shelf's name, tag and line are a first proposal, each one line to change; so is its place. */
+ * The still shelf's name, tag and line are a first proposal, each one line to change; so is its place.
+ *
+ * AN ANIME STORY STANDS ON A SHELF OF ITS OWN (2026-11-26 — the owner: "also would like to add an Anime maker with
+ * different styles"). "Anime" comes right after the Still Stories (the order is his: one line to move): a poster per
+ * style, each a told hero whose `shelf` is "anime" — so the Stories and the Still Stories do not list it (they hold the
+ * movie categories; an anime story is picked by its LOOK, and its maker picks Still for it in its Length panel, where
+ * every told story's rung is picked). It is the anime heroes' one shelf, as Stories is the other told heroes'. It
+ * carries no rung: the motion test drew Dream and Neon City to life and both drawings held flat and 2D (S15a's verdict,
+ * "holds"), so a poster opens on moving pictures like any Story's. Its name, tag and line are a first proposal too. */
 export type HeroShelf = {
-  key: "told" | "still" | "acted" | "sung";
+  key: "told" | "still" | "anime" | "acted" | "sung";
   name: string;
   tag: string;
   line: string;
@@ -188,13 +216,15 @@ export type HeroShelf = {
   heroes: FilmHero[];
 };
 const SHELVES: ReadonlyArray<Omit<HeroShelf, "heroes"> & { has: (h: FilmHero) => boolean }> = [
-  { key: "told", name: "Stories", tag: "Narrated", line: "A narrator tells it over moving pictures", rung: "moving", has: (h) => h.told === "narrated" },
-  { key: "still", name: "Still Stories", tag: "Cheapest", line: "A narrator tells it over still pictures that slowly move", rung: "still", has: (h) => h.told === "narrated" },
+  { key: "told", name: "Stories", tag: "Narrated", line: "A narrator tells it over moving pictures", rung: "moving", has: (h) => h.told === "narrated" && !h.shelf },
+  { key: "still", name: "Still Stories", tag: "Cheapest", line: "A narrator tells it over still pictures that slowly move", rung: "still", has: (h) => h.told === "narrated" && !h.shelf },
+  { key: "anime", name: "Anime", tag: "Narrated", line: "A narrator tells it over hand-drawn anime pictures", has: (h) => h.shelf === "anime" },
   { key: "acted", name: "Films", tag: "Acted", line: "Actors speak the lines on camera", has: (h) => h.told === "acted" },
   { key: "sung", name: "Music videos", tag: "Sung", line: "Your artist sings on camera", has: (h) => h.told === null },
 ];
-/** The heroes a page offers, as its shelves — every hero on exactly one WAY shelf, in the heroes' own order, and the
- *  told heroes again on a rung shelf; a shelf with nothing on it is not shown. `still: false` (a server whose
+/** The heroes a page offers, as its shelves — every hero on exactly one WAY shelf (or, an anime style, on its own), in
+ *  the heroes' own order, and the told heroes again on a rung shelf; a shelf with nothing on it is not shown (a page
+ *  that is not offered the anime templates has no Anime shelf). `still: false` (a server whose
  *  pictures cannot move) leaves out the shelves whose rung is "still" — and the Stories there say what they are
  *  then told over, the still shelf's own line. (Review of S13c, 2026-11-26: the Stories' line had become "…over moving
  *  pictures" alone, and STORY_MOTION=off — the kill switch — would have left it promising motion over a story told

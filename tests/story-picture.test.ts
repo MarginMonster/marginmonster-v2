@@ -130,8 +130,9 @@ test("the pipeline: words tidied, picture drawn, picture looked at, drawn again 
   assert.ok(s.includes("const partOnly = here.map((c) => partOnlyIn(c.name, written));"));
   assert.ok(s.includes("return { seen: (seen || castPics.map(() => true)).map((v, n) => v || !!partOnly[n]), panels: panels === true,"));
   assert.ok(s.includes("anthropicVision(storyCastPrompt(castPics.length), [pic, ...castPics], { maxTokens: 500, model: \"claude-sonnet-4-6\" })"));
-  // panels are looked for only where the words described two moments
-  assert.ok(s.includes("const twoMoments = oneMoment(written) !== written;") && s.includes("twoMoments ? anthropicVision(storyPanelsPrompt(), [pic], { maxTokens: 320, model: \"claude-sonnet-4-6\" })"));
+  // panels are looked for only where the words described two moments — and in EVERY picture of a drawn story (2026-11-26:
+  // anime and manga styling invites panels whatever the words say — tests/anime-shelf.test.ts)
+  assert.ok(s.includes("const twoMoments = oneMoment(written) !== written;") && s.includes("(twoMoments || tmpl.drawn) ? anthropicVision(storyPanelsPrompt(), [pic], { maxTokens: 320, model: \"claude-sonnet-4-6\" })"));
   // (every picture is looked at now — at least for anybody its words do not put there: an empty room at night came
   //  back with a grown man at a screen in it; storyExtrasPrompt)
   // (…its answer a line longer since 2026-11-25: it also says whether anybody is unclothed — UNCLOTHED_ASKED)
