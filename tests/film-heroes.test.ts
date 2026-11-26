@@ -92,12 +92,14 @@ test("a page is offered only the heroes it can make", () => {
 test("the grid shows a poster per hero, and opening one sets the format AND how it is told", () => {
   assert.ok(ui.includes("const heroes = heroesFor(d.templates.map((x) => x.key), d.narratable || []);"));
   // (the posters stand on shelves now — told, acted, sung: each shelf lists its own heroes)
-  const grid = ui.slice(ui.indexOf("{sh.heroes.map((h) => ("), ui.indexOf("{sh.heroes.map((h) => (") + 900);
+  // (2026-11-26: and the told heroes again on the STILL shelf — a poster opens its hero on its shelf's rung, plays no
+  //  loop there, and says "Still pictures" where a Story's poster says "narrated in minutes": the slice is longer)
+  const grid = ui.slice(ui.indexOf("{sh.heroes.map((h) => ("), ui.indexOf("{sh.heroes.map((h) => (") + 1100);
   // (2026-11-25, the genres are movie categories: the poster says its CATEGORY — "Comedy" — and the shelf says
   //  how it is told; the whole name, "Comedy Film", is what a screen reader is told, with the line under it)
-  assert.ok(grid.includes("onClick={() => enterFormat(h.id)}") && grid.includes("<LoopCover k={h.media} />") && grid.includes("<b>{t(h.card)}</b>"));
-  assert.ok(grid.includes("aria-label={[t(h.name), h.kick ? t(h.kick) : \"\", h.meta ? t(h.meta) : \"\"].filter(Boolean).join(\" · \")}") && !grid.includes("<b>{t(h.name)}</b>"));
-  assert.ok(grid.includes("{t(h.kick)}{h.meta ? <em> · {t(h.meta)}</em> : null}"));
+  assert.ok(grid.includes("onClick={() => enterFormat(h.id, sh.rung)}") && grid.includes("<LoopCover k={h.media} loop={sh.rung === \"still\" ? false : undefined} />") && grid.includes("<b>{t(h.card)}</b>"));
+  assert.ok(grid.includes("aria-label={[t(h.name), h.kick ? t(h.kick) : \"\", sh.rung === \"still\" ? t(\"Still pictures\") : h.meta ? t(h.meta) : \"\"].filter(Boolean).join(\" · \")}") && !grid.includes("<b>{t(h.name)}</b>"));
+  assert.ok(grid.includes("{t(h.kick)}{sh.rung === \"still\" ? <em> · {t(\"Still pictures\")}</em> : h.meta ? <em> · {t(h.meta)}</em> : null}"));
   assert.ok(!ui.includes("{d.templates.map((x) => {\n              const m = FMT["), "the grid is no longer one poster per template");
   const sw = ui.slice(ui.indexOf("const switchHero = (id: string) => {"), ui.indexOf("const switchHero = (id: string) => {") + 1100);
   assert.ok(sw.includes("const openNarrated = !!nt?.dialogue && h.told === \"narrated\" && (d.narratable || []).includes(h.tmpl);"));
@@ -105,8 +107,9 @@ test("the grid shows a poster per hero, and opening one sets the format AND how 
   // its length and shape are set with it: the effect that follows `told` does not run when two heroes in a row are told the same way
   assert.ok(sw.includes("openNarrated ? d.narratedScenes.def : (nt?.defaultScenes || 6)"));
   assert.ok(sw.includes("if (nt?.dialogue) setFilmAspect(openNarrated ? \"9:16\" : \"16:9\");"));
-  // two heroes can share a template, so "the same one again" is judged on the hero
-  assert.ok(ui.includes("window.setTimeout(() => { if (key !== heroId) switchHero(key); setEntered(true); setAnim(\"\"); setZoomKey(null); }, reduce ? 0 : 400);"));
+  // two heroes can share a template, so "the same one again" is judged on the hero (and since 2026-11-26 a told
+  // hero opened from a shelf with a rung — Stories, Still Stories — is opened on that rung, after switchHero's reset)
+  assert.ok(ui.includes("window.setTimeout(() => { if (key !== heroId) switchHero(key); if (rung) setPictures(rung); setEntered(true); setAnim(\"\"); setZoomKey(null); }, reduce ? 0 : 400);"));
   assert.ok(!ui.includes("switchTemplate("));
 });
 
@@ -188,57 +191,70 @@ test("an acted film's badge in the Archive is its poster's name too", () => {
 /* The owner, 2026-11-24, with a photo of the grid (a Story beside its Film beside the next Story): "Narrated
  * and acted need segregated in an attractive way my friend, currently it's a bit confusing without clicking
  * through". */
-test("the posters stand on three shelves — told, acted, sung — and each says what its posters share", () => {
+test("the posters stand on three shelves — told, acted, sung — and each says what its posters share (and the told ones again, on the still shelf)", () => {
   const shelves = heroShelves(FILM_HEROES);
-  assert.deepEqual(shelves.map((s) => [s.key, s.name, s.tag]), [["told", "Stories", "Narrated"], ["acted", "Films", "Acted"], ["sung", "Music videos", "Sung"]]);
+  // (2026-11-26, the still tier — the owner: "Maybe just make it an additional tier on the actual movie maker (would
+  //  look like more options)": "Still Stories" stands right after the Stories, re-listing them on their cheapest rung)
+  assert.deepEqual(shelves.map((s) => [s.key, s.name, s.tag]), [["told", "Stories", "Narrated"], ["still", "Still Stories", "Cheapest"], ["acted", "Films", "Acted"], ["sung", "Music videos", "Sung"]]);
   // THE GENRES ARE MOVIE CATEGORIES. The owner, 2026-11-25: "Our genres need to be movie categories (drama,
   // horror, comedy, etch)". The shelves read "Moral Story, Horror Story, Short Story" and "Kids Cartoon, Moral
   // Film, Horror Film, Short Film" — our formats. Now each is a film shelf, in a film shelf's order, and the WORD
   // on a poster is its category (the shelf says how it is told); the Archive's name still says Film or Story.
+  // (the still shelf's posters are the Stories', in the same order: the same row of genres, on the cheapest rung)
   assert.deepEqual(shelves.map((s) => s.heroes.map((h) => h.card)), [
+    ["Drama", "Comedy", "Horror", "Thriller", "Romance", "Sci-Fi", "Fantasy", "Mystery", "Moral"],
     ["Drama", "Comedy", "Horror", "Thriller", "Romance", "Sci-Fi", "Fantasy", "Mystery", "Moral"],
     ["Drama", "Comedy", "Horror", "Thriller", "Action", "Romance", "Sci-Fi", "Fantasy", "Mystery", "Moral", "Kids Cartoon"],
     ["Music Video", "Kids Music Video"],
   ]);
   assert.deepEqual(shelves.map((s) => s.heroes.map((h) => h.name)), [
     ["Drama Story", "Comedy Story", "Horror Story", "Thriller Story", "Romance Story", "Sci-Fi Story", "Fantasy Story", "Mystery Story", "Moral Story"],
+    ["Drama Story", "Comedy Story", "Horror Story", "Thriller Story", "Romance Story", "Sci-Fi Story", "Fantasy Story", "Mystery Story", "Moral Story"],
     ["Drama Film", "Comedy Film", "Horror Film", "Thriller Film", "Action Film", "Romance Film", "Sci-Fi Film", "Fantasy Film", "Mystery Film", "Moral Film", "Kids Cartoon"],
     ["Music Video", "Kids Music Video"],
   ]);
   assert.deepEqual(shelves.map((s) => s.heroes.map((h) => h.id)), [
     ["shortstory", "comedy", "horror", "thriller", "romance", "scifi", "fantasy", "mystery", "moral"],
+    ["shortstory", "comedy", "horror", "thriller", "romance", "scifi", "fantasy", "mystery", "moral"],
     ["testmovie", "comedyfilm", "horrorfilm", "thrillerfilm", "actionfilm", "romancefilm", "scififilm", "fantasyfilm", "mysteryfilm", "moralfilm", "kidstv"],
     ["musicvideo", "kidsmusicvideo"],
   ]);
-  // every poster on exactly one shelf; a shelf holds one way of telling and nothing else
-  assert.equal(shelves.flatMap((s) => s.heroes).length, FILM_HEROES.length);
-  assert.equal(new Set(shelves.flatMap((s) => s.heroes.map((h) => h.id))).size, FILM_HEROES.length);
-  assert.ok(shelves[0].heroes.every((h) => h.told === "narrated") && shelves[1].heroes.every((h) => h.told === "acted") && shelves[2].heroes.every((h) => h.told === null));
+  // every poster on exactly one WAY shelf (told, acted, sung — how it is made); a way shelf holds one way of telling
+  // and nothing else. The still shelf is a RUNG shelf: it re-lists the Stories, and adds no hero.
+  const way = shelves.filter((s) => s.key !== "still");
+  assert.deepEqual(way.map((s) => s.key), ["told", "acted", "sung"]);
+  assert.equal(way.flatMap((s) => s.heroes).length, FILM_HEROES.length);
+  assert.equal(new Set(way.flatMap((s) => s.heroes.map((h) => h.id))).size, FILM_HEROES.length);
+  assert.ok(way[0].heroes.every((h) => h.told === "narrated") && way[1].heroes.every((h) => h.told === "acted") && way[2].heroes.every((h) => h.told === null));
+  assert.deepEqual(shelves[1].heroes, shelves[0].heroes, "the still shelf re-lists the Stories");
   // the line under each name is what nobody should have to click to learn
   // (the Stories' line said "ready in minutes" until 2026-11-25; every poster on it still says "narrated in minutes".
-  //  It now names BOTH rungs of a told story and which costs least — the owner: "we also need the timeless pictures
-  //  with narration as an extremely cheap base tier")
-  assert.ok(/narrator/i.test(shelves[0].line) && /moving/.test(shelves[0].line) && /still/.test(shelves[0].line) && /cheaper/.test(shelves[0].line));
+  //  On 2026-11-25 it named BOTH rungs of a told story — the owner: "we also need the timeless pictures with narration
+  //  as an extremely cheap base tier". Since 2026-11-26 the still rung has a shelf of its own, which says it, so the
+  //  Stories say moving pictures again: two headings in a row both saying "or cheaper stills" is noise.)
+  assert.ok(/narrator/i.test(shelves[0].line) && /moving/.test(shelves[0].line) && !/still/.test(shelves[0].line) && !/cheaper/.test(shelves[0].line));
+  assert.ok(/narrator/i.test(shelves[1].line) && /still/.test(shelves[1].line) && /move/.test(shelves[1].line));
   assert.ok(shelves[0].heroes.every((h) => /minutes/.test(h.meta)), "how soon a story is ready is said on each of its posters");
   // (two lines of a phone's heading at most, as the line it replaced: "…moving or still pictures · stills are cheapest"
   //  ran to three at 390 px, seen on the TEST page)
-  assert.ok(shelves[0].line.length <= 58, "a heading's line, not a paragraph");
-  assert.ok(/actors/i.test(shelves[1].line) && /camera/.test(shelves[1].line));
-  assert.ok(/sings/.test(shelves[2].line));
+  for (const sh of shelves) assert.ok(sh.line.length <= 58, `${sh.name}: a heading's line, not a paragraph`);
+  assert.ok(/actors/i.test(shelves[2].line) && /camera/.test(shelves[2].line));
+  assert.ok(/sings/.test(shelves[3].line));
   // a page that offers fewer formats shows fewer shelves — never an empty one
-  assert.deepEqual(heroShelves(FILM_HEROES.filter((h) => h.told !== "acted")).map((s) => s.key), ["told", "sung"]);
+  assert.deepEqual(heroShelves(FILM_HEROES.filter((h) => h.told !== "acted")).map((s) => s.key), ["told", "still", "sung"]);
+  assert.deepEqual(heroShelves(FILM_HEROES.filter((h) => h.told !== "narrated")).map((s) => s.key), ["acted", "sung"], "no Stories, no still shelf");
   assert.deepEqual(heroShelves([]), []);
 
   // THE PAGE: a heading per shelf (an icon, the name, the line, a one-word tag), then that shelf's posters
   const ui = fs.readFileSync(new URL("../app/routes/web.film.tsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
-  assert.ok(ui.includes("{heroShelves(heroes).map((sh) => ("));
+  assert.ok(ui.includes("{heroShelves(heroes, { still: d.storyMotion }).map((sh) => ("));
   assert.ok(ui.includes("<section key={sh.key} className={`fs-shelf is-${sh.key}`} aria-labelledby={`fs-shelf-${sh.key}`}>"));
   assert.ok(ui.includes("<h2 className=\"fs-shelf-name\" id={`fs-shelf-${sh.key}`}>{t(sh.name)}</h2>"));
   assert.ok(ui.includes("<span>{t(sh.line)}</span>") && ui.includes("<em className=\"fs-shelf-tag\">{t(sh.tag)}</em>"));
   assert.ok(ui.includes("<div className={`fs-fmtgrid${anim === \"in\" ? \" throw\" : \"\"}`} role=\"tablist\" aria-label={t(sh.name)}>"), "each shelf is its own list of formats");
   assert.ok(ui.includes("{sh.heroes.map((h) => ("));
   // each shelf has its own accent, and the trays fall away when a format is entered (the chosen poster flies)
-  for (const k of [".fs-shelf.is-told{--shelf:", ".fs-shelf.is-acted{--shelf:", ".fs-shelf.is-sung{--shelf:", ".fs-shelves.throw .fs-shelf{background:transparent;border-color:transparent;}"]) assert.ok(ui.includes(k), k);
+  for (const k of [".fs-shelf.is-told{--shelf:", ".fs-shelf.is-still{--shelf:", ".fs-shelf.is-acted{--shelf:", ".fs-shelf.is-sung{--shelf:", ".fs-shelves.throw .fs-shelf{background:transparent;border-color:transparent;}"]) assert.ok(ui.includes(k), k);
   // four to a row on a wide screen: the four Films stand in one line
   assert.ok(ui.includes("@media(min-width:980px){.fs-shelf .fs-fmtgrid{grid-template-columns:repeat(4,minmax(0,1fr));}}"));
   // every word on the headings is in all five languages

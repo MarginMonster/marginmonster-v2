@@ -49,10 +49,13 @@ const listOf = (src: string) => {
 test("a poster says its movie category; the shelf says how it is told; a screen reader hears the whole name", () => {
   const grid = ui.slice(ui.indexOf("{sh.heroes.map((h) => ("), ui.indexOf("{/* THE LYRIC VIDEO (film-heroes.ts → LYRIC_HERO)"));
   assert.ok(grid.includes("<span className=\"fs-fmt-label\"><b>{t(h.card)}</b></span>"));
-  assert.ok(grid.includes("aria-label={[t(h.name), h.kick ? t(h.kick) : \"\", h.meta ? t(h.meta) : \"\"].filter(Boolean).join(\" · \")}"));
+  // (2026-11-26: on the still shelf the screen reader hears "Still pictures" where a Story's poster says "narrated in minutes")
+  assert.ok(grid.includes("aria-label={[t(h.name), h.kick ? t(h.kick) : \"\", sh.rung === \"still\" ? t(\"Still pictures\") : h.meta ? t(h.meta) : \"\"].filter(Boolean).join(\" · \")}"));
   // the words are the categories, the same on both shelves — and the two that share a word differ by their name
+  // (2026-11-26: the told ones stand again on the still shelf — the same heroes, so the same names)
   const shelves = heroShelves(FILM_HEROES);
   assert.deepEqual(shelves.map((s) => s.heroes.map((h) => h.card)), [
+    ["Drama", "Comedy", "Horror", "Thriller", "Romance", "Sci-Fi", "Fantasy", "Mystery", "Moral"],
     ["Drama", "Comedy", "Horror", "Thriller", "Romance", "Sci-Fi", "Fantasy", "Mystery", "Moral"],
     ["Drama", "Comedy", "Horror", "Thriller", "Action", "Romance", "Sci-Fi", "Fantasy", "Mystery", "Moral", "Kids Cartoon"],
     ["Music Video", "Kids Music Video"],
@@ -120,8 +123,9 @@ test("a wide screen shows that a shelf runs on: the fifth poster peeks in, and a
   assert.ok(fx.includes("row.addEventListener(\"scroll\", onScroll, { passive: true })") && fx.includes("window.addEventListener(\"resize\", place);") && fx.includes("document.fonts?.ready.then("));
   assert.ok(fx.includes("rows.forEach((row) => row.removeEventListener(\"scroll\", onScroll)); window.removeEventListener(\"resize\", place);"), "and lets go of them when the shelves go");
   assert.ok(!/scrollBy|scrollTo|scrollLeft\s*=|scrollIntoView/.test(fx));
-  // with today's shelves the two long ones get arrows on a wide screen, Music videos does not
-  assert.deepEqual(heroShelves(FILM_HEROES).map((s) => s.heroes.length > 4), [true, true, false]);
+  // with today's shelves the long ones get arrows on a wide screen, Music videos does not (2026-11-26: Still Stories,
+  // nine posters, is one of the long ones)
+  assert.deepEqual(heroShelves(FILM_HEROES).map((s) => s.heroes.length > 4), [true, true, true, false]);
 });
 
 /* ---- THE WRITER'S NUDGE ---------------------------------------------------------------------------------- */
