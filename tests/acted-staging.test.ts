@@ -627,6 +627,10 @@ test("a scene that is a sound is read off its own words: heard — never one of 
     assert.equal(h!.unseen, unseen, scene);
     assert.ok(h!.sound.length > 5 && scene.includes(h!.sound), scene);
   }
+  // (2026-11-26, an Action film's forced door: one of the two kicks, shoulders or pounds it — the sound is theirs, in
+  //  view; read as unseen, the clip was told "the two only HEAR it" and the kick was taken out)
+  for (const scene of ["Mara kicks the door; it bangs against the wall", "A bang as Mara kicks the door open; it slams against the wall", "Mara and Jonah shoulder the door; it bangs open", "Mara pounds on the door; it rattles"]) assert.equal(heardIn(scene, ["Mara", "Jonah"])?.unseen, false, scene);
+  assert.equal(heardIn("Three knocks from inside the wall as Dagny grips Ylva's shoulder.", SISTERS)?.unseen, true);
   assert.equal(heardIn(heard[0][0], SISTERS)!.sound, "Three slow, heavy knocks come from inside the bedroom wall, a full second apart");
   // something one of them DOES, or no sound at all
   for (const scene of [

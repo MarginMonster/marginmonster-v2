@@ -584,6 +584,11 @@ const DOER = /^(?:she|he|they|i|we|you|her|his|their|my|our|your)$/i;
 const BEING_SOUND = /^(?:knock(?:s|ed|ing)?|rap(?:s|ping)?|tap(?:s|ping)?|thump(?:s|ing)?|thud(?:s|ding)?|bang(?:s|ing)?|footsteps?|footfalls?|scratch(?:es|ing)?|scrap(?:e|es|ing)|whisper(?:s|ing)?|voices?|cry|cries|scream(?:s|ing)?|shriek(?:s|ing)?|wail(?:s|ing)?|moan(?:s|ing)?|groan(?:s|ing)?|laughter|giggl(?:e|es|ing)|singing|lullaby|whistl(?:e|es|ing)|hum(?:s|ming)?|howl(?:s|ing)?|growl(?:s|ing)?|sob(?:s|bing)?|breathing)$/i;
 /** …and the thing in the picture that is SEEN making it ("a grey hand knocks on the inside of the door"). */
 const SEEN_MAKER = /^(?:hands?|fingers?|knuckles?|fists?|arms?|claws?|nails?|figure|figures|face|faces|mouth|head|woman|man|girl|boy|child|creature)$/i;
+/** …unless one of the two DOES something forceful in the scene ("Mara kicks the door; it bangs against the wall"): the
+ *  sound is theirs, made in view, never "the two only HEAR it" (2026-11-26, an Action film's forced door). A name, then
+ *  within two words one of these. Not "drops", "grips" or "throws": in a horror film those are what the two do while
+ *  something unseen knocks. */
+const CONTACT = /^(?:kick(?:s|ed|ing)?|slam(?:s|med|ming)?|shoulder(?:s|ed|ing)?|smash(?:es|ed|ing)?|shov(?:e|es|ed|ing)|forc(?:e|es|ed|ing)|wrench(?:es|ed|ing)?|yank(?:s|ed|ing)?|stamp(?:s|ed|ing)?|hammer(?:s|ed|ing)?|pound(?:s|ed|ing)?|bash(?:es|ed|ing)?|ram(?:s|med|ming)?|boot(?:s|ed|ing)?)$/i;
 /** Where a scene's words break into the things that happen in it. */
 const CLAUSE_BREAK = /\s*(?:;|:\s|\.\s|\s[—–]\s|,\s+and\s|,?\s(?:as|while|when|until|before|then)\s|\sand\s(?=(?:a|an|the|one|two|three|four|five|six|several|some|another|more|something|someone|somebody|it)\b))\s*/i;
 /** A sound from out of sight: inside, behind or under something, upstairs, overhead, at a closed door — or
@@ -599,7 +604,8 @@ const UNSEEN = /\b(?:from|inside|within|behind|beneath|under|underneath|below|ab
  *  only that "something" makes it, or it is a sound only a living thing makes and nobody is said to make it
  *  ("The knocking starts again") — never when a thing in the picture is said to make it ("a grey hand knocks
  *  on the inside of the door": that is SEEN), and never when one of the two is also making a sound in that
- *  scene (the clip would be told two things at once: that nobody's hand knocks, and that hers does). `names`
+ *  scene (the clip would be told two things at once: that nobody's hand knocks, and that hers does) or does
+ *  something forceful in it ("Mara kicks the door; it bangs against the wall" — CONTACT). `names`
  *  = the people of the film, so that a name at the start of a sentence is known for one. */
 export function heardIn(event: string | null | undefined, names: ReadonlyArray<string | null | undefined> = []): { sound: string; unseen: boolean } | null {
   const text = oneLine(String(event || "").replace(/["“”«»]/g, ""));
@@ -615,6 +621,8 @@ export function heardIn(event: string | null | undefined, names: ReadonlyArray<s
   let seen = false;
   for (const clause of text.split(CLAUSE_BREAK).map((c) => c.trim()).filter(Boolean)) {
     const words = clause.split(/\s+/).map(bare).filter(Boolean);
+    // (one of the two does something forceful here: whatever sound the scene has is theirs, in view — CONTACT)
+    if (words.some((w, j) => known.has(w.toLowerCase()) && words.slice(j + 1, j + 3).some((v) => CONTACT.test(v)))) doing = true;
     // (somebody HEARS it: whatever the clause names after that is heard, not done — "Dagny hears three knocks")
     let found = words.some((w) => HEARS.test(w));
     let unseen = false;
