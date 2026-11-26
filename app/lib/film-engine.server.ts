@@ -585,10 +585,14 @@ export async function previewFilmTreatment(opts: {
   //  weapon in a children's story, no move in a horror one. An ACTED writer never sees a tag: acted props are later
   //  (S16d), and a tag in an acted entry would reach acted pictures unpeeled.)
   const markFmt = { childSafe: !!tmpl.childSafe, horror: tmpl.key === "horror" };
+  // (…and the picked names are never scrubbed out of ANYTHING — the idea, a look, the writer's answer: a member's own
+  //  "Gojo" in the answer's cast and scenes would come back "a sorcerer", match no picked face, and be drawn in no scene.
+  //  Review of S16a, 2026-11-26: character-mark.ts → kept)
+  const keepNames = (opts.cast || []).map((c) => (c?.name || "").trim().slice(0, 40)).filter(Boolean);
   const picked = tmpl.lipSyncSinger ? [] : (opts.cast || [])
     .map((c) => {
-      const cut = scrubFranchise((c?.desc || "").trim().replace(/\s+/g, " ")).slice(0, 220);
-      return { name: (c?.name || "").trim().slice(0, 40), desc: narrated ? scrubFranchise(withMark(cut, markForFormat(markOf(c?.mark), markFmt))) : cut, kind: c?.kind === "monster" || c?.kind === "cartoon" ? c.kind : undefined };
+      const cut = scrubFranchise((c?.desc || "").trim().replace(/\s+/g, " "), keepNames).slice(0, 220);
+      return { name: (c?.name || "").trim().slice(0, 40), desc: narrated ? scrubFranchise(withMark(cut, markForFormat(markOf(c?.mark), markFmt)), keepNames) : cut, kind: c?.kind === "monster" || c?.kind === "cartoon" ? c.kind : undefined };
     })
     .filter((c) => c.name).slice(0, 4);
   // THE TELLER (a character's show): one of the chosen cast, by their own name as it is in `picked`
@@ -607,7 +611,7 @@ export async function previewFilmTreatment(opts: {
   // (…and the idea as the writer is handed it has nobody else's character in it — SPEC-S16 Decision 5: "Goku fights a
   //  dragon" is told "a martial artist fights a dragon", before a starter is chosen from it, so the word never reaches a
   //  model; the writer is told why, too — ORIGINAL_CAST, below)
-  const typedIdea = scrubFranchise((opts.topic || "").trim());
+  const typedIdea = scrubFranchise((opts.topic || "").trim(), keepNames);
   const nudged = series ? null : nudgeFor(tmpl.key, typedIdea, Math.floor(Math.random() * 0x7fffffff));
   const topic = nudged ? nudged.topic : typedIdea;
   if (nudged) console.log(`[film] ${typedIdea ? `the idea was only "${typedIdea.slice(0, 40)}"` : "no idea was given"} — a ${tmpl.key} starter was dealt: "${nudged.nudge.slice(0, 80)}…"`);
@@ -1290,8 +1294,11 @@ export async function previewFilmTreatment(opts: {
   // in it, each entry one line, what they always have moved to the END as its tag — its parts capped, fit for the story (no
   // weapon in a children's story, no move in a horror one) — a comma after the name, and 400 characters at most with the
   // tag whole.
-  const castIp = narrated && Array.isArray(parsed.cast) ? parsed.cast.map((e) => (typeof e === "string" ? franchiseIn(e) : null)).find(Boolean) || null : null;
-  const cast = Array.isArray(parsed.cast) ? parsed.cast.filter((c) => typeof c === "string" && c.trim()).slice(0, 5).map((e) => (narrated ? normalizeCastEntry(e, markFmt) : e)) : undefined;
+  const castIp = narrated && Array.isArray(parsed.cast) ? parsed.cast.map((e) => (typeof e === "string" ? franchiseIn(e, keepNames) : null)).find(Boolean) || null : null;
+  const cast = Array.isArray(parsed.cast) ? parsed.cast.filter((c) => typeof c === "string" && c.trim()).slice(0, 5).map((e) => (narrated ? normalizeCastEntry(e, markFmt, 400, keepNames) : e)) : undefined;
+  // (what each one always has, as written — the ages' second ask below returns whole entries, and one that comes back
+  //  without its tag gets it back: character-mark.ts)
+  const marksWritten = narrated && cast ? cast.map((e) => castEntry(e)).filter((c) => !!c.name && !!c.mark) : [];
   // AN ACTED FILM'S CHOSEN THREAT IS NEVER ONE OF ITS CAST, whatever the writer returned (premise-rules.ts →
   // chosenThreat): the film puts its cast in every shot, so a werewolf left in "cast" stands beside the boy
   // from the first shot. Taken out here; it is seen where the shots' own words put it.
@@ -1445,6 +1452,15 @@ export async function previewFilmTreatment(opts: {
   //  · nobody else's character in anything said or drawn — every VISUAL and caption, the title and the places, as the cast
   //    above — with one line in the log when anything was taken out.
   if (narrated) {
+    // (an entry the ages' second ask returned is made whole again — one line, its tag at the end — and has back the tag it
+    //  was written with when it came back without one)
+    if (cast) {
+      for (let i = 0; i < cast.length; i++) {
+        cast[i] = normalizeCastEntry(cast[i], markFmt, 400, keepNames);
+        const was = castEntry(cast[i]).mark ? null : marksWritten.find((c) => sameCharacter(c.name, castEntry(cast[i]).name));
+        if (was) cast[i] = setMarkIn(cast[i], was.mark);
+      }
+    }
     if (cast && castChosen.length) {
       for (let i = 0; i < cast.length; i++) {
         const own = castChosen.find((c) => sameCharacter(c.name, castEntry(cast[i]).name));
@@ -1454,12 +1470,12 @@ export async function previewFilmTreatment(opts: {
     const movers = (cast || []).map((e) => castEntry(e)).filter((c) => !!c.name && !!c.mark?.move).map((c) => c.name);
     const moves = castMoves(list, movers);
     list = list.map((s, i) => { const t: FilmScene = { ...s }; if (moves[i]) t.move = moves[i]; else delete t.move; return t; });
-    const ip = castIp || [outTitle, ...places, ...list.flatMap((s) => [s.visual, s.caption || ""])].map((t) => franchiseIn(t)).find(Boolean) || null;
+    const ip = castIp || [outTitle, ...places, ...list.flatMap((s) => [s.visual, s.caption || ""])].map((t) => franchiseIn(t, keepNames)).find(Boolean) || null;
     if (ip) {
       console.log(`[film] an existing character's name was taken out: "${ip.word}" → "${ip.as}"`);
-      list = list.map((s) => ({ ...s, visual: scrubFranchise(s.visual), ...(s.caption ? { caption: scrubFranchise(s.caption) } : {}) }));
-      outTitle = scrubFranchise(outTitle);
-      places = places.map((p) => scrubFranchise(p));
+      list = list.map((s) => ({ ...s, visual: scrubFranchise(s.visual, keepNames), ...(s.caption ? { caption: scrubFranchise(s.caption, keepNames) } : {}) }));
+      outTitle = scrubFranchise(outTitle, keepNames);
+      places = places.map((p) => scrubFranchise(p, keepNames));
     }
   }
   // (what it was dealt, so the maker's next story is dealt something else)

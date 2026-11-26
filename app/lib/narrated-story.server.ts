@@ -333,7 +333,7 @@ export async function narratedSceneSeeds(o: {
       //  grinning and waving at the window — story-picture.ts → characterKind)
       if (!tmpl.childSafe) own.forEach((c) => { if (characterKind(c.name, c.look) === "monster") notes.push(creatureHidden(c.name)); });
       // (a character drawn from WORDS has its thing too, and never its move or its tag: character-mark.ts → pictureText)
-      if (sheet) notes.push(`Reference image ${here.length + 1} is a sheet of other characters: from it take ONLY ${who[k].others.map((e) => pictureText(e).slice(0, 200)).join("; and ")}.`);
+      if (sheet) notes.push(`Reference image ${here.length + 1} is a sheet of other characters: from it take ONLY ${who[k].others.map((e) => pictureText(e, 200)).join("; and ")}.`);
       // (the place's own lines are kept apart: a scene that keeps coming back as a framed panel is drawn once
       //  more WITHOUT its place's sheet — from its words, as every scene was before there were sheets)
       // (the "camera is near them" line is for a scene with NO camera line of its own — it made every picture
@@ -342,7 +342,7 @@ export async function narratedSceneSeeds(o: {
       // (a character with no picture of its own here — its portrait could not be drawn, or it is a fourth
       //  in one scene — is drawn from its words, as every invented character once was)
       const unpictured = sheet ? [] : who[k].others.filter((e) => !own.some((c) => c === cardFor(e)));
-      if (unpictured.length) notes.push(`In this picture: ${unpictured.map((e) => pictureText(e).slice(0, 200)).join("; and ")}.`);
+      if (unpictured.length) notes.push(`In this picture: ${unpictured.map((e) => pictureText(e, 200)).join("; and ")}.`);
       // THE WORDS THE PICTURE IS DRAWN FROM are tidied first (story-picture.ts): one moment, nothing written.
       // (…and a person the words put IN WATER is dressed in the same words, right behind them — DRESSED at the end of a
       //  long prompt did not dress the woman in the lake: story-picture.ts → dressedInWater, 2026-11-25)

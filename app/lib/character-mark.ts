@@ -59,11 +59,17 @@ function headWords(s: string, max: number): string {
   return (at > 0 ? cut.slice(0, at) : s.slice(0, max)).replace(/[\s,;:—–\-(/]+$/, "");
 }
 
+/** "signature", "trademark", "iconic" before a thing — and the article before them, set right for the word after. */
+const BRAG = /(?<![\p{L}\p{N}])(?:(an?)\s+)?(?:signature|trademark|iconic)\s+(?=(\p{L}))/giu;
+
 /** One part of a mark: one line, nothing that would break the tag ([, ] and |), no quotes round it, no full stop
  *  after it, cut at `max` on a word. */
 function part(v: unknown, max: number): string {
   if (typeof v !== "string") return "";
-  const s = oneLine(v.replace(/[[\]|]/g, " ")).replace(/^["“”'‘]+|["“”]+$/g, "").replace(/[\s.,;:—–-]+$/, "").trim();
+  // (…and never "signature", "trademark" or "iconic" before the thing — a writer's favourite words, "[always: her signature
+  //  crimson scarf]": said in every scene's line beside "No watermark, no signature.", a picture model may write a
+  //  signature on the scarf. Review of S16a, 2026-11-26.)
+  const s = oneLine(v.replace(/[[\]|]/g, " ").replace(BRAG, (_m, art: string | undefined, next: string) => (art ? `${/^[aeiou]/i.test(next) ? (art[0] === "A" ? "An" : "an") : art[0] === "A" ? "A" : "a"} ` : ""))).replace(/^["“”'‘]+|["“”]+$/g, "").replace(/[\s.,;:—–-]+$/, "").trim();
   return s.length > max ? headWords(s, max) : s;
 }
 
@@ -159,14 +165,22 @@ export function setMarkIn(entry: string, mark: CharacterMark | null | undefined)
 
 /** What a picture may be told about a character drawn from WORDS (no portrait of its own): the entry without its tag,
  *  and ", always with <has>" when it has one. Never the move — that is only for the one scene that shows it. An entry
- *  with no tag comes back exactly as it was. */
-export function pictureText(entry: string): string {
+ *  with no tag comes back exactly as it was — cut at `max` exactly as `.slice(0, max)` would be.
+ *  (Cut at `max`, the BODY is cut at a word and never the thing: a writer's entry runs 150-250 characters, and the
+ *   scene lines that say it are cut at 200 — "…, always with a long cobalt scarf" at the end was cut off from most of
+ *   them. Review of S16a, 2026-11-26.) */
+export function pictureText(entry: string, max = Infinity): string {
   const p = peel(entry);
-  if (!p.found) return p.text;
+  if (!p.found) return p.text.slice(0, Math.max(0, max));
   let body = p.text;
   for (let k = 0; k < 6; k++) { const q = peel(body); if (!q.found) break; body = q.text; }
   const has = p.mark?.has;
-  return has ? `${body}${body ? ", " : ""}always with ${has}` : body;
+  if (!has) return body.length <= max ? body : headWords(body, Math.max(0, max));
+  const tail = `always with ${has}`;
+  const whole = `${body}${body ? ", " : ""}${tail}`;
+  if (whole.length <= max) return whole;
+  const cut = headWords(body, Math.max(0, max - tail.length - 2));
+  return `${cut}${cut ? ", " : ""}${tail}`.slice(0, Math.max(0, max));
 }
 
 /* ---- the safety readers ---- */
@@ -214,7 +228,10 @@ export function markForFormat(m: CharacterMark | null | undefined, o: { childSaf
  * else ("Super Mario", "Sonic the Hedgehog", "Legend of Zelda"). A title that is also an everyday phrase is matched only
  * with its capitals ("One Piece" — "a one-piece swimsuit" is not it; "a street fighter", "a demon slayer", "a death
  * note", "a master sword" are ordinary words). Public-domain legend is fine: never Excalibur, Robin Hood, Dracula — nor a
- * king of Hawaii ("King Kamehameha"). */
+ * king of Hawaii ("King Kamehameha").
+ * (…and never in ALL CAPITALS for those: a member who types in capitals has no capitals to read — "ONE PIECE OF CAKE
+ *  LEFT" was "a pirate adventure OF CAKE LEFT". A place keeps its kind too: "our trip to Disney World" is a theme park,
+ *  never "an animated film World". Review of S16a, 2026-11-26.) */
 const S = "[\\s-]?";
 const SP = "[\\s-]+";
 const row = (src: string, word: string, as: string, caseSensitive = false): { re: RegExp; word: string; as: string } => ({ re: new RegExp(`${B}(?:${src})${E}`, caseSensitive ? "u" : "iu"), word, as });
@@ -261,13 +278,13 @@ export const FRANCHISE: ReadonlyArray<{ re: RegExp; word: string; as: string }> 
   row("Keyblades?", "Keyblade", "a key-shaped sword"),
   row("Expelliarmus", "Expelliarmus", "a spell"),
   row(`Avada${SP}Kedavra`, "Avada Kedavra", "a spell"),
-  row(`Death${SP}Note|DEATH${SP}NOTE`, "Death Note", "a black notebook", true),
+  row(`Death${SP}Note`, "Death Note", "a black notebook", true),
   row(`Infinity${SP}Gauntlet`, "Infinity Gauntlet", "a jewelled gauntlet"),
-  row(`Master${SP}Sword|MASTER${SP}SWORD`, "Master Sword", "an old sword", true),
-  row(`One${SP}Piece|ONE${SP}PIECE`, "One Piece", "a pirate adventure", true),
-  row(`Dragon${SP}Ball(?:${SP}(?:Z|GT|Super))?|DRAGON${SP}BALL(?:${SP}Z)?`, "Dragon Ball", "a martial-arts adventure", true),
+  row(`Master${SP}Sword`, "Master Sword", "an old sword", true),
+  row(`One${SP}Piece`, "One Piece", "a pirate adventure", true),
+  row(`Dragon${SP}Ball(?:${SP}(?:Z|GT|Super))?`, "Dragon Ball", "a martial-arts adventure", true),
   row("Dragonball(?:\\s?Z)?", "Dragon Ball", "a martial-arts adventure"),
-  row(`Demon${SP}Slayer|DEMON${SP}SLAYER`, "Demon Slayer", "a sword adventure", true),
+  row(`Demon${SP}Slayer`, "Demon Slayer", "a sword adventure", true),
   row(`Jujutsu${SP}Kaisen`, "Jujutsu Kaisen", "a sorcery adventure"),
   row(`Attack${SP}on${SP}Titan`, "Attack on Titan", "a story of giants"),
   row(`My${SP}Hero${SP}Academia`, "My Hero Academia", "a hero-school story"),
@@ -278,33 +295,50 @@ export const FRANCHISE: ReadonlyArray<{ re: RegExp; word: string; as: string }> 
   row(`Star${SP}Wars`, "Star Wars", "a space adventure"),
   row("Jedis?", "Jedi", "a knight"),
   row("Hogwarts", "Hogwarts", "a school of magic"),
-  row(`Street${SP}Fighter|STREET${SP}FIGHTER`, "Street Fighter", "a fighting game", true),
+  row(`Street${SP}Fighter`, "Street Fighter", "a fighting game", true),
   row(`Mortal${SP}Kombat`, "Mortal Kombat", "a fighting game"),
   row("Fortnite", "Fortnite", "a game"),
   row("Minecraft", "Minecraft", "a world of blocks"),
   row(`Studio${SP}Ghibli`, "Studio Ghibli", "hand-painted anime"),
   row("Ghibli", "Ghibli", "hand-painted anime"),
+  row(`(?:Walt${SP})?Disney${S}(?:World|Land)|Disneyland`, "Disney World", "a theme park"),
   row(`Walt${SP}Disney`, "Walt Disney", "an animated film"),
   row("Disney", "Disney", "an animated film"),
   row("Pixar", "Pixar", "an animated film"),
 ];
 
+/** A found word that is (a word of) one of `keep` — the names of the characters the MAKER picked. Never taken out of
+ *  what is written: a picked name is matched by its exact spelling everywhere after (the writer's name rules, the
+ *  portrait it is drawn from, the scene notes), and a member's own "Gojo Tanaka" made before the card's door refused such
+ *  a name (S16c) would be renamed "a sorcerer" in the cast and every scene, and drawn in none. (Review of S16a.) */
+function kept(found: string, keep: ReadonlyArray<string> | undefined): boolean {
+  if (!keep || !keep.length) return false;
+  const esc = found.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+  const re = new RegExp(`${B}${esc}${E}`, "iu");
+  return keep.some((k) => !!k && re.test(k));
+}
+
 /** The first word in `text` that is someone else's character, item, move, show, game or studio — and the kind of thing
- *  it is. null when there is none. */
-export function franchiseIn(text: string | null | undefined): { word: string; as: string } | null {
+ *  it is. null when there is none. (`keep`: the picked cast's names, never counted — see `kept`.) */
+export function franchiseIn(text: string | null | undefined, keep?: ReadonlyArray<string>): { word: string; as: string } | null {
   const t = String(text ?? "");
   let best: { at: number; len: number; word: string; as: string } | null = null;
   for (const r of FRANCHISE) {
-    const m = r.re.exec(t);
-    if (m && (!best || m.index < best.at || (m.index === best.at && m[0].length > best.len))) best = { at: m.index, len: m[0].length, word: r.word, as: r.as };
+    const g = new RegExp(r.re.source, `${r.re.flags}g`);
+    for (const m of t.matchAll(g)) {
+      if (kept(m[0], keep)) continue;
+      const at = m.index ?? 0;
+      if (!best || at < best.at || (at === best.at && m[0].length > best.len)) best = { at, len: m[0].length, word: r.word, as: r.as };
+      break;
+    }
   }
   return best ? { word: best.word, as: best.as } : null;
 }
 
 const ARTICLE = /^(?:a|an|the)\s/i;
 /** Every one of them replaced by its kind, the sentence kept readable: "a Goku" → "a martial artist" (no double
- *  article), "two Jedis" → "two knights". */
-export function scrubFranchise(text: string | null | undefined): string {
+ *  article), "two Jedis" → "two knights". (`keep`: the picked cast's names, left as they are — see `kept`.) */
+export function scrubFranchise(text: string | null | undefined, keep?: ReadonlyArray<string>): string {
   let out = String(text ?? "");
   for (const r of FRANCHISE) {
     const g = new RegExp(r.re.source, `${r.re.flags}g`);
@@ -313,6 +347,7 @@ export function scrubFranchise(text: string | null | undefined): string {
     let built = "";
     let last = 0;
     for (const m of out.matchAll(g)) {
+      if (kept(m[0], keep)) continue;
       let before = out.slice(last, m.index);
       let as = r.as;
       // (more than one of them: "two lightsabers" → "two energy swords")
@@ -343,10 +378,19 @@ export function markProblem(m: CharacterMark | null | undefined): { kind: "franc
 
 /** A cast entry as it leaves the writer of a TOLD story: someone else's character taken out, one line, the tag moved
  *  to the END with its parts capped and fit for the story (markForFormat), a comma after the name, at most `max`
- *  characters with the tag whole. An entry with no tag is only scrubbed, made one line and cut at `max`. */
-export function normalizeCastEntry(e: string, fmt: { childSafe: boolean; horror: boolean }, max = 400): string {
-  const p = peel(oneLine(scrubFranchise(e)));
-  return withMark(p.text, markForFormat(p.mark, fmt), max);
+ *  characters with the tag whole. An entry with no tag is only scrubbed, made one line and cut at `max`.
+ *  (A writer that wrote its two parts as two tags — "[always: a scarf] [move: the Gale — a spin]" — keeps both: the
+ *  first of each part is kept. `keep`: the picked cast's names, never scrubbed — see `kept`.) */
+export function normalizeCastEntry(e: string, fmt: { childSafe: boolean; horror: boolean }, max = 400, keep?: ReadonlyArray<string>): string {
+  let p = peel(oneLine(scrubFranchise(e, keep)));
+  let mark: CharacterMark | null = p.mark;
+  for (let k = 0; k < 5 && p.found; k++) {
+    const q = peel(p.text);
+    if (!q.found) break;
+    mark = markOf({ has: mark?.has || q.mark?.has, move: mark?.move || q.mark?.move });
+    p = q;
+  }
+  return withMark(p.text, markForFormat(mark, fmt), max);
 }
 
 /** Which scenes show a move, as the writer marked them — each kept only when it names somebody whose entry HAS a move

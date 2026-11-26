@@ -96,6 +96,14 @@ test("pictureText: a character drawn from words has the thing too — never the 
   assert.equal(pictureText("Kai, a courier [move: the Paper Gale — a low spin]"), "Kai, a courier");
   for (const s of ["Walter, a watchman", "  MARA (a baker)  ", ""]) assert.equal(pictureText(s), s, "no tag: as it was");
   assert.ok(!/Gale|\[|move/.test(pictureText(KAI)));
+  // cut at 200 (the scene lines): the BODY is cut at a word, the thing kept whole — review of S16a: a writer's entry runs
+  // 150-250 characters, and ".slice(0, 200)" after it cut the thing off most of them
+  const long = `Bram Tolliver, a broad-shouldered ferryman ${"with a weathered face and a patched coat ".repeat(5)}[always: a dented brass lantern on a long pole]`;
+  const cut = pictureText(long, 200);
+  assert.ok(cut.length <= 200 && cut.endsWith(", always with a dented brass lantern on a long pole"), cut);
+  assert.ok(long.startsWith(cut.slice(0, cut.indexOf(", always with "))));
+  // no tag: exactly .slice(0, 200), byte for byte
+  for (const s of ["x".repeat(450), `Walter, ${"an elderly night watchman ".repeat(20)}`, "Nessa"]) assert.equal(pictureText(s, 200), s.slice(0, 200));
 });
 
 test("castEntry peels the tag first: the look is what it always was, and the mark comes back beside it", () => {
@@ -205,6 +213,42 @@ test("FRANCHISE: every row is found; ordinary words, common names and legend are
   for (const k of [...GENRE_FILMS.map((g) => g.key), "horror", "moral", "kidstv", "testmovie", ...ANIME_STYLES.map((s) => s.key)]) for (const s of startersOf(k)) assert.equal(franchiseIn(s), null, `${k}: ${s}`);
 });
 
+// REVIEW OF S16a (2026-11-26): what a quick read missed
+test("a picked name is never scrubbed: a member's own 'Gojo Tanaka' stays himself in the cast, the scenes and the idea", () => {
+  const keep = ["Gojo Tanaka", "Tessa"];
+  assert.equal(scrubFranchise("Gojo Tanaka climbs the stairs; Gojo grins", keep), "Gojo Tanaka climbs the stairs; Gojo grins");
+  assert.equal(scrubFranchise("Gojo meets Goku on the pier", keep), "Gojo meets a martial artist on the pier", "only the picked name is kept");
+  assert.equal(franchiseIn("Gojo Tanaka waves", keep), null);
+  assert.equal(franchiseIn("Gojo Tanaka waves at Pikachu", keep)!.word, "Pikachu", "the next one is still found");
+  assert.equal(normalizeCastEntry("Gojo Tanaka, a tall courier [always: a grey felt hat]", { childSafe: false, horror: false }, 400, keep), "Gojo Tanaka, a tall courier [always: a grey felt hat]");
+  assert.equal(castEntry(normalizeCastEntry("Gojo Tanaka, a tall courier", { childSafe: false, horror: false }, 400, keep)).name, "Gojo Tanaka");
+  // with no picked names, as before
+  assert.equal(scrubFranchise("Gojo grins"), "a sorcerer grins");
+  assert.equal(scrubFranchise("Gojo grins", []), "a sorcerer grins");
+});
+
+test("ALL CAPITALS has no capitals to read: 'ONE PIECE OF CAKE' is an ordinary phrase; a theme park stays a place", () => {
+  for (const t of ["ONE PIECE OF CAKE LEFT", "A DEATH NOTE ON THE DOOR", "THE MASTER SWORD OF THE KEEP", "A STREET FIGHTER", "THE DEMON SLAYER RETURNS", "A DRAGON BALL OF GLASS"]) assert.equal(franchiseIn(t), null, t);
+  assert.equal(franchiseIn("they read One Piece")!.word, "One Piece", "with its own capitals, still found");
+  assert.equal(scrubFranchise("our trip to Disney World"), "our trip to a theme park");
+  assert.equal(scrubFranchise("a day at Disneyland with Grandma"), "a day at a theme park with Grandma");
+  assert.equal(scrubFranchise("a Disney film night"), "an animated film film night");
+});
+
+test("a mark never says 'signature', 'trademark' or 'iconic' — beside 'No watermark, no signature.' a model may write one", () => {
+  assert.deepEqual(markOf({ has: "her signature crimson scarf", move: "his trademark spin — the Gale" }), { has: "her crimson scarf", move: "his spin — the Gale" });
+  assert.deepEqual(peelMark("Kai, a courier [always: an Iconic brass lantern]").mark, { has: "a brass lantern" });
+  assert.deepEqual(markOf({ has: "A signature old umbrella" }), { has: "An old umbrella" });
+  assert.deepEqual(markOf({ has: "a pen for his signature" }), { has: "a pen for his signature" }, "only before a thing");
+  assert.ok(!/signature/i.test(normalizeCastEntry("Kai, a courier [always: his signature steel fan]", { childSafe: false, horror: false })));
+});
+
+test("two tags written for one character keep both parts", () => {
+  assert.equal(normalizeCastEntry("Kai, a courier [always: a scarf] [move: the Gale — a spin]", { childSafe: false, horror: false }), "Kai, a courier [always: a scarf | move: the Gale — a spin]");
+  assert.equal(normalizeCastEntry("Kai, a courier [always: a scarf] [always: a fan]", { childSafe: false, horror: false }), "Kai, a courier [always: a scarf]", "the first of each part");
+  assert.equal(normalizeCastEntry("Ren, a mechanic [always: a scarf] [move: the Cut — a sword stroke]", { childSafe: true, horror: false }), "Ren, a mechanic [always: a scarf]", "and still fit for the story");
+});
+
 test("castMoves: a move only on a scene that names somebody who has one, and two scenes at most", () => {
   assert.equal(MOVE_SCENES_MAX, 2);
   assert.deepEqual(castMoves([{ move: "Kai" }, {}, { move: "Nobody" }, { move: "kai" }, { move: "Kai" }], ["Kai"]), ["Kai", undefined, undefined, "Kai", undefined]);
@@ -215,7 +259,9 @@ test("castMoves: a move only on a scene that names somebody who has one, and two
 test("the words: what the writer and the pictures are told", () => {
   // never "signature" (the designed voice; "No watermark, no signature."), "trademark" or "iconic" — anywhere in the file
   const src = read("app", "lib", "character-mark.ts");
-  const said = src.split("\n").filter((l) => !/^\s*(?:\/\/|\*|\/\*)/.test(l)).join("\n");
+  // (…but for the one line that takes them OUT of a mark: BRAG — review of S16a)
+  const said = src.split("\n").filter((l) => !/^\s*(?:\/\/|\*|\/\*)/.test(l) && !l.startsWith("const BRAG = /")).join("\n");
+  assert.equal(src.split("\n").filter((l) => l.startsWith("const BRAG = /")).length, 1);
   assert.ok(!/signature|trademark|iconic/i.test(said), "no line said to a model, or written in code, has those words");
   const all = (o: { drawn: boolean; childSafe: boolean; horror: boolean }) => [markWriter({ ...o, lead: true }), markWriter({ ...o, lead: false, chosen: true }), moveLine("Kai", "the Paper Gale — a low spin", o), markLine("Kai", "a scarf", 1), portraitHas("Kai", "a scarf")];
   for (const o of [{ drawn: true, childSafe: false, horror: false }, { drawn: false, childSafe: false, horror: false }, { drawn: false, childSafe: true, horror: false }, { drawn: false, childSafe: false, horror: true }]) for (const l of all(o)) assert.ok(!/signature|trademark|iconic/i.test(l), l);
@@ -284,9 +330,11 @@ test("wiring that cannot run here (no writer, no picture model locally) — pinn
   assert.ok(fn.includes("...(narrated && typeof s.move === \"string\" && s.move.trim() ? { move: s.move.replace(/\\s+/g, \" \").trim().slice(0, 40) } : {}),"));
   // a picked face's card: told only, at the END of its look, fit for the story — and nobody else's character in it
   assert.ok(fn.includes("const markFmt = { childSafe: !!tmpl.childSafe, horror: tmpl.key === \"horror\" };"));
-  assert.ok(fn.includes("const cut = scrubFranchise((c?.desc || \"\").trim().replace(/\\s+/g, \" \")).slice(0, 220);"));
-  assert.ok(fn.includes("desc: narrated ? scrubFranchise(withMark(cut, markForFormat(markOf(c?.mark), markFmt))) : cut,"));
-  assert.ok(fn.includes("const typedIdea = scrubFranchise((opts.topic || \"\").trim());") && fn.indexOf("const typedIdea = ") < fn.indexOf("const nudged = "), "scrubbed before a starter is chosen from it");
+  // (the picked names are never scrubbed out of anything — review of S16a: a member's own "Gojo" would match no face)
+  assert.ok(fn.includes("const keepNames = (opts.cast || []).map((c) => (c?.name || \"\").trim().slice(0, 40)).filter(Boolean);") && fn.indexOf("const keepNames = ") < fn.indexOf("const picked = "));
+  assert.ok(fn.includes("const cut = scrubFranchise((c?.desc || \"\").trim().replace(/\\s+/g, \" \"), keepNames).slice(0, 220);"));
+  assert.ok(fn.includes("desc: narrated ? scrubFranchise(withMark(cut, markForFormat(markOf(c?.mark), markFmt)), keepNames) : cut,"));
+  assert.ok(fn.includes("const typedIdea = scrubFranchise((opts.topic || \"\").trim(), keepNames);") && fn.indexOf("const typedIdea = ") < fn.indexOf("const nudged = "), "scrubbed before a starter is chosen from it");
   // the writer's lines: ORIGINAL_CAST after the idea (whole, plan) and the part's brief; markBrief after the cast — 3 each
   assert.ok(fn.includes("const markBrief = narrated && storyFormat ? `\\n${markWriter({ drawn: !!tmpl.drawn, childSafe: !!tmpl.childSafe, horror: tmpl.key === \"horror\", lead: markLead(tmpl.key, !!tmpl.drawn), chosen: castChosen.length > 0, name: exName, things: dealMarkThings(Math.random, { weapons: !tmpl.childSafe && tmpl.key !== \"horror\" }) })}` : \"\";"));
   const count = (s: string, x: string) => s.split(x).length - 1;
@@ -297,11 +345,18 @@ test("wiring that cannot run here (no writer, no picture model locally) — pinn
   assert.ok(fn.includes("      ideaLine +\n      // (every character our own") && fn.includes("      castLine +\n      threatBrief +\n      markBrief +\n      `\\n${AGES_FIT_RELATION}` +"), "the plan");
   assert.ok(fn.includes("seenAs: one!.seenAs }) +\n    // (every part is told") && fn.includes("    partCast +\n    partThreat +\n    markBrief +\n"), "each part");
   // the answer: the cast normalised; a chosen face keeps only its card's; a move only where somebody has one; the scrub
-  assert.ok(fn.includes("const cast = Array.isArray(parsed.cast) ? parsed.cast.filter((c) => typeof c === \"string\" && c.trim()).slice(0, 5).map((e) => (narrated ? normalizeCastEntry(e, markFmt) : e)) : undefined;"));
+  assert.ok(fn.includes("const cast = Array.isArray(parsed.cast) ? parsed.cast.filter((c) => typeof c === \"string\" && c.trim()).slice(0, 5).map((e) => (narrated ? normalizeCastEntry(e, markFmt, 400, keepNames) : e)) : undefined;"));
+  assert.ok(fn.includes("(typeof e === \"string\" ? franchiseIn(e, keepNames) : null)"));
+  // (an entry the ages' second ask returned is made whole again, and gets back a tag it lost — review of S16a)
+  const props = fn.slice(fn.indexOf("  // PROPS & MOVES, AS THE STORY LEAVES ITS WRITER"));
+  assert.ok(props.includes("cast[i] = normalizeCastEntry(cast[i], markFmt, 400, keepNames);") && props.includes("if (was) cast[i] = setMarkIn(cast[i], was.mark);"));
+  assert.ok(fn.indexOf("const marksWritten = ") > fn.indexOf("const cast = Array.isArray(parsed.cast)") && fn.indexOf("const marksWritten = ") < fn.indexOf("const problem = castAgeProblem("), "read before the ages' second ask");
+  assert.ok(props.indexOf("normalizeCastEntry(cast[i]") < props.indexOf("if (own) cast[i] = setMarkIn("), "before a chosen face is given its card's");
   assert.ok(fn.includes("if (own) cast[i] = setMarkIn(cast[i], markForFormat(peelMark(own.desc).mark, markFmt));"));
   assert.ok(fn.includes("const movers = (cast || []).map((e) => castEntry(e)).filter((c) => !!c.name && !!c.mark?.move).map((c) => c.name);") && fn.includes("const moves = castMoves(list, movers);"));
   assert.ok(fn.includes("console.log(`[film] an existing character's name was taken out: \"${ip.word}\" → \"${ip.as}\"`);"));
-  assert.ok(fn.includes("list = list.map((s) => ({ ...s, visual: scrubFranchise(s.visual), ...(s.caption ? { caption: scrubFranchise(s.caption) } : {}) }));") && fn.includes("outTitle = scrubFranchise(outTitle);") && fn.includes("places = places.map((p) => scrubFranchise(p));"));
+  assert.ok(fn.includes("list = list.map((s) => ({ ...s, visual: scrubFranchise(s.visual, keepNames), ...(s.caption ? { caption: scrubFranchise(s.caption, keepNames) } : {}) }));") && fn.includes("outTitle = scrubFranchise(outTitle, keepNames);") && fn.includes("places = places.map((p) => scrubFranchise(p, keepNames));"));
+  assert.ok(fn.includes(".map((t) => franchiseIn(t, keepNames)).find(Boolean)"));
   assert.ok(fn.indexOf("const moves = castMoves(list, movers);") > fn.indexOf("if (places.length) list = list.map((s, i) => ({ ...s, visual: placeNamed("), "after the places are named in the scenes");
   assert.ok(fn.indexOf("const moves = castMoves(list, movers);") < fn.indexOf("return { title: outTitle, scenes: list,"));
 
@@ -316,7 +371,7 @@ test("wiring that cannot run here (no writer, no picture model locally) — pinn
   assert.ok(seeds.includes("const mover = scene.move ? here.find((c) => sameCharacter(c.name, scene.move!)) : undefined;"));
   assert.ok(seeds.includes("const mv = mover ? marks.get(mover.name.trim().toLowerCase())?.move : undefined;"));
   assert.ok(seeds.includes("if (mover && mv) notes.push(moveLine(mover.name, mv, { drawn: !!tmpl.drawn, childSafe: !!tmpl.childSafe }));"));
-  assert.ok(seeds.includes("who[k].others.map((e) => pictureText(e).slice(0, 200)).join(\"; and \")") && seeds.includes("unpictured.map((e) => pictureText(e).slice(0, 200)).join(\"; and \")"));
+  assert.ok(seeds.includes("who[k].others.map((e) => pictureText(e, 200)).join(\"; and \")") && seeds.includes("unpictured.map((e) => pictureText(e, 200)).join(\"; and \")"));
   assert.ok(!seeds.includes("e.slice(0, 200)"), "no character said from words with its tag");
   // untouched: the scene note, the portrait call (portraitPrompt peels the tag itself)
   assert.ok(seeds.includes("here.forEach((c, n) => notes.push(`${c.name} is the character in reference image ${n + 1}${c.look ? ` (${c.look.slice(0, 160)})` : \"\"}.`));"));
