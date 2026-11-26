@@ -50,6 +50,7 @@ import { Ico } from "../lib/icons";
 import { CAMERA_LOOKS, cameraLookOf, type CameraLook, type HouseClock } from "../lib/camera-dress";
 import { HOUSE_ROOMS, HOUSE_TAKE_SECONDS, houseScare } from "../lib/house-cam";
 import { FOOTAGE_SHELVES, OWN_SCARE, TAKE_SECONDS, cardUnchanged, familyOf, fits, footageEta, footageJob, footageScare, pickCamera, pickScare, shapeChoosable, shapeFor, shelfScares, type FootagePick } from "../lib/take";
+import { IDEA_HANDOFF_KEY, readHandoff } from "../lib/idea-route";
 import {
   FOOTAGE_LIMITS, FOOTAGE_MAX_MOMENTS, FOOTAGE_OUTLINE_UNREADABLE, camStamp, cardWords, cleanFootageOutline, footageClocks, footageFilmEta, footageFilmJob, footageOutlineAsk,
   footageSeconds, momentCount, momentSeconds, type FootageMoment, type FootageOutline,
@@ -371,6 +372,18 @@ export default function FoundFootage() {
   // THE BOX — what happens, in words. A card tapped puts its own words in it, as the member reads them (their
   // language); changed, the take is theirs, written from that card
   const [own, setOwn] = useState(() => { const s = footageScare(pick.scare); return s ? t(s.premise) : ""; });
+  // AN IDEA BROUGHT FROM THE MOVIE MAKER'S BOX (2026-11-26 — the owner, of that box: "unless it guides user on page to actual
+  // prompt to use"): the home's Start, or a camera tapped with words in the box, leaves them in this tab's sessionStorage —
+  // never in the address, never in a server log — and this page puts them in ITS box, once, on that camera. Nothing is
+  // written or filmed: Write and Roll are still the member's.
+  useEffect(() => {
+    if (d.next) return;
+    try {
+      const brought = readHandoff(window.sessionStorage.getItem(IDEA_HANDOFF_KEY), Date.now());
+      window.sessionStorage.removeItem(IDEA_HANDOFF_KEY);
+      if (brought) { setPick((p) => ({ ...p, scare: OWN_SCARE })); setOwn(brought); }
+    } catch { /* a nicety: the camera is still the one asked for */ }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // the hand-held camera last in hand — a hand-held scare goes back to it after a house or body-cam one
   const [lastHand, setLastHand] = useState<CameraLook>("phone");
   const [wide, setWide] = useState<"9:16" | "16:9">(d.next?.aspect || "16:9");
