@@ -42,6 +42,9 @@ import { cameraLine, sceneShot } from "./story-shots";
 // EVERYBODY IN EVERY PICTURE IS CLOTHED (2026-11-25 — clothed.server.ts → keepClothed; story-picture.ts → UNCLOTHED_ASKED)
 import { CLOTHED_FIRST, dressedInWater, parseStoryUnclothed, storyFirst } from "./story-picture";
 import { clothedEditOn, keepClothed } from "./clothed.server";
+// EVERY PICTURE FILLS ITS FRAME (2026-11-26 — full-frame.ts: an empty band or a doubled strip, measured; cut off at the end)
+import { bandOf, coverBand } from "./full-frame.server";
+import { bandCuttable, bandFault } from "./full-frame";
 import { DOORS_SHUT, DRESSED, FRAMED_FIX, FRAMED_SIZE, framedIn, INSIDE_STAYS, NO_EXTRAS, NO_LENS, NOTHING_WRITTEN, ONE_PICTURE, SHADOW_SHAPE, shadowNote, STORY_SOUND, TODAY_LOOK, TRUE_SIZE, parseStoryGrime, parseStoryInset, storyGrimePrompt, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_LADDER, castEntry, characterKind, creatureHidden, creatureNote, keptFaults, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryExtras, parseStoryLens, parseStoryOutside, parseStoryPanels, parseStoryTwice, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, insideNote, storyCastPrompt, storyExtrasPrompt, storyPictureInput, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 // (2026-11-25, stories up to five minutes: a long story is cut in parts, and read in parts when it is that long)
@@ -260,6 +263,8 @@ export async function narratedSceneSeeds(o: {
       // HOW THIS SCENE IS SEEN (story-shots.ts): the camera line its picture is given — none for a scene with no plan
       // (…what its own words say first — a storyboard written before the words won, or words the maker changed:
       //  story-shots.ts → sceneShot)
+      // (…and, for a far view in a tall frame, the frame's shape with it: the bakery's WIDE came back a landscape on a cream
+      //  band — story-shots.ts → frameShapeLine, 2026-11-26)
       const cam = sceneShot(scene);
       const people = [...here.map((c) => abs(c.faceUrl)).filter((u): u is string => !!u), ...(sheet ? [sheet] : [])];
       // WHERE IT IS SET: the design sheet of the place this scene's words name, as one more reference —
@@ -303,7 +308,7 @@ export async function narratedSceneSeeds(o: {
       const night = storyNight({ words: visual, said: scene.caption, place: setAt ? `${setAt.name}: ${setAt.look}` : "", idea, childSafe: tmpl.childSafe, cartoon: tmpl.cartoon }, nightSetting);
       // (a genre whose world is its OWN — Fantasy, film-genres.ts → ownWorld — is told everybody is clothed, and not that
       //  its places look the way they look TODAY: "no cottage and no castle unless they name one", 2026-11-25)
-      const promptOf = (withPlace: boolean): string => `${safe}${visual.slice(0, 600)}${/[.!?]$/.test(visual) ? "" : "."}${night ? ` ${NIGHT_LINE} ${NIGHT_STYLE_LIGHT}` : ""} Style: ${tmpl.sceneHint}.${tmpl.faceMood ? ` ${tmpl.faceMood}` : ""}${cam ? ` ${cameraLine(cam)}` : ""} ${[...notes, ...(withPlace ? placeNotes : [])].join(" ")}${(withPlace ? refs : people).length ? ` ${CAST_LOCK}` : ""} ${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : ""}${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT} ${TRUE_SIZE}` : ""}${tmpl.childSafe || tmpl.ownWorld ? ` ${DRESSED}` : ` ${TODAY_LOOK}`}${!tmpl.childSafe && shadowNote(visual) ? ` ${SHADOW_SHAPE}` : ""} ${STORY_SOUND} ${NOTHING_WRITTEN}`;
+      const promptOf = (withPlace: boolean): string => `${safe}${visual.slice(0, 600)}${/[.!?]$/.test(visual) ? "" : "."}${night ? ` ${NIGHT_LINE} ${NIGHT_STYLE_LIGHT}` : ""} Style: ${tmpl.sceneHint}.${tmpl.faceMood ? ` ${tmpl.faceMood}` : ""}${cam ? ` ${cameraLine(cam, aspect)}` : ""} ${[...notes, ...(withPlace ? placeNotes : [])].join(" ")}${(withPlace ? refs : people).length ? ` ${CAST_LOCK}` : ""} ${ONE_PICTURE} ${NO_EXTRAS}${here.length ? ` ${NO_LENS}` : ""}${insideNote(visual) ? ` ${INSIDE_STAYS} ${DOORS_SHUT} ${TRUE_SIZE}` : ""}${tmpl.childSafe || tmpl.ownWorld ? ` ${DRESSED}` : ` ${TODAY_LOOK}`}${!tmpl.childSafe && shadowNote(visual) ? ` ${SHADOW_SHAPE}` : ""} ${STORY_SOUND} ${NOTHING_WRITTEN}`;
       // …and THE PICTURE IS LOOKED AT before it is kept: is each of the maker's cast in it (never asked
       // about clothes — a story dresses people for the part), and is it one picture. The cast is looked for
       // whenever the scene has any; panels only where the words described two moments (that is when a
@@ -372,13 +377,21 @@ export async function narratedSceneSeeds(o: {
         if (got && (await letterboxed(got))) { barred = got; console.error(`[narrated] scene ${i + 1} came back letterboxed — drawing it again`); continue; }
         if (got && withPlace && (await framedPanel(got))) { framedGoes++; fix = FRAMED_FIX; console.error(`[narrated] scene ${i + 1} came back as a framed panel on a plain ground (${place?.name}) — drawing it again${framedGoes >= 2 ? " without the place's sheet" : ""}`); continue; }
         if (!got) { if (a >= 1) break; continue; } // two plain failures: stop asking this way
-        const seenAs = await lookAt(got);
+        // AN EMPTY BAND OR A DOUBLED STRIP (2026-11-26, "What His Hands Remember": the bakery drawn as a landscape across the
+        // middle of the tall frame, a strip of it repeated above and an empty cream band below — kept by every look) is
+        // MEASURED from the picture itself, free (full-frame.ts): a fault like a split picture, its edge named to the next go
+        // (storyFix → bandFix). Drawn from a place's sheet it is the sheet's look copied — like a framed panel, it counts
+        // toward drawing the scene without the sheet (four of five test draws of the bakery copied the sheet's model).
+        const band = await bandOf(got);
+        if (band && withPlace) framedGoes++;
+        const looked = await lookAt(got);
+        const seenAs: StoryCheck | null = band ? { ...(looked || { seen: castPics.map(() => true), panels: false }), band } : looked;
         const faults = seenAs ? storyFaults(seenAs) : 0;
         if (!faults) { img = got; break; }
         if (!best || faults < best.faults) best = { img: got, faults, check: seenAs! };
         fix = storyFix(seenAs!, here.map((c) => c.name), here.map((c) => c.kind || "person"));
         first = storyFirst(seenAs);
-        console.log(`[narrated] scene ${i + 1} try ${a + 1}: ${[seenAs!.unclothed ? `somebody unclothed (${seenAs!.unclothedWho || "somewhere in it"})` : "", seenAs!.panels ? "split into panels" : "", seenAs!.seen.includes(false) ? `cast not in it (${here.filter((_, n) => !seenAs!.seen[n]).map((c) => c.name).join(", ")})` : "", (seenAs!.twice || []).some(Boolean) ? "somebody drawn twice" : "", seenAs!.extra ? "somebody the words do not put there" : "", seenAs!.outside ? "whoever looks out stood outside" : "", seenAs!.lens?.length ? `${seenAs!.lens.join(" and ")} stared into the lens` : "", seenAs!.grimy ? "the place came out run-down" : "", seenAs!.inset ? "a smaller picture pasted into it" : "", seenAs!.notNight ? "a night scene drawn as dusk or day" : ""].filter(Boolean).join(", ")} — drawing it again`);
+        console.log(`[narrated] scene ${i + 1} try ${a + 1}: ${[seenAs!.unclothed ? `somebody unclothed (${seenAs!.unclothedWho || "somewhere in it"})` : "", seenAs!.panels ? "split into panels" : "", seenAs!.seen.includes(false) ? `cast not in it (${here.filter((_, n) => !seenAs!.seen[n]).map((c) => c.name).join(", ")})` : "", (seenAs!.twice || []).some(Boolean) ? "somebody drawn twice" : "", seenAs!.extra ? "somebody the words do not put there" : "", seenAs!.outside ? "whoever looks out stood outside" : "", seenAs!.lens?.length ? `${seenAs!.lens.join(" and ")} stared into the lens` : "", seenAs!.grimy ? "the place came out run-down" : "", seenAs!.inset ? "a smaller picture pasted into it" : "", seenAs!.notNight ? "a night scene drawn as dusk or day" : "", seenAs!.band ? `an empty band or a doubled strip (${[...seenAs!.band.sides, ...seenAs!.band.doubled.map((s) => `doubled ${s}`)].join(", ")})` : ""].filter(Boolean).join(", ")} — drawing it again`);
       }
       // THE BEST OF THE GOES STILL HAS SOMEBODY UNCLOTHED (every go had: one without it would have weighed less —
       // story-picture.ts → UNCLOTHED_FAULT): that picture is dressed by ONE edit on the story's best model and looked at
@@ -394,6 +407,28 @@ export async function narratedSceneSeeds(o: {
         }
         await alive();
       }
+      // A PICTURE STILL BANDED AFTER ITS GOES IS NEVER SHOWN WITH ITS BAND (full-frame.ts → the rule): it is cut to its own
+      // content and that content's middle is scaled to cover the frame. Cutting off a sliver leaves it right, and its fault
+      // goes; a narrow middle of a wide picture (under COVER_MOST of it kept), or views on a plain ground, is still flagged
+      // for the maker to draw again — but no film ever pushes in on an empty cream band.
+      // (measured again first: the picture kept may be the one an edit dressed — its band need not be where it was)
+      if (!img && best?.check.band) {
+        const was = best;
+        const { band: _band, ...rest } = was.check;
+        const cut = await bandOf(was.img);
+        const covered = cut ? await coverBand(was.img, cut) : null;
+        if (!cut) { best = { img: was.img, faults: storyFaults(rest), check: rest }; if (!best.faults) img = was.img; }
+        else if (covered) {
+          // (…and the cover read again: a side the read missed is still in it, and then it is not called right —
+          //  review of S14, a black bar over a dark road that the first read did not see)
+          const left = await bandOf(covered);
+          const right = bandCuttable(cut) && !left;
+          const check = right ? rest : { ...rest, band: left || cut };
+          best = { img: covered, faults: storyFaults(check), check };
+          if (!best.faults) img = covered;
+          console.log(`[narrated] scene ${i + 1}: kept with an empty band or a doubled strip — cut to its content and covered (${Math.round(cut.keeps * 100)}% of it kept)${right ? "" : ", still flagged"}`);
+        } else console.error(`[narrated] scene ${i + 1}: kept with an empty band or a doubled strip — the cover could not be made, kept as it was (flagged)`);
+      }
       if (!img && best) { img = best.img; faultsOut[i] = best.faults; checksOut[i] = { ...best.check, who: here.map((c) => c.name) }; }
       // (…a letterboxed picture kept because every go was letterboxed was never looked at — review of S8, 2026-11-25:
       //  it is looked at for anybody unclothed now, dressed by one edit if it must be, else kept as it is)
@@ -405,6 +440,14 @@ export async function narratedSceneSeeds(o: {
         try {
           const lenient = await renderCreativeSeed(`${safe}${night ? `${NIGHT_LINE} ` : ""}${dressedInWater((scene.visual || "").slice(0, 300))}. ${tmpl.sceneHint}`, aspect);
           img = lenient ? await keepClothed({ url: lenient, ref: (u) => abs(u) || u, edit: (u, bare) => clothedEditOn(u, bare, aspect), log: (l) => console.log(`[narrated] scene ${i + 1} (the lenient path): ${l}`) }) : null;
+          // (…and never shown with a band either: cut to its content and covered — full-frame.ts)
+          // (…flagged like the others when cutting it off does not leave a right picture — review of S14: the lenient
+          //  picture's scene was marked right whatever its cover kept)
+          const lb = img ? await bandOf(img) : null;
+          if (img && lb) {
+            img = (await coverBand(img, lb)) || img;
+            if (!bandCuttable(lb)) { faultsOut[i] = bandFault(lb); checksOut[i] = { seen: [], panels: false, band: lb, who: [] }; }
+          }
         } catch { img = null; }
       }
       out[i] = img;

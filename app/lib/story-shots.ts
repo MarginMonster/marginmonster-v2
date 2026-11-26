@@ -35,8 +35,11 @@ type ShotSpec = {
 };
 
 export const STORY_SHOTS: Record<StoryShot, ShotSpec> = {
+  // (…and the VISUAL says what fills the top and the bottom of the picture: "WIDE: inside the bakery, Humphrey stands
+  //  small before the cast-iron oven…" named nothing above or below him, and in a tall frame it came back as a landscape
+  //  of the bakery with an empty cream band under it, 2026-11-26 — full-frame.ts)
   wide: {
-    write: "WIDE — the place is the picture: we see it whole, from far back, and whoever is in it is small in it (a quarter of the frame's height at most)",
+    write: "WIDE — the place is the picture: we see it whole, from far back, and whoever is in it is small in it (a quarter of the frame's height at most); say what fills the TOP of the picture and what fills the BOTTOM (the ceiling and the floor, the sky and the ground)",
     camera: "CAMERA: a wide shot from far back — the place fills the frame and every figure in it is small, a quarter of the picture's height at most, each at its true size beside the others and the place (whoever is farther away is smaller).",
     motion: "The camera drifts very slowly forward. Everybody holds their place; only small movement.",
     far: true,
@@ -177,8 +180,29 @@ export function shotListBrief(plan: ReadonlyArray<StoryShot>): string {
   );
 }
 
-/** The line the picture model is given for a scene seen this way ("" for a scene with no plan). */
-export const cameraLine = (shot: StoryShot | null | undefined): string => (shot && STORY_SHOTS[shot] ? STORY_SHOTS[shot].camera : "");
+/* A WIDE VIEW IN A TALL FRAME IS STILL A TALL PICTURE (2026-11-26, the live still story "What His Hands Remember"): its
+ * first scene, "WIDE: inside the bakery, Humphrey stands small before the cast-iron oven…", in a 9:16 story, came back as
+ * the bakery drawn as a LANDSCAPE picture across the middle of the tall frame, a strip of it repeated above and an empty
+ * cream band below — and the picture had been told "a tall vertical picture that fills the whole frame from edge to edge"
+ * first thing, and "ONE single continuous picture … filling the whole frame" later. Told "a wide shot", a picture model
+ * draws a wide picture. So a shot that is seen from far back is told, with its camera line, the shape of the frame it is
+ * composed for — and, in a wide frame, a shot that stands a figure up full height is told the same the other way round. */
+const FAR_IN_TALL: ReadonlyArray<StoryShot> = ["wide", "depth"];
+const TALL_IN_WIDE: ReadonlyArray<StoryShot> = ["walk", "low"];
+export const TALL_FRAME_WIDE = "This far view is composed for a TALL frame: the place fills it from the top edge to the bottom edge — the ceiling or the sky at the top, the floor or the ground at the bottom — never a wide picture inside a tall one: nothing empty above it or below it, nothing drawn twice.";
+export const WIDE_FRAME_TALL = "This view is composed for a WIDE frame: the place stretches across it from the left edge to the right edge — never a tall picture inside a wide one: nothing empty beside it, nothing drawn twice.";
+/** The frame's own shape, said for a shot that a picture model would otherwise draw in the other shape ("" for any
+ *  other shot, any other frame, or a scene with no plan). `aspect` as the story is drawn: "9:16", "16:9", "1:1". */
+export function frameShapeLine(shot: StoryShot | null | undefined, aspect: string | null | undefined): string {
+  if (!shot) return "";
+  if (aspect === "16:9") return TALL_IN_WIDE.includes(shot) ? WIDE_FRAME_TALL : "";
+  if (aspect === "1:1") return "";
+  return FAR_IN_TALL.includes(shot) ? TALL_FRAME_WIDE : "";
+}
+
+/** The line the picture model is given for a scene seen this way ("" for a scene with no plan) — and, given the shape
+ *  of the frame, that shape where the shot needs it said (frameShapeLine). */
+export const cameraLine = (shot: StoryShot | null | undefined, aspect?: string | null): string => (shot && STORY_SHOTS[shot] ? [STORY_SHOTS[shot].camera, aspect === undefined ? "" : frameShapeLine(shot, aspect)].filter(Boolean).join(" ") : "");
 /** Is everybody in this shot meant to be small or far? */
 export const shotIsFar = (shot: StoryShot | null | undefined): boolean => !!(shot && STORY_SHOTS[shot]?.far);
 /** What moves in a scene seen this way ("" → the engine's ordinary small motion). */

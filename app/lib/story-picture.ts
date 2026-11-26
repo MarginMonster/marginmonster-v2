@@ -16,6 +16,8 @@
  * And a NIGHT scene's sky is (2026-11-25 — storyNight, NIGHT_ASKED, NOT_NIGHT_FAULT: night is night, as in the acted films).
  */
 import { firstJson } from "./first-json.ts";
+// EVERY PICTURE FILLS ITS FRAME (2026-11-26, the bakery with an empty cream band under it): measured, not asked — full-frame.ts
+import { bandFault, bandFix, type FrameBand } from "./full-frame.ts";
 
 /** Words that start a SECOND moment in a picture's description. */
 const NEXT_MOMENT = /[\s,;—–-]+(?:and then|then|until|moments? later|seconds? later|minutes? later|a (?:moment|beat|second) later|soon after|shortly after|afterwards?|later on|later|before (?:finally|eventually))\b/i;
@@ -259,7 +261,7 @@ export const TODAY_LOOK = "Where these words do not say how old a place is, it l
 
 /** What the look reads off a story picture: for each cast member, in the order of their reference
  *  pictures, whether that same character is in it; and whether the picture is split into panels. */
-export type StoryCheck = { seen: boolean[]; panels: boolean; /** each character drawn more than once (absent: not asked) */ twice?: boolean[]; /** somebody the words do not put there */ extra?: boolean; /** whoever looks OUT, drawn out there with what they look at */ outside?: boolean; /** who stares into the lens (absent: nobody, or not asked) */ lens?: string[]; /** the place drawn run-down when its words do not say so */ grimy?: boolean; /** a smaller picture pasted into it */ inset?: boolean; /** somebody in it UNCLOTHED (absent: nobody, or not asked) — and where that one is, in a few words */ unclothed?: boolean; unclothedWho?: string; /** a NIGHT scene whose sky reads as dusk or day (absent: night, not a night scene, or not asked) */ notNight?: boolean };
+export type StoryCheck = { seen: boolean[]; panels: boolean; /** each character drawn more than once (absent: not asked) */ twice?: boolean[]; /** somebody the words do not put there */ extra?: boolean; /** whoever looks OUT, drawn out there with what they look at */ outside?: boolean; /** who stares into the lens (absent: nobody, or not asked) */ lens?: string[]; /** the place drawn run-down when its words do not say so */ grimy?: boolean; /** a smaller picture pasted into it */ inset?: boolean; /** somebody in it UNCLOTHED (absent: nobody, or not asked) — and where that one is, in a few words */ unclothed?: boolean; unclothedWho?: string; /** a NIGHT scene whose sky reads as dusk or day (absent: night, not a night scene, or not asked) */ notNight?: boolean; /** an empty band or a doubled strip at its edges, MEASURED (full-frame.ts — absent: none) */ band?: FrameBand };
 /** …and what is handed to the storyboard about a picture that was KEPT with something still wrong (the
  *  best of its goes): the reading, and who was looked for — in the order of `seen` — so the scene's flag
  *  can say who is missing. */
@@ -403,14 +405,17 @@ export function parseStoryPanels(raw: string): boolean | null {
 /** …and SOMEBODY UNCLOTHED is worse than all of them together (2026-11-25: a lake film nobody could send — whatever
  *  else is right in it). Every other fault at once comes to 30 (three looked for, none there; split; inset; a stranger;
  *  stood outside; a stare; run-down; a night drawn as day), so a picture with it is never the one kept while one without
- *  it exists. (It was 30 while every other came to 27 — raised when the night came in beside them.) */
+ *  it exists. (It was 30 while every other came to 27 — raised when the night came in beside them.)
+ *  (…and an empty band, 2026-11-26: 4 at most — full-frame.ts → bandFault — every other fault at once now 34, still under.) */
 export const UNCLOTHED_FAULT = 40;
 /** …and A NIGHT SCENE DRAWN AS DUSK OR DAY (2026-11-25, the night ferry told over thirteen daylight pictures) weighs what
  *  the other faults that break the story weigh — somebody missing, a stranger, the looker stood outside — over the
  *  cosmetic ones (a stare, a run-down room), under a split picture that cannot be used at all, and far under somebody
  *  unclothed: a dressed day picture is kept before an undressed night one. */
 export const NOT_NIGHT_FAULT = 3;
-export const storyFaults = (c: StoryCheck): number => (c.panels ? 4 : 0) + 3 * c.seen.filter((s) => !s).length + 3 * (c.twice || []).filter((t, k) => t && c.seen[k] !== false).length + (c.extra ? 3 : 0) + (c.outside ? 3 : 0) + (c.lens?.length ? 2 : 0) + (c.grimy ? 2 : 0) + (c.inset ? 4 : 0) + (c.notNight ? NOT_NIGHT_FAULT : 0) + (c.unclothed ? UNCLOTHED_FAULT : 0);
+// (…and AN EMPTY BAND OR A DOUBLED STRIP weighs what a split picture weighs — it cannot be shown as it is — unless a crop
+//  that covers the frame keeps most of the picture: then 1, a sliver cut off at the end. full-frame.ts → bandFault, 2026-11-26)
+export const storyFaults = (c: StoryCheck): number => (c.panels ? 4 : 0) + 3 * c.seen.filter((s) => !s).length + 3 * (c.twice || []).filter((t, k) => t && c.seen[k] !== false).length + (c.extra ? 3 : 0) + (c.outside ? 3 : 0) + (c.lens?.length ? 2 : 0) + (c.grimy ? 2 : 0) + (c.inset ? 4 : 0) + (c.notNight ? NOT_NIGHT_FAULT : 0) + (c.unclothed ? UNCLOTHED_FAULT : 0) + bandFault(c.band);
 
 /** What the next go is told FIRST about the last one (the master's own lesson, image-generation.server.ts: DRESSED said
  *  at the end of a long prompt did not dress the woman in the lake; said first, it did). A picture that came back with
@@ -425,6 +430,9 @@ export const storyFirst = (c: StoryCheck | null | undefined): string => {
 /** What to tell the picture model on the next go: the fault, named. `names` in the order of the references. */
 export function storyFix(c: StoryCheck, names: string[], kinds: ReadonlyArray<string | undefined> = []): string {
   const out: string[] = [];
+  // (an empty band or a doubled strip is said FIRST of the faults, with its edge and the frame's shape — full-frame.ts → bandFix)
+  const band = bandFix(c.band);
+  if (band) out.push(band);
   if (c.panels) out.push("The last try was split into panels — draw ONE single picture of one moment that fills the whole frame");
   if (c.inset) out.push("The last try had a smaller picture pasted into a corner of it — draw ONE picture that fills the whole frame, with no box, inset, close-up or second view inside it");
   const missing = c.seen.map((s, k) => (s ? -1 : k)).filter((k) => k >= 0);
@@ -500,11 +508,12 @@ export function creatureNote(name: string, kind: string | null | undefined): str
  *  which scene, who, and whether it was split into panels. [] when every picture passed its look. */
 // (…and whether somebody in it is STILL unclothed — after its goes and its one edit: the operator's record says so)
 // (…and whether a night scene was still drawn as dusk or day after its goes, 2026-11-25)
-export function keptFaults(checks: ReadonlyArray<StoryKept | null | undefined>): Array<{ scene: number; missing: string[]; panels?: true; unclothed?: true; notNight?: true }> {
-  const out: Array<{ scene: number; missing: string[]; panels?: true; unclothed?: true; notNight?: true }> = [];
+// (…and whether its picture was a narrow middle cut from a banded one — full-frame.ts, 2026-11-26)
+export function keptFaults(checks: ReadonlyArray<StoryKept | null | undefined>): Array<{ scene: number; missing: string[]; panels?: true; unclothed?: true; notNight?: true; band?: true }> {
+  const out: Array<{ scene: number; missing: string[]; panels?: true; unclothed?: true; notNight?: true; band?: true }> = [];
   (checks || []).forEach((c, i) => {
     if (!c || !storyFaults(c)) return;
-    out.push({ scene: i + 1, missing: (c.who || []).filter((_, k) => c.seen[k] === false).map((n) => String(n).slice(0, 40)).slice(0, 3), ...(c.panels ? { panels: true as const } : {}), ...(c.unclothed ? { unclothed: true as const } : {}), ...(c.notNight ? { notNight: true as const } : {}) });
+    out.push({ scene: i + 1, missing: (c.who || []).filter((_, k) => c.seen[k] === false).map((n) => String(n).slice(0, 40)).slice(0, 3), ...(c.panels ? { panels: true as const } : {}), ...(c.unclothed ? { unclothed: true as const } : {}), ...(c.notNight ? { notNight: true as const } : {}), ...(c.band ? { band: true as const } : {}) });
   });
   return out.slice(0, 24);
 }
@@ -781,8 +790,15 @@ export function placeSheetPrompt(place: { name: string; look: string }, sceneHin
 
 /** What a scene's picture is told about the place it is set at, given as reference image `n`. */
 export function placeNote(n: number, place: { name: string; look: string }): string {
-  return `Reference image ${n} is a design sheet of ${place.name} (${place.look.slice(0, 220)}) — the PLACE this picture is set in. It is the SAME one here: the same shapes, colours, materials and details. Show it from wherever this moment is seen (on it, inside it, beside it, far off): a NEW view of the same place. ${PLACE_INSIDE} The sheet's plain background and its three views are NOT part of this picture: this is a scene that fills the whole frame — never a sheet, a panel or a framed picture on a background.`;
+  return `Reference image ${n} is a design sheet of ${place.name} (${place.look.slice(0, 220)}) — the PLACE this picture is set in. It is the SAME one here: the same shapes, colours, materials and details. Show it from wherever this moment is seen (on it, inside it, beside it, far off): a NEW view of the same place. ${PLACE_INSIDE} The sheet's plain background and its three views are NOT part of this picture: this is a scene that fills the whole frame — never a sheet, a panel or a framed picture on a background. ${PLACE_FULL_SIZE}`;
 }
+/** THE SHEET'S SCALE MODEL IS NOT THE PLACE (2026-11-26). The sheet is drawn "like a scale model photographed on a table",
+ *  and a WIDE scene drawn from it came back as that model: the bakery's walls cut off part-way up with plain studio
+ *  ground above them, the room set on a plain ground with an empty band below it, the sheet's two views stacked — four of
+ *  five test draws of "What His Hands Remember"'s bakery scene (full-frame.ts measures the bands it leaves). */
+// (…and a place seen from OUTSIDE, far off, is still drawn whole under it — review of S14: a lighthouse on a headland,
+//  WIDE, 9:16, drawn with its sheet, two goes: the whole tower and its sky both times, nothing cut off at the top)
+export const PLACE_FULL_SIZE = "The sheet shows it as a scale model on a table; here it is the REAL place at full size, seen from where a person would stand — its walls run up to its ceiling or out of the top of the frame, its floor or ground out of the bottom — never a cut-away model with plain background above it, below it or around it.";
 /** INSIDE A PLACE, ITS OUTSIDE IS NOT DRAWN (2026-11-24): the kids' horror story's house had a sheet of its outside
  *  ("pale painted siding, a plain white front door"), and its hallway scene, drawn with it, came back with siding
  *  on the walls INSIDE — a hallway that read as a porch. */
