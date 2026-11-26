@@ -206,6 +206,12 @@ test("the starter fallback fires only under three words", () => {
     assert.ok(/\bcabin\b/.test(cabin.nudge) && cabin.typed === "");
     assert.ok(/\b(train|compartment)\b/.test(nudgeFor("thriller", "night train", seed)!.nudge));
   }
+  // …and a word the starter it picked does NOT hold rides along (2026-11-26: "werewolf cabin" dealt the cabin starter
+  // and the werewolf never reached the writer; a Kids "dinosaur birthday" lost its dinosaur)
+  for (const seed of [1, 2, 3, 4, 5, 6]) {
+    for (const idea of ["werewolf cabin", "dog cabin"]) { const n = nudgeFor("horror", idea, seed)!; assert.ok(/\bcabin\b/.test(n.nudge) && n.typed === idea, idea); }
+    assert.equal(nudgeFor("kidstv", "dinosaur birthday", seed)!.typed, "dinosaur birthday");
+  }
   // (a little word that every starter has does not count as a match)
   assert.equal(nudgeFor("comedy", "the and", 3)!.typed, "the and");
   // (…and punctuation alone is nothing to work in: the writer is handed the starter and no "the maker typed only")

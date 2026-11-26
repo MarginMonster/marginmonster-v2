@@ -467,7 +467,8 @@ export type Nudge = {
 /** THE STARTER FALLBACK. An idea of fewer than three words becomes one of the genre's starters (the owner,
  *  2026-11-25: "atleast need a starter "nudge" couple sentences to hand to the writer"). A word or two the maker
  *  DID type is not thrown away: the starter that has that word in it is the one taken ("lighthouse" → the
- *  lighthouse one) and, when none has, the words ride along to be worked in. null: the idea stands as it is
+ *  lighthouse one) and, when none has — or the one taken does not hold them all ("werewolf cabin"), 2026-11-26 —
+ *  the words ride along to be worked in. null: the idea stands as it is
  *  (three words or more), or the format is not a story genre and has no starters. */
 export function nudgeFor(tmplKey: string | null | undefined, idea: string | null | undefined, seed: number): Nudge | null {
   const typed = String(idea || "").replace(/\s+/g, " ").trim();
@@ -486,7 +487,9 @@ export function nudgeFor(tmplKey: string | null | undefined, idea: string | null
   const nudge = from[Math.min(from.length - 1, Math.floor(dice() * from.length))];
   // (only WORDS ride along: "?" or "…" typed into the box is nothing to work in — the writer was told 'The maker
   //  typed only "?" … work it into the story')
-  return { topic: nudge, nudge, typed: fitting.length || !/[\p{L}\p{N}]/u.test(typed) ? "" : typed.slice(0, 60) };
+  // (…a word the dealt starter does NOT hold still rides along — "werewolf cabin" is the cabin one AND a werewolf)
+  const unheld = typed.toLowerCase().split(" ").map((w) => w.replace(/[^\p{L}\p{N}]/gu, "")).filter((w) => w.length >= 3 && !has(nudge, w));
+  return { topic: nudge, nudge, typed: !/[\p{L}\p{N}]/u.test(typed) || (fitting.length && !unheld.length) ? "" : typed.slice(0, 60) };
 }
 /** …and what the writer is told about a theme that was DEALT, right after it (film-engine → the THEME line):
  *   · a word or two the maker typed that the starter does not hold is worked in;
