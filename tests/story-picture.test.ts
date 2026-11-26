@@ -130,7 +130,9 @@ test("the pipeline: words tidied, picture drawn, picture looked at, drawn again 
   // (every picture is looked at now — at least for anybody its words do not put there: an empty room at night came
   //  back with a grown man at a screen in it; storyExtrasPrompt)
   // (…its answer a line longer since 2026-11-25: it also says whether anybody is unclothed — UNCLOTHED_ASKED)
-  assert.ok(s.includes("if (!pic) return null;") && s.includes("anthropicVision(storyExtrasPrompt(visual, whoIsWho), [pic], { maxTokens: 600, model: \"claude-sonnet-4-6\" }).catch(() => \"\"),"), "every picture is looked at for strangers");
+  // (…and longer again since 2026-11-26: every face and where its eyes point — EYES_FIRST. 600 could cut a crowd's answer
+  //  off, and a cut-off answer loses its unclothed and stranger answers with it — so it has room for 900)
+  assert.ok(s.includes("if (!pic) return null;") && s.includes("anthropicVision(storyExtrasPrompt(visual, whoIsWho), [pic], { maxTokens: 900, model: \"claude-sonnet-4-6\" }).catch(() => \"\"),"), "every picture is looked at for strangers");
   // a look that fails or says nothing keeps the picture
   // (…a night scene's sky is one more answer since 2026-11-25: tests/told-night.test.ts)
   assert.ok(s.includes("if (seen == null && panels == null && extra == null && outside == null && lens == null && grimy == null && inset == null && bare == null && dark == null) return null;") && s.includes("const faults = seenAs ? storyFaults(seenAs) : 0;"));

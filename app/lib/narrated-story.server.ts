@@ -364,7 +364,7 @@ export async function narratedSceneSeeds(o: {
             castPics.length ? anthropicVision(storyCastPrompt(castPics.length), [pic, ...castPics], { maxTokens: 500, model: "claude-sonnet-4-6" }) : Promise.resolve(""),
             twoMoments ? anthropicVision(storyPanelsPrompt(), [pic], { maxTokens: 320, model: "claude-sonnet-4-6" }) : Promise.resolve(""),
             // (…its answer a line longer since it also says whether anybody is unclothed: story-picture.ts → UNCLOTHED_ASKED)
-            anthropicVision(storyExtrasPrompt(visual, whoIsWho), [pic], { maxTokens: 600, model: "claude-sonnet-4-6" }).catch(() => ""),
+            anthropicVision(storyExtrasPrompt(visual, whoIsWho), [pic], { maxTokens: 900, model: "claude-sonnet-4-6" }).catch(() => ""),
             // (…and a place drawn run-down that its words do not call one — a grown-up story's — or a smaller picture
             //  pasted into a corner of it — any story's: story-picture.ts)
             // (…and a NIGHT scene's sky, last in the same question — no extra call; its answer a line longer: NIGHT_ASKED)
