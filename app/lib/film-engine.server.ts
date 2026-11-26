@@ -48,6 +48,9 @@ import { LINE_WORDS_MAX, fitAsk, linesTooLong, saidWords, takeRewrites } from ".
 import { takeSeen, unseenAsk, unseenLines } from "./dialogue-cast";
 // (2026-11-24) a told story's places: a scene set at one says so in its own words
 import { WHAT_FRIGHTENS, inheritPlaces, keepGuess, placeNamed, placesAsk, takePlaces } from "./story-picture";
+// PROPS & MOVES (2026-11-26, SPEC-S16): what a told story's characters always have, their moves — and nobody else's character
+import { ORIGINAL_CAST, castMoves, dealMarkThings, franchiseIn, markForFormat, markLead, markOf, markWriter, normalizeCastEntry, peelMark, scrubFranchise, setMarkIn, withMark } from "./character-mark";
+import { castEntry, sameCharacter } from "./story-picture";
 import { HORROR_SAFETY, IDEA_CHECK, IDEA_MAX, PREMISE_WINS, REAL_WORLD, STORY_SAFETY, chosenThreat } from "./premise-rules";
 import { DRAMA_BRIEF, GENRE_FILMS, genreTemplate, nudgeFor, startLine } from "./film-genres";
 // (2026-11-26) the anime maker: six drawn styles, each a told template of its own
@@ -375,6 +378,10 @@ export interface FilmScene {
   /** Music Video FEATURED VERSE: the NAME of the co-star who sings this scene's lines, in their own
    *  voice (mv-feature.ts). Absent → the artist sings it, as in every video before 2026-11-21. */
   singer?: string;
+  /** A TOLD story's MOVE SCENE (SPEC-S16, character-mark.ts): the NAME of the character whose special move this scene
+   *  shows — its picture alone is told the move (moveLine). Told stories only; at most two a story
+   *  (character-mark.ts → castMoves). Absent on every other scene, and on every story written before 2026-11-26. */
+  move?: string;
 }
 export interface FilmTreatment {
   title?: string; scenes: FilmScene[]; musicMood: string; cast?: string[];
@@ -426,7 +433,7 @@ const TREATMENT_SCHEMA = {
       type: "array",
       items: {
         type: "object",
-        properties: { visual: { type: "string" }, caption: { type: "string" }, where: { type: "string" }, place: { type: "string" }, shot: { type: "string" }, tone: { type: "string" }, singer: { type: "string" } },
+        properties: { visual: { type: "string" }, caption: { type: "string" }, where: { type: "string" }, place: { type: "string" }, shot: { type: "string" }, tone: { type: "string" }, singer: { type: "string" }, move: { type: "string" } },
         required: ["visual"],
       },
     },
@@ -536,7 +543,7 @@ export async function previewFilmTreatment(opts: {
   mode?: "narrated";
   /** The cast the maker PICKED for a story format, before a word was written: each one's name and what
    *  they are. The writer writes FOR them instead of inventing a cast of its own. */
-  cast?: Array<{ name: string; desc?: string; /** what it is, when it is not a person */ kind?: string }>;
+  cast?: Array<{ name: string; desc?: string; /** what it is, when it is not a person */ kind?: string; /** what they always have, and their move, from their card (character-mark.ts → markOf: `{has, move}`, an object or JSON) — a TOLD story's writer is handed it (SPEC-S16) */ mark?: unknown }>;
   /** Music Video: how long each scene is — 10 seconds (the default) or 5. The video runs
    *  sceneCount × this many seconds, and the song is written for THAT length. */
   sceneSeconds?: SceneSeconds;
@@ -571,8 +578,18 @@ export async function previewFilmTreatment(opts: {
   /** how long the finished music video runs */
   const videoSecs = scenes * sceneSec;
   // who the maker cast (story formats only — a music video names its artist its own way)
+  // (…each look with nobody else's character in it — SPEC-S16 Decision 5, character-mark.ts → scrubFranchise; the NAME is
+  //  left alone: the card refuses one at its door, and renaming here would break the exact-name rules below)
+  // (…and, for a TOLD story, WHAT THEY ALWAYS HAVE and their move, from their card — the owner, 2026-11-26: "specific props
+  //  … that often show in scenes" — said at the END of the look, so the 220 cut never drops it, and fit for the story: no
+  //  weapon in a children's story, no move in a horror one. An ACTED writer never sees a tag: acted props are later
+  //  (S16d), and a tag in an acted entry would reach acted pictures unpeeled.)
+  const markFmt = { childSafe: !!tmpl.childSafe, horror: tmpl.key === "horror" };
   const picked = tmpl.lipSyncSinger ? [] : (opts.cast || [])
-    .map((c) => ({ name: (c?.name || "").trim().slice(0, 40), desc: (c?.desc || "").trim().replace(/\s+/g, " ").slice(0, 220), kind: c?.kind === "monster" || c?.kind === "cartoon" ? c.kind : undefined }))
+    .map((c) => {
+      const cut = scrubFranchise((c?.desc || "").trim().replace(/\s+/g, " ")).slice(0, 220);
+      return { name: (c?.name || "").trim().slice(0, 40), desc: narrated ? scrubFranchise(withMark(cut, markForFormat(markOf(c?.mark), markFmt))) : cut, kind: c?.kind === "monster" || c?.kind === "cartoon" ? c.kind : undefined };
+    })
     .filter((c) => c.name).slice(0, 4);
   // THE TELLER (a character's show): one of the chosen cast, by their own name as it is in `picked`
   const tellerWanted = narrated ? String(opts.teller || "").replace(/\s+/g, " ").trim().toLowerCase() : "";
@@ -587,7 +604,10 @@ export async function previewFilmTreatment(opts: {
   // genres only — a music video names its own theme — and never an episode: a series decides what happens next
   // from its own recap. Every caller that has no approved script comes through here (the page's preview, a
   // one-press acted film, a one-press told story), so this is the one place.
-  const typedIdea = (opts.topic || "").trim();
+  // (…and the idea as the writer is handed it has nobody else's character in it — SPEC-S16 Decision 5: "Goku fights a
+  //  dragon" is told "a martial artist fights a dragon", before a starter is chosen from it, so the word never reaches a
+  //  model; the writer is told why, too — ORIGINAL_CAST, below)
+  const typedIdea = scrubFranchise((opts.topic || "").trim());
   const nudged = series ? null : nudgeFor(tmpl.key, typedIdea, Math.floor(Math.random() * 0x7fffffff));
   const topic = nudged ? nudged.topic : typedIdea;
   if (nudged) console.log(`[film] ${typedIdea ? `the idea was only "${typedIdea.slice(0, 40)}"` : "no idea was given"} — a ${tmpl.key} starter was dealt: "${nudged.nudge.slice(0, 80)}…"`);
@@ -669,7 +689,9 @@ export async function previewFilmTreatment(opts: {
   // In an acted film the chosen creature is then the THING, not one of the two who talk.
   // (what each one IS comes from the page when it knows — a guess from the look's first words read "a huge, lean
   //  werewolf that…" as a person, cut at its comma, and the third live preview kept the werewolf in the cast)
-  const threatNames = tmpl.key === "horror" ? picked.filter((c) => c.kind === "monster" || (!c.kind && keepGuess(c.desc).kind === "monster")).map((c) => c.name) : [];
+  // (…read from the look WITHOUT its tag — character-mark.ts: "a mask with glowing eyes" that a hero always has is not a
+  //  creature's face)
+  const threatNames = tmpl.key === "horror" ? picked.filter((c) => c.kind === "monster" || (!c.kind && keepGuess(peelMark(c.desc).text).kind === "monster")).map((c) => c.name) : [];
   const actedThreat = acted && threatNames.length > 0;
   // …and in an ACTED film it is told apart from the cast, not as one of it: told "the cast is already chosen:
   // Howl … (a chosen creature that is the threat excepted)", the writer kept Howl in "cast" and invented one boy
@@ -695,6 +717,15 @@ export async function previewFilmTreatment(opts: {
       ? `\nFirst invent the TWO characters who carry this scene and return them as "cast": exactly two entries, each ONE vivid, FIXED visual description to reuse in every shot, starting with the character's name — a simple ONE-WORD first name (e.g. "${exName}, ${exLook}"; never a title or two words such as "Grandpa Joe" or "Mr. Alvarez"). Every shot's VISUAL has these same two in it, called by these exact names — their looks are said HERE, once, and never repeated in a VISUAL.${noSlop}`
       : `\nFirst invent a small RECURRING CAST (2-3 characters) and return it as "cast": an array where each entry is ONE vivid, FIXED visual description to reuse in every scene (e.g. "${exName}, ${exLook}"). Every scene's VISUAL must feature these same named characters, described the same way.${noSlop}`)
     : "";
+  // PROPS & MOVES (SPEC-S16, character-mark.ts). The owner, 2026-11-26: "Anime characters would have specific clothing's -
+  // specific props … Or goku and his signature moves yanno? … (props) that often show in scenes" · "Specific swords or
+  // styles". A TOLD story's characters each have ONE thing they always have — every lead of a fantasy, sci-fi, thriller,
+  // action or anime story, and anybody else's where it fits — and maybe a move of their own, written at the END of their
+  // cast entry as a tag; every VISUAL they are in names the thing, and the one or two scenes that show the move say so
+  // ("move"). Said right after the cast (and the threat), in the whole story, its plan and each part. Its examples are
+  // DEALT, like the cast's example name: a fixed example comes back as the story. A cast the maker chose brings only what
+  // its cards give it. Told only: acted props are later (S16d).
+  const markBrief = narrated && storyFormat ? `\n${markWriter({ drawn: !!tmpl.drawn, childSafe: !!tmpl.childSafe, horror: tmpl.key === "horror", lead: markLead(tmpl.key, !!tmpl.drawn), chosen: castChosen.length > 0, name: exName, things: dealMarkThings(Math.random, { weapons: !tmpl.childSafe && tmpl.key !== "horror" }) })}` : "";
   const prodLine = tmpl.needsProduct && opts.productTitle
     ? `\nTHE PRODUCT being advertised: "${opts.productTitle.slice(0, 80)}"${opts.productDescription ? ` — ${opts.productDescription.slice(0, 300)}` : ""}. Make it the HERO of the gag — the funny payoff features or revolves around this exact product. Say ONLY what is true of it; invent no claims, specs, prices or reviews.`
     : "";
@@ -881,11 +912,16 @@ export async function previewFilmTreatment(opts: {
     // NEXT EPISODE: the series, the recap (fenced, quoted) and the rules of a next episode (film-series.ts)
     (series ? seriesWriterBrief(series) : "") +
     ideaLine +
+    // EVERY CHARACTER IS OUR OWN (SPEC-S16, character-mark.ts): a famous character, show or move the idea names or
+    // describes is only a hint at the kind of hero — the owner named some as examples of props and moves, 2026-11-26
+    (storyFormat ? `${ORIGINAL_CAST}\n` : "") +
     // a sung piece: the words are ours, whatever song the theme names
     (tmpl.lipSyncSinger || tmpl.sung ? `${ORIGINAL_LYRICS_RULE}\n` : "") +
     genreLine +
     castLine +
     threatBrief +
+    // WHAT THEY ALWAYS HAVE, and their moves (character-mark.ts → markWriter): a told story only
+    markBrief +
     // PEOPLE WHO ARE RELATED ARE THE RIGHT AGES FOR IT (acted-staging.ts): each one's age said plainly, and fitting
     // what they are to each other — the owner, of a live film: "they are "sisters" but one of them is 130 and the
     // other looks 30". (Checked below, after the writing.) Story formats only: a music video casts its own way.
@@ -923,8 +959,11 @@ export async function previewFilmTreatment(opts: {
       `Write the PLAN of ${brief}.\n` +
       (series ? seriesWriterBrief(series) : "") +
       ideaLine +
+      // (every character our own, and what they always have — the plan chooses the cast every part is handed: SPEC-S16)
+      (storyFormat ? `${ORIGINAL_CAST}\n` : "") +
       castLine +
       threatBrief +
+      markBrief +
       `\n${AGES_FIT_RELATION}` +
       genderLine +
       planBrief(way, { sizes: partSizes, ending, placesAsk: narrated ? PLACES_ARE : undefined }) +
@@ -959,8 +998,12 @@ export async function previewFilmTreatment(opts: {
   return (
     `Write ONE ${narrated ? "PART" : "SCENE"} of ${brief}.\n` +
     partBrief(way, { plan: one!.plan, index: one!.index, shots: scenes, idea: topic.slice(0, IDEA_MAX), said: one!.said, seenAs: one!.seenAs }) +
+    // (every part is told the cast is our own, and — told — what they always have: the plan's cast carries its tags, and
+    //  each part's VISUALs name the thing and mark its move scenes: SPEC-S16)
+    (storyFormat ? `${ORIGINAL_CAST}\n` : "") +
     partCast +
     partThreat +
+    markBrief +
     genderLine +
     captionLine +
     shotListBrief(camPlan) +
@@ -1153,6 +1196,9 @@ export async function previewFilmTreatment(opts: {
     // position — which turned a scene written as a performance into a cut scene.
     ...(tmpl.lipSyncSinger ? { kind: outRoles[i] } : {}),
     ...(featured.length && singers[i] >= 0 ? { singer: castList[singers[i]] } : {}),
+    // (a TOLD story's move scene, as the writer marked it — kept only for somebody whose entry has a move, two at most,
+    //  once the cast is read below: character-mark.ts → castMoves)
+    ...(narrated && typeof s.move === "string" && s.move.trim() ? { move: s.move.replace(/\s+/g, " ").trim().slice(0, 40) } : {}),
   }));
   if (list.length < 1) throw new Error("[film] treatment came back empty");
   // A SPOKEN LINE FITS ITS SHOT (dialogue-fit.ts). The writer is told 15-18 words a line and cannot count:
@@ -1240,7 +1286,12 @@ export async function previewFilmTreatment(opts: {
   const lineNote: FilmTreatment["lineFit"] = lineNotes.length
     ? { was: lineNotes.flatMap((l) => l.was), now: lineNotes.flatMap((l) => l.now), ...(lineNotes.some((l) => l.note) ? { note: lineNotes.filter((l) => l.note).map((l) => l.note).pop() } : {}) }
     : undefined;
-  const cast = Array.isArray(parsed.cast) ? parsed.cast.filter((c) => typeof c === "string" && c.trim()).slice(0, 5) : undefined;
+  // A TOLD STORY'S CAST AS IT LEAVES THE WRITER (SPEC-S16, character-mark.ts → normalizeCastEntry): nobody else's character
+  // in it, each entry one line, what they always have moved to the END as its tag — its parts capped, fit for the story (no
+  // weapon in a children's story, no move in a horror one) — a comma after the name, and 400 characters at most with the
+  // tag whole.
+  const castIp = narrated && Array.isArray(parsed.cast) ? parsed.cast.map((e) => (typeof e === "string" ? franchiseIn(e) : null)).find(Boolean) || null : null;
+  const cast = Array.isArray(parsed.cast) ? parsed.cast.filter((c) => typeof c === "string" && c.trim()).slice(0, 5).map((e) => (narrated ? normalizeCastEntry(e, markFmt) : e)) : undefined;
   // AN ACTED FILM'S CHOSEN THREAT IS NEVER ONE OF ITS CAST, whatever the writer returned (premise-rules.ts →
   // chosenThreat): the film puts its cast in every shot, so a werewolf left in "cast" stands beside the boy
   // from the first shot. Taken out here; it is seen where the shots' own words put it.
@@ -1386,6 +1437,31 @@ export async function previewFilmTreatment(opts: {
   }
   // …and a scene set at one of them says so in its own words ("At the ferry: …") when they did not already
   if (places.length) list = list.map((s, i) => ({ ...s, visual: placeNamed(s.visual, placeMarks[i], places) }));
+  // PROPS & MOVES, AS THE STORY LEAVES ITS WRITER (SPEC-S16, character-mark.ts) — a told story only:
+  //  · a face the MAKER chose has exactly what its card gave it, and nothing the writer added: its reference is its own
+  //    photo, which shows nothing new, and a thing said only in words is drawn differently in every picture (the places
+  //    proved it — story-picture.ts);
+  //  · a scene's "move" is kept only for somebody whose entry has a move, and on two scenes at most (castMoves);
+  //  · nobody else's character in anything said or drawn — every VISUAL and caption, the title and the places, as the cast
+  //    above — with one line in the log when anything was taken out.
+  if (narrated) {
+    if (cast && castChosen.length) {
+      for (let i = 0; i < cast.length; i++) {
+        const own = castChosen.find((c) => sameCharacter(c.name, castEntry(cast[i]).name));
+        if (own) cast[i] = setMarkIn(cast[i], markForFormat(peelMark(own.desc).mark, markFmt));
+      }
+    }
+    const movers = (cast || []).map((e) => castEntry(e)).filter((c) => !!c.name && !!c.mark?.move).map((c) => c.name);
+    const moves = castMoves(list, movers);
+    list = list.map((s, i) => { const t: FilmScene = { ...s }; if (moves[i]) t.move = moves[i]; else delete t.move; return t; });
+    const ip = castIp || [outTitle, ...places, ...list.flatMap((s) => [s.visual, s.caption || ""])].map((t) => franchiseIn(t)).find(Boolean) || null;
+    if (ip) {
+      console.log(`[film] an existing character's name was taken out: "${ip.word}" → "${ip.as}"`);
+      list = list.map((s) => ({ ...s, visual: scrubFranchise(s.visual), ...(s.caption ? { caption: scrubFranchise(s.caption) } : {}) }));
+      outTitle = scrubFranchise(outTitle);
+      places = places.map((p) => scrubFranchise(p));
+    }
+  }
   // (what it was dealt, so the maker's next story is dealt something else)
   const dealt = fresh ? { hook: fresh.hook, ...Object.fromEntries(freshKeys(series ? null : fresh).map((k) => k.split(":"))) } : null;
   // (an acted film written here says so: its scenes' VISUALs are things that HAPPEN, and each clip is told its own)
