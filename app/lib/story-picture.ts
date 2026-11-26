@@ -357,10 +357,28 @@ export function parseStoryGrime(raw: string): boolean | null {
  * seven, the lake's two and a lighthouse's lantern room. */
 /** A place, or a part of one, that words can call worn. */
 const WORN_PLACE = "(?:rinks?|floors?|floorboards|boards|planks?|walls?|wallpaper|paint|plaster|ceilings?|beams|rafters|roofs?|stairs|staircases?|stairwells?|steps|doors?|doorways?|windows?|shutters|carpets?|curtains|furniture|rooms?|halls?|hallways?|corridors?|lobby|lobbies|kitchens?|bedrooms?|bathrooms?|attics?|cellars?|basements?|houses?|homes?|cottages?|cabins?|farmhouses?|barns?|sheds?|mills?|factory|factories|warehouses?|garages?|workshops?|bakery|shops?|stores?|diners?|bars?|pubs?|inns?|hotels?|motels?|hospitals?|asylums?|sanatoriums?|wards?|schools?|classrooms?|churche?s?|chapels?|theat(?:re|er)s?|cinemas?|arcades?|malls?|stations?|platforms?|depots?|piers?|docks?|jett(?:y|ies)|wharf|wharves|harbou?rs?|boats?|ships?|ferr(?:y|ies)|decks?|lighthouses?|towers?|manors?|mansions?|castles?|forts?|ruins|mines?|tunnels?|bridges?|museums?|librar(?:y|ies)|offices?|apartments?|flats?|buildings?|places?|streets?|alley(?:way)?s?|trailers?|caravans?|carriages?|trains?|buses|bus|vans?|elevators?|lifts?|porch(?:es)?|fences?|gates?|greenhouses?|playgrounds?|fairgrounds?|carnivals?|motor ?homes?|counters?|pews|benches|railings?|rails?)";
-/** Words that make a place worn on their own, whatever they are said of: dirt, ruin, neglect. */
-const WORN_ALONE = "(?:abandoned|derelict|ruined|crumbling|decaying|decayed|rotting|dilapidated|disused|condemned|boarded[- ]up|run[- ]down|rundown|ramshackle|(?<!flour[- ]|snow[- ]|star)dust(?:y|-covered|-coated)?|cobweb(?:s|bed)?|grime|grimy|grubby|filthy|rust(?:ed|ing|y)?(?![- ]colou?red)|peeling|mou?ldy|mou?ldering|mildew(?:ed)?|sooty|water-stained|overgrown)";
-/** Words that make a place worn when they are said OF a place ("the old roller rink", "the worn concrete pier"). */
-const WORN_OF = `(?:old|older|aging|ageing|ancient|age-worn|worn|worn-out|weathered|battered|scarred|scuffed|faded|shabby|dingy|neglected|forgotten|deserted|shuttered|closed-down|long-closed|rickety|sagging|${WORN_ALONE})`;
+/** Words that make a place worn on their own, whatever they are said of: a place in ruin, or left to rot.
+ *  (Review of S14b, 2026-11-26, LIVED_IN: words a warm, ordinary home's story says of a PERSON or a THING — "Grandma
+ *  peeling apples", "wipes the grime from his face", "his filthy hands", "a rusty bike", "the cake ruined", "she felt
+ *  abandoned" — switched the run-down look off for the whole scene. They count only said OF a place: WORN_STATE. And dust
+ *  in the light is a sunny room's — "dust motes drifting in the light", "dusty sunlight" — never a dingy one's.) */
+const WORN_ALONE = "(?:derelict|dilapidated|disused|condemned|boarded[- ]up|run[- ]down|rundown|ramshackle|(?<!flour[- ]|snow[- ]|star|saw)dust(?:y|-covered|-coated)?(?!\\s+(?:motes?|specks?|particles?)\\b)(?![^.;,]{0,32}\\b(?:light|sunlight|sunbeams?|sunshine|sun|beams?|rays?|glow)\\b)|cobweb(?:s|bed)?|mildew(?:ed)?|water-stained|overgrown)";
+/** …words of dirt and ruin that count only said OF a place: "the abandoned mill", "peeling wallpaper", "the house was
+ *  abandoned". */
+const WORN_STATE = "(?:abandoned|ruined|crumbling|decaying|decayed|rotting|rotten|grime|grimy|grubby|filthy|dirty|stained(?![- ]glass)|cracked|rust(?:ed|ing|y)?(?![- ]colou?red)|peeling|mou?ldy|mou?ldering|sooty)";
+/** Words that make a place worn when they are said OF a place ("the worn concrete pier", "the shabby flat"). */
+const WEAR_OF = `(?:age-worn|worn|worn-out|battered|scarred|scuffed|shabby|dingy|neglected|forgotten|deserted|shuttered|closed-down|long-closed|rickety|sagging|${WORN_STATE}|${WORN_ALONE})`;
+/** …and words of a place's AGE: "the old roller rink", "an old low black wooden ferry" — worn there; but an old HOME is a
+ *  home its people live in, and LIVED_IN is about exactly that ("why are the walls dingy and not just a regular
+ *  household?"): "their grandmother's old house", "the old family farmhouse kitchen, warm and bright" ask for no grime
+ *  (DOMESTIC, below — review of S14b, 2026-11-26). */
+const AGE_OF = "(?:old|older|aging|ageing|ancient|weathered|faded)";
+const WORN_OF = `(?:${WEAR_OF}|${AGE_OF})`;
+const A_WEAR = new RegExp(`^${WEAR_OF}$`, "iu");
+/** (…said first in the phrase, two words or one: "boarded up", "run down") */
+const WEAR_FIRST = new RegExp(`^${WEAR_OF}(?![\\p{L}'’-])`, "iu");
+/** A home and the parts of one: its age alone never asks for a worn place. */
+const DOMESTIC = /^(?:houses?|homes?|cottages?|cabins?|farmhouses?|apartments?|flats?|kitchens?|bedrooms?|bathrooms?|rooms?|halls?|hallways?|stairs|staircases?|steps|attics?|cellars?|basements?|walls?|wallpaper|paint|plaster|ceilings?|floors?|floorboards|boards|planks?|beams|rafters|roofs?|doors?|doorways?|windows?|shutters|carpets?|curtains|furniture|porch(?:es)?|fences?|gates?|garages?|sheds?|trailers?|caravans?|counters?)$/iu;
 /** …the small words a worn word never reaches across to its place ("an old photo ON THE wall" is not an old wall). */
 const NOT_BETWEEN = "(?:on|in|at|of|by|with|from|to|into|onto|over|under|the|a|an|his|her|their|its|our|my|your|and|or|but|beside|near|behind|across|through|against|toward|towards|while|as|is|was|are|were)";
 // (…word by word, a hyphened word whole: "a faded pastel roller-rink dress" is a dress, not a rink)
@@ -368,7 +386,8 @@ const WORN_OF_PLACE = new RegExp(`\\b${WORN_OF}(?:\\s+(?!${NOT_BETWEEN}\\b)[\\p{
 const A_PLACE = new RegExp(`^${WORN_PLACE}$`, "iu");
 /** …whose place it is, said just before it: "the FERRY's worn plank deck". */
 const OWNER_BEFORE = new RegExp(`(${WORN_PLACE})['’]s\\s+$`, "iu");
-const PLACE_IS_WORN = new RegExp(`\\b(${WORN_PLACE})\\s+(?:is|was|has been|had been|stood|stands|sat|sits|lay|lies|looks|looked)\\s+(?:long\\s+|now\\s+|still\\s+|half\\s+|all\\s+)?(?:${WORN_ALONE}|old|worn|weathered|empty for (?:years|decades)|closed (?:down|for (?:years|decades|months|good))|shut down|falling apart|in ruins)\\b`, "giu");
+const PLACE_IS_WORN = new RegExp(`\\b(${WORN_PLACE})\\s+(?:is|was|has been|had been|stood|stands|sat|sits|lay|lies|looks|looked)\\s+(?:long\\s+|now\\s+|still\\s+|half\\s+|all\\s+)?(${WEAR_OF}|${AGE_OF}|empty for (?:years|decades)|closed (?:down|for (?:years|decades|months|good))|shut down|falling apart|in ruins)\\b`, "giu");
+const AN_AGE = new RegExp(`^${AGE_OF}$`, "iu");
 const WORN_ANYWHERE = new RegExp(`\\b${WORN_ALONE}\\b`, "giu");
 /** "no dust", "never peeling", "not old": said NOT to be worn. */
 const DENIED = /\b(?:no|not|never|without|nothing|free of|spotless|clean of)\s+(?:[\p{L}'’-]+\s+)?$/iu;
@@ -385,13 +404,22 @@ const oneOf = (w: string): string => {
 export function wornPlaces(text: string | null | undefined): string[] {
   const t = String(text || "").replace(/\s+/g, " ");
   const found: string[] = [];
-  // (every place word in the phrase — "the worn plank deck" is the deck's planks: both — and whose it is, said before it)
-  for (const m of unDenied(t, WORN_OF_PLACE)) {
-    for (const w of m[0].split(" ").slice(1)) if (A_PLACE.test(w)) found.push(oneOf(w));
-    const owner = OWNER_BEFORE.exec(t.slice(Math.max(0, (m.index || 0) - 40), m.index));
-    if (owner) found.push(oneOf(owner[1]));
+  // (sentence by sentence: a home called only OLD counts where the same sentence says it is worn — "the old kitchen, its
+  //  peeling wallpaper" — and is left out where nothing does — "their old house, the family laughing": DOMESTIC)
+  for (const said of t.split(/(?<=[.!?;])\s+/)) {
+    const got: Array<{ place: string; worn: boolean }> = [];
+    // (every place word in the phrase — "the worn plank deck" is the deck's planks: both — and whose it is, said before it)
+    for (const m of unDenied(said, WORN_OF_PLACE)) {
+      const ws = m[0].split(" ");
+      const worn = WEAR_FIRST.test(m[0]) || ws.some((w) => !A_PLACE.test(w) && A_WEAR.test(w));
+      for (const w of ws.slice(1)) if (A_PLACE.test(w)) got.push({ place: w, worn });
+      const owner = OWNER_BEFORE.exec(said.slice(Math.max(0, (m.index || 0) - 40), m.index));
+      if (owner) got.push({ place: owner[1], worn });
+    }
+    for (const m of unDenied(said, PLACE_IS_WORN)) got.push({ place: m[1], worn: !AN_AGE.test(m[2]) });
+    const wornHere = got.some((g) => g.worn) || unDenied(said, WORN_ANYWHERE).length > 0;
+    for (const g of got) if (g.worn || wornHere || !DOMESTIC.test(g.place)) found.push(oneOf(g.place));
   }
-  for (const m of unDenied(t, PLACE_IS_WORN)) found.push(oneOf(m[1]));
   return found.filter((p, k) => found.indexOf(p) === k);
 }
 /** Do these words — a scene's own: its VISUAL, its narration, the place it is set at — ask for a worn place? */

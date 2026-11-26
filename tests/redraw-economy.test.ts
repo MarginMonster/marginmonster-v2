@@ -52,7 +52,10 @@ test("the run-down look listens to the story: a worn place its words ask for is 
   assert.deepEqual(wornPlaces("The house was abandoned years ago"), ["house"]);
   assert.deepEqual(wornPlaces("an old low black wooden ferry with a wheelhouse"), ["ferry"]);
   assert.deepEqual(wornPlaces("a long-closed rink, dark"), ["rink"]);
-  assert.equal(wornAsked("WIDE: the farmhouse kitchen at night", "an old farmhouse on the hill"), true);
+  assert.equal(wornAsked("WIDE: the mill floor at night", "an old mill on the river"), true, "an old mill, named again");
+  assert.deepEqual(wornPlaces("the boarded up house at the end of the lane"), ["house"], "worn words two words long");
+  assert.equal(wornAsked("WIDE: the attic, boxes stacked", "she clears out her late mother's dusty attic"), true);
+  assert.equal(wornAsked("WIDE: the kitchen", "the old kitchen, its peeling wallpaper"), true, "old AND peeling: worn");
   // NOT ASKED — what LIVED_IN was made for, and words that only look like it
   const hospital = story("The Dent in the Pillow");
   for (const s of hospital.scenes) assert.equal(wornAsked(s.v, wordsOf(hospital)), false, `a working hospital: ${s.v.slice(0, 40)}`);
@@ -64,6 +67,29 @@ test("the run-down look listens to the story: a worn place its words ask for is 
   assert.equal(wornAsked("WIDE: the living room, an old photo on the wall above the sofa", ""), false, "an old photo ON the wall is not an old wall");
   assert.equal(wornAsked("WIDE: the kitchen, spotless, no dust anywhere", ""), false, "said NOT to be");
   assert.equal(wornAsked("WIDE: the farmhouse kitchen at night", "an old man lives on the hill"), false, "an old man is not an old place");
+  // LIVED_IN, read as a warm story's writer writes a home (review of S14b, 2026-11-26): an old HOME is a home its people live
+  // in, not a dingy one — and dirt said of a person or a thing, or dust in the light, asks for no worn room
+  assert.equal(wornAsked("WIDE: the farmhouse kitchen at night", "an old farmhouse on the hill"), false, "an old farmhouse is somebody's home");
+  for (const [scene, story] of [
+    ["WIDE: the living room of their old house, the family laughing", ""],
+    ["WIDE: the old family farmhouse kitchen, warm and bright", ""],
+    ["WIDE: the hallway at night, the two kids in pyjamas", "Two kids home alone in their grandmother's old house; a ghost lady at the glass"],
+    ["WIDE: inside the house", "the house was old but loved, freshly painted"],
+    ["WIDE: the kitchen, morning sun, dust motes drifting in the light", ""],
+    ["WIDE: the bedroom, dusty sunlight through the curtains", ""],
+    ["CLOSE: Grandma peeling apples at the kitchen table", ""],
+    ["CLOSE: Tom wipes the grime from his face in the bathroom", ""],
+    ["CLOSE: Ben's filthy hands at the kitchen sink", ""],
+    ["WIDE: the bedroom, the rusty bike leaning by the window", ""],
+    ["WIDE: the living room, the cake ruined on the floor", ""],
+    ["WIDE: the kitchen at night, Lena alone", "Lena feels abandoned after her husband leaves"],
+    ["WIDE: the house at night", "Their marriage is crumbling in the house they built together"],
+    ["WIDE: the chapel, light through its stained glass windows", ""],
+  ])assert.equal(wornAsked(scene, story), false, `${scene} / ${story}`);
+  // …and the day's own: the words still answer 19 of its 29 run-down calls, as before this review
+  let calls = 0, answered = 0;
+  for (const s of day.stories) for (const sc of s.scenes) for (const go of sc.goes) if (go.includes("G")) { calls++; if (wornAsked(`${sc.v} ${sc.c || ""}`, wordsOf(s))) answered++; }
+  assert.deepEqual([calls, answered], [29, 19]);
 });
 
 test("a stare counts only where the shot is not facing us — the cases read off the rejected pictures", () => {
