@@ -632,7 +632,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const castNamesRaw = ((form.get("filmCastNames") as string) || "").trim();
     if (castNamesRaw) { try { const a = JSON.parse(castNamesRaw); if (Array.isArray(a)) castNames = a.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim().slice(0, 40)).slice(0, 4); } catch { /* ignore */ } }
     try {
-      const args = { shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, sceneSeconds: filmSceneSeconds, contentLang: writeLang, productTitle, productDescription, genre, artistName, castNames, artistGender: parseArtistGender(form.get("filmArtistGender") as string), castGenders: parseCastGenders(form.get("filmCastGenders") as string), ...(tmpl.lipSyncSinger ? { featureNames: parseFeature(form.get("filmFeature") as string).map((f) => f.name) } : {}), ...(narrated ? { mode: "narrated" as const } : {}), ...(storyCast.length ? { cast: storyCast.map((c) => ({ name: c.name, desc: c.look, kind: c.kind })) } : {}), ...(series ? { series } : {}) };
+      const args = { shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, sceneSeconds: filmSceneSeconds, contentLang: writeLang, productTitle, productDescription, genre, ...(tmpl.lipSyncSinger ? { artistName, castNames, artistGender: parseArtistGender(form.get("filmArtistGender") as string) } : {}), castGenders: parseCastGenders(form.get("filmCastGenders") as string), ...(tmpl.lipSyncSinger ? { featureNames: parseFeature(form.get("filmFeature") as string).map((f) => f.name) } : {}), ...(narrated ? { mode: "narrated" as const } : {}), ...(storyCast.length ? { cast: storyCast.map((c) => ({ name: c.name, desc: c.look, kind: c.kind })) } : {}), ...(series ? { series } : {}) };
       let treatment;
       // One more go before the maker is told it failed: the first write after a restart failed once on
       // the live site (2026-11-21) and the very same request then succeeded twelve times running.
@@ -866,7 +866,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (narrated) {
         // NARRATED: one picture a scene; picked cast are drawn from their own pictures.
         let tr0 = approvedTreatment as unknown as import("../lib/film-engine.server").FilmTreatment | undefined;
-        if (!tr0) tr0 = await previewFilmTreatment({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, contentLang: writeLang, mode: "narrated", cast: storyCast.map((c) => ({ name: c.name, desc: c.look, kind: c.kind })), series });
+        if (!tr0) tr0 = await previewFilmTreatment({ shopId: shop.id, template: tmpl.key, topic, sceneCount: scenes, contentLang: writeLang, mode: "narrated", cast: storyCast.map((c) => ({ name: c.name, desc: c.look, kind: c.kind })), castGenders: parseCastGenders(form.get("filmCastGenders") as string), series });
         const { narratedSceneSeeds } = await import("../lib/narrated-story.server");
         // (the story's own cast is drawn here — a portrait each — unless it is the next episode of a series,
         //  which opens with the faces the last one had)
@@ -3089,7 +3089,7 @@ export default function FilmStudio() {
     if (noIdeaYet()) return;
     sentTopic.current = topic;
     treatmentFetcher.submit(
-      { intent: "previewFilmTreatment", template, filmTopic: topic, filmScenes: String(scenes), ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), ...(tmpl?.lipSyncSinger && featured.length ? { filmFeature: featureJson } : {}), filmGenre, filmProductTitle: prodTitle, filmProductImageUrl: prodImage, filmProductDescription: prodDesc, ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), ...(artistGender ? { filmArtistGender: artistGender } : {}), ...(tmpl?.lipSyncSinger ? (castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}) : storyGenders.length ? { filmCastGenders: JSON.stringify(storyGenders) } : {}), ...(narrated ? { filmMode: "narrated" } : {}), ...(!tmpl?.lipSyncSinger && pickedCast.length ? { filmCast: filmCastJson } : {}), ...(series && isStoryboard ? { seriesFrom: series.from } : {}), ...(langOn ? { filmLang: storyLang } : {}) },
+      { intent: "previewFilmTreatment", template, filmTopic: topic, filmScenes: String(scenes), ...(tmpl?.lipSyncSinger ? { filmSceneSeconds: String(mvSceneSec) } : {}), ...(tmpl?.lipSyncSinger && featured.length ? { filmFeature: featureJson } : {}), filmGenre, filmProductTitle: prodTitle, filmProductImageUrl: prodImage, filmProductDescription: prodDesc, ...(tmpl?.lipSyncSinger ? { ...(artistName ? { filmArtistName: artistName } : {}), ...(castNames.length ? { filmCastNames: JSON.stringify(castNames) } : {}), filmArtistGender: artistGender } : {}), ...(tmpl?.lipSyncSinger ? (castGenders.length ? { filmCastGenders: JSON.stringify(castGenders) } : {}) : storyGenders.length ? { filmCastGenders: JSON.stringify(storyGenders) } : {}), ...(narrated ? { filmMode: "narrated" } : {}), ...(!tmpl?.lipSyncSinger && pickedCast.length ? { filmCast: filmCastJson } : {}), ...(series && isStoryboard ? { seriesFrom: series.from } : {}), ...(langOn ? { filmLang: storyLang } : {}) },
       { method: "post" }
     );
   };
@@ -5021,7 +5021,7 @@ export default function FilmStudio() {
           placeholder={isStoryboard && series ? t("What happens next? (or leave it — we pick up where it ended)") : tmpl?.needsProduct ? t("the joke, the vibe, who's in it… or leave blank and we'll write one") : nudgeable ? t("a sentence or two: who, where, what goes wrong") : t("a theme, a story, a mood… or leave blank and we'll surprise you")} maxLength={IDEA_MAX} />
         {/* the genre's starters, under the box, until there is a script (or the box is asked about again) */}
         {nudgeable && (nudgeUrge || (!treatment && !seeds)) && (
-          <StarterNudges starters={dealStarters(template, nudgeSeed, 3)} urge={nudgeUrge} disabled={writing}
+          <StarterNudges starters={dealStarters(template, nudgeSeed, 3, { acted: !narrated })} urge={nudgeUrge} disabled={writing}
             onPick={(text) => { setTopic(text); setNudgeUrge(false); if (window.matchMedia?.("(hover:hover) and (pointer:fine)").matches) document.getElementById("fs-topic-in")?.focus({ preventScroll: true }); }}
             onMore={() => setNudgeSeed((s) => s + 1)} t={t} />
         )}
@@ -5638,6 +5638,7 @@ export default function FilmStudio() {
           {narrated && langOn && <input type="hidden" name="filmLang" value={storyLang} />}
           {isStoryboard && <input type="hidden" name="filmCaptions" value={captions} />}
           {isStoryboard && pickedCast.length > 0 && <input type="hidden" name="filmCast" value={filmCastJson} />}
+          {isStoryboard && storyGenders.length > 0 && <input type="hidden" name="filmCastGenders" value={JSON.stringify(storyGenders)} />}
           {tmpl?.lipSyncSinger && <input type="hidden" name="filmGenre" value={filmGenre} />}
           {tmpl?.lipSyncSinger && songSource === "upload" && filmSongUrl && <input type="hidden" name="filmSongUrl" value={filmSongUrl} />}
           {tmpl?.lipSyncSinger && filmProps.length > 0 && <input type="hidden" name="filmProps" value={JSON.stringify(filmProps)} />}

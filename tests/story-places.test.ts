@@ -213,7 +213,8 @@ test("the writer is asked for the story's places — a told story only — and t
   assert.ok(narr > 0 && ask > narr && ask < acted, "asked in the told story's brief and nowhere else");
   // …and outside that brief, only a told story's plan is asked about places that way
   assert.equal(engine.split("${PLACES_ARE}").length - 1, 1);
-  assert.ok(engine.includes("planBrief(way, { sizes: partSizes, ending, placesAsk: narrated ? PLACES_ARE : undefined })"));
+  // (…and an acted NEW genre's plan is shown one of its own places as the example, not the night diner — review of item 5)
+  assert.ok(engine.includes("planBrief(way, { sizes: partSizes, ending, placesAsk: narrated ? PLACES_ARE : undefined, ...(lookWords ? { placeExample: whereEx } : {}) })"));
   assert.ok(engine.includes("Only what at least TWO pictures are set at, in or on; never a person or an animal; no weather or time of day in it; an empty list when the story has no such place."));
   assert.ok(engine.includes("Every VISUAL set there calls it by that exact name"), "that is how a scene is known to be set there");
   // …and it MUST answer (an empty list when the story has none). Left optional, the writer skipped it for a

@@ -44,6 +44,7 @@ import { letterboxCrop, parseCropdetect } from "./letterbox";
 import { coveredIfBanded } from "./full-frame.server";
 import { mirrorRender } from "./object-storage.server";
 import { filmShots, filmTemplate, ownCheckpoint, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
+import { genreLook } from "./film-genres";
 import { episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
 // PART 2 IS THE SAME FILM, CONTINUED (S10b, 2026-11-25 — film-series.ts: what an acted film records, and what Part N uses)
 import { carriedPlaceFor, carriedThreat, carryRecord, castWithCarry, opensWhereItEnded } from "./film-series";
@@ -650,6 +651,7 @@ export async function generateTestMovie(opts: {
    *  present in it (locked identity), and the speaker's voice timbre is pinned into
    *  the Veo prompt so the voice stays consistent across shots. */
   cast?: Array<{ name: string; faceUrl?: string | null; voiceId?: string | null; kind?: "person" | "cartoon" | "monster"; look?: string; /** THE FILM'S THING (dialogue-cast.ts → castThreat): the member's chosen monster, or the portrait they had drawn of the story's own threat — one entry at most; an old payload has none */ role?: "threat" }>;
+  castGenders?: Array<{ name: string; gender: "m" | "f" }>;
   /** Which renderer runs the dialogue clips — the ONE thing that differs between the
    *  otherwise-identical engine pipelines. "kling3" (default, cheaper) or "veo" (premium,
    *  native audio). Recorded on the asset so the Archive shows which model made the film. */
@@ -699,7 +701,7 @@ export async function generateTestMovie(opts: {
   // (written here = made in one press: the writer is told who the maker CAST, so the script is for them —
   //  untold, it invented two people of its own and the picked cast matched nobody: dialogue-cast.ts)
   // (a five-minute script is written here in ten answers or more, the job saying it is at work as each comes back)
-  else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: tmpl.key, topic: opts.topic, sceneCount: opts.sceneCount, beat: alive, ...(castForWriter(opts.cast).length ? { cast: castForWriter(opts.cast) } : {}), series: opts.series });
+  else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: tmpl.key, topic: opts.topic, sceneCount: opts.sceneCount, beat: alive, ...(castForWriter(opts.cast).length ? { cast: castForWriter(opts.cast) } : {}), ...(opts.castGenders?.length ? { castGenders: opts.castGenders } : {}), series: opts.series });
   // an episode is called "<Series> — Episode <N>", however its script was written (film-series.ts)
   if (opts.series) treatment.title = episodeTitle(opts.series.title, opts.series.episode, treatment.title);
   // (THE ONE LIMIT — film-length.ts, through film-engine's filmShots: as many shots as the page could ask for and
@@ -941,7 +943,7 @@ export async function generateTestMovie(opts: {
     let castOk = true;
     for (let attempt = 0; attempt < 3; attempt++) {
       const staging = attempt === 2 && !url ? undefined : dealt;
-      const tryUrl = await removeLetterbox(await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA, faceB, descA: bibleFor(spkA), descB: bibleFor(spkB), nameA: nameOf(spkA), nameB: nameOf(spkB), lookA: faceA ? castLooks[firstName(spkA)] : undefined, lookB: faceB ? castLooks[firstName(spkB)] : undefined, creatureA: creatureNamed(spkA), creatureB: creatureNamed(spkB), staging, action, mood: tmpl.faceMood, setting: nightSetting(cleanSetting(where), opts.topic, action), style: twoStyle, aspect, thing: thingIn && threat ? { url: abs(threat.img) || threat.img, name: threat.name, look: threat.look } : null, ownWorld: tmpl.ownWorld }));
+      const tryUrl = await removeLetterbox(await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA, faceB, descA: bibleFor(spkA), descB: bibleFor(spkB), nameA: nameOf(spkA), nameB: nameOf(spkB), lookA: faceA ? castLooks[firstName(spkA)] : undefined, lookB: faceB ? castLooks[firstName(spkB)] : undefined, genreLook: genreLook(tmpl.key), creatureA: creatureNamed(spkA), creatureB: creatureNamed(spkB), staging, action, mood: tmpl.faceMood, setting: nightSetting(cleanSetting(where), opts.topic, action), style: twoStyle, aspect, thing: thingIn && threat ? { url: abs(threat.img) || threat.img, name: threat.name, look: threat.look } : null, ownWorld: tmpl.ownWorld }));
       // (a picture came back, or did not — either way the film is at work, and says so: see `say`)
       await say(alive);
       if (!tryUrl) continue;
@@ -1751,7 +1753,7 @@ export async function generateTestMovie(opts: {
     // (The owner's knocking film: the older sister smiled through its most frightening line. The delivery said
     // how the line SOUNDS; nothing said what her face does.)
     const otherName = [spkA, spkB].find((n) => !!n && fnm(n) !== fnm(speaker)) || "";
-    const face = staged && !silent ? faceNote({ horror, tone, visual: scene.visual, speaker, other: turnB ? turnB.speaker : otherName }) : "";
+    const face = staged && !silent ? faceNote({ horror, tone, visual: scene.visual, speaker, other: turnB ? turnB.speaker : otherName, mood: tmpl.faceMood }) : "";
     const deliver = `${tone
       ? `Deliver it ${tone} — put that exact emotion and energy into the voice, expressively, NEVER flat or monotone.`
       : `Deliver it with the REAL emotion the words carry — an angry line sounds angry, a threat sounds menacing, hurt shows as hurt — with natural intonation and emphasis, NEVER flat or monotone.`}${face ? ` ${face}` : ""}`;
@@ -1783,7 +1785,7 @@ export async function generateTestMovie(opts: {
     void STAGING; void HOLD_STILL; // (kept defined for the seed/scene-frame paths; not in the clip prompt)
     // The standing rules (look / style / camera+audio / no-text) come from clipRules — written short so
     // the whole prompt fits what Kling reads. (The long NO_TEXT above stays for the image prompts.)
-    const rules = clipRules({ cartoon, sing, horror });
+    const rules = clipRules({ cartoon, sing, horror, noGlow: tmpl.key === "fantasy" || tmpl.key === "scifi" });
     // IN A STAGING (acted-staging.ts) the look-note no longer ends "The speakers hold their places": it says
     // how the two move in that staging and — in a film written as things that HAPPEN (treatment.events) — the
     // ONE thing this scene's own words say is done while the line is spoken. (The owner, 2026-11-24: "there
@@ -1803,7 +1805,7 @@ export async function generateTestMovie(opts: {
       // pushed the fingers out into a big hand reaching at the lens (acted-staging.ts → revealClip).
       const sides = [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })).filter((p) => !!p.side);
       const unseen = staged && !!heardIn(eventAt(i), [spkA, spkB, ...peopleNames])?.unseen;
-      const scared = staged ? faceNote({ horror, visual: scene.visual, speaker: spkA, other: spkB }) : "";
+      const scared = staged ? faceNote({ horror, visual: scene.visual, speaker: spkA, other: spkB, mood: tmpl.faceMood }) : "";
       try {
         playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastHorror, drawn: revealed, creature: revealedCreature, outdoors, seen: revealSeen, implied, face: scared, sighted: !!sighted, sight: sighted?.who, shadow: sightedShadow, cloth });
       } catch (e) {

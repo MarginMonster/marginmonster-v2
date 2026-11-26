@@ -899,6 +899,7 @@ export async function generateNarratedStory(opts: {
   captions?: string;
   aspect?: string;
   cast?: StoryCast;
+  castGenders?: Array<{ name: string; gender: "m" | "f" }>;
   /** Stills the maker previewed and approved — used as they are. Index-aligned with the scenes. */
   approvedSceneImgs?: (string | null)[];
   section?: string;
@@ -943,7 +944,7 @@ export async function generateNarratedStory(opts: {
   if (resume.ckTreatment) treatment = JSON.parse(resume.ckTreatment);
   else if (opts.treatment && opts.treatment.scenes?.length) treatment = opts.treatment;
   // (a five-minute story is written here in five answers or more, the job saying it is at work as each comes back)
-  else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: tmpl.key, topic: opts.topic, sceneCount: opts.sceneCount, beat: () => ckpt({ ckBeat: Date.now() }), contentLang: lang, mode: "narrated", cast: (opts.cast || []).map((c) => ({ name: c.name, desc: c.look, kind: c.kind })), ...(opts.signoff ? { signoff: opts.signoff } : {}), ...(opts.teller ? { teller: opts.teller } : {}), series: opts.series });
+  else treatment = await previewFilmTreatment({ shopId: opts.shopId, template: tmpl.key, topic: opts.topic, sceneCount: opts.sceneCount, beat: () => ckpt({ ckBeat: Date.now() }), contentLang: lang, mode: "narrated", cast: (opts.cast || []).map((c) => ({ name: c.name, desc: c.look, kind: c.kind })), ...(opts.castGenders?.length ? { castGenders: opts.castGenders } : {}), ...(opts.signoff ? { signoff: opts.signoff } : {}), ...(opts.teller ? { teller: opts.teller } : {}), series: opts.series });
   // (an episode of a show: its OWN name, in full, as its writer gave it — before the show's name goes on)
   const showEpisodeName = opts.show ? episodeOwnName(treatment.title, opts.show.name) : "";
   // an episode is called "<Series> — Episode <N>", however its story was written

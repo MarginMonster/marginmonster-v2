@@ -146,5 +146,27 @@ test("A HORROR FILM'S CLIPS: whoever is in the shot, the thing in the dark too, 
   for (const r of [staged, silent]) for (const k of ["look", "lookTight", "lookShort"] as const) assert.ok(r[k].includes(HORROR_CLIP_REAL), `${k}: ${r[k].slice(0, 80)}`);
   // and the film asks for it in a horror film
   const fs = await import("node:fs");
-  assert.ok(fs.readFileSync(new URL("../app/lib/film-dialogue.server.ts", import.meta.url), "utf8").includes("const rules = clipRules({ cartoon, sing, horror });"));
+  assert.ok(fs.readFileSync(new URL("../app/lib/film-dialogue.server.ts", import.meta.url), "utf8").includes("const rules = clipRules({ cartoon, sing, horror, noGlow: tmpl.key === \"fantasy\" || tmpl.key === \"scifi\" });"));
+});
+
+test("A FANTASY'S AND A SCI-FI FILM'S CLIPS: nothing glows unless it is a real light — and it survives a staged or wordless shot's trim", async () => {
+  const { NO_GLOW_CLIP, HORROR_CLIP_REAL } = await import("../app/lib/clip-prompt.ts");
+  const st = await import("../app/lib/acted-staging.ts");
+  // (2026-11-26: their looks promise no glow, and the scene's words go to the clip as they are — "the lantern turns
+  //  toward the door" — while only the master was told NOTHING_GLOWS)
+  assert.equal(NO_GLOW_CLIP, "Nothing glows, sparkles or beams unless it is a real light — a lamp, a candle, a fire, a screen.");
+  const g = clipRules({ cartoon: false, sing: false, noGlow: true });
+  for (const k of ["look", "lookTight", "lookShort"] as const) assert.ok(g[k].includes(NO_GLOW_CLIP), k);
+  const staged = st.stagedRules(g, { staging: "apart", event: "Wren lifts the lantern toward the door." });
+  const silent = st.silentRules(g, { staging: "apart", event: "Wren lifts the lantern toward the door." });
+  for (const r of [staged, silent]) for (const k of ["look", "lookTight", "lookShort"] as const) assert.ok(r[k].includes(NO_GLOW_CLIP), `${k}: ${r[k].slice(0, 80)}`);
+  // every other film's clips are exactly as they were; a horror film keeps its own line; a cartoon and a song are left alone
+  assert.deepEqual(clipRules({ cartoon: false, sing: false, noGlow: false }), clipRules({ cartoon: false, sing: false }));
+  const h = clipRules({ cartoon: false, sing: false, horror: true, noGlow: true });
+  assert.deepEqual(h, clipRules({ cartoon: false, sing: false, horror: true }));
+  assert.ok(h.look.includes(HORROR_CLIP_REAL) && !h.look.includes(NO_GLOW_CLIP));
+  for (const kind of [{ cartoon: true, sing: false }, { cartoon: false, sing: true }]) assert.deepEqual(clipRules({ ...kind, noGlow: true }), clipRules(kind), JSON.stringify(kind));
+  // (the spoken shot's budget is for the film that has no such line — it is not moved)
+  const r = clipRules({ cartoon: false, sing: false });
+  assert.equal(r.look.length + r.style.length + r.steady.length + r.noText.length + 4, 900);
 });

@@ -15,7 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  DRAMA_BRIEF, FILM_GENRES, GENRE_FILMS, IDEA_MIN_WORDS, backdropsOf, categoryOf, dealStarters, genreOf, genreTemplate, ideaWords, notesOf, nudgeFor, startLine, startersOf,
+  DRAMA_BRIEF, FILM_GENRES, GENRE_FILMS, IDEA_MIN_WORDS, TOLD_ONLY, backdropsOf, categoryOf, dealStarters, genreLook, genreOf, genreTemplate, ideaWords, notesOf, nudgeFor, startLine, startersOf,
 } from "../app/lib/film-genres.ts";
 import { FILM_HEROES, FORMER_HERO_NAMES, LOOP_MEDIA, TALL_STILL_MEDIA, heroName, heroOf, heroShelves } from "../app/lib/film-heroes.ts";
 import { isFormatName } from "../app/lib/film-series.ts";
@@ -165,6 +165,33 @@ test("a few starters are DEALT: a different few each time, never one twice in a 
   for (const seed of [0, -5, 1.5, 2 ** 40, NaN]) assert.equal(new Set(dealStarters("horror", seed)).size, 3);
 });
 
+test("an ACTED film is dealt only the starters it can film; a told story keeps all eight", () => {
+  // (2026-11-26: a car has no staging, a talking wolf is lip-synced as a person, a voice on the phone is never heard,
+  //  a page or a letter cannot be read, and two "side by side" is what the acted camera forbids)
+  assert.equal(TOLD_ONLY.size, 7);
+  const all = FILM_GENRES.flatMap((g) => g.starters);
+  for (const s of TOLD_ONLY) assert.ok(all.includes(s), `a real starter, word for word: ${s}`);
+  for (const g of FILM_GENRES) {
+    const acted = startersOf(g.tmpl, { acted: true });
+    assert.ok(acted.length >= 6, `${g.tmpl}: ${acted.length}`);
+    assert.ok(!acted.some((s) => TOLD_ONLY.has(s)), g.tmpl);
+    assert.equal(startersOf(g.tmpl).length, 8, `${g.tmpl}: told, all eight`);
+    assert.deepEqual(startersOf(g.tmpl, { acted: false }), startersOf(g.tmpl));
+    for (let seed = 1; seed <= 40; seed++) {
+      const hand = dealStarters(g.tmpl, seed, 3, { acted: true });
+      assert.equal(hand.length, 3);
+      assert.ok(!hand.some((s) => TOLD_ONLY.has(s)), `${g.tmpl} seed ${seed}`);
+      assert.ok(!TOLD_ONLY.has(nudgeFor(g.tmpl, "", seed, { acted: true })!.nudge), `${g.tmpl} seed ${seed}: the fallback`);
+    }
+  }
+  // (Drama, Moral and the Kids Cartoon lose none; Horror only its car)
+  for (const k of ["testmovie", "moral", "kidstv"]) assert.equal(startersOf(k, { acted: true }).length, 8, k);
+  assert.equal(startersOf("horror", { acted: true }).length, 7);
+  // (…a typed word an acted film cannot film is still the maker's: it rides along on another starter)
+  for (const seed of [1, 2, 3]) { const n = nudgeFor("fantasy", "wolf", seed, { acted: true })!; assert.ok(!TOLD_ONLY.has(n.nudge) && n.typed === "wolf"); }
+  assert.deepEqual(startersOf("musicvideo", { acted: true }), []);
+});
+
 test("the starter fallback fires only under three words", () => {
   assert.equal(IDEA_MIN_WORDS, 3);
   // how many words an idea has
@@ -206,6 +233,12 @@ test("the starter fallback fires only under three words", () => {
     assert.ok(/\bcabin\b/.test(cabin.nudge) && cabin.typed === "");
     assert.ok(/\b(train|compartment)\b/.test(nudgeFor("thriller", "night train", seed)!.nudge));
   }
+  // …and a word the starter it picked does NOT hold rides along (2026-11-26: "werewolf cabin" dealt the cabin starter
+  // and the werewolf never reached the writer; a Kids "dinosaur birthday" lost its dinosaur)
+  for (const seed of [1, 2, 3, 4, 5, 6]) {
+    for (const idea of ["werewolf cabin", "dog cabin"]) { const n = nudgeFor("horror", idea, seed)!; assert.ok(/\bcabin\b/.test(n.nudge) && n.typed === idea, idea); }
+    assert.equal(nudgeFor("kidstv", "dinosaur birthday", seed)!.typed, "dinosaur birthday");
+  }
   // (a little word that every starter has does not count as a match)
   assert.equal(nudgeFor("comedy", "the and", 3)!.typed, "the and");
   // (…and punctuation alone is nothing to work in: the writer is handed the starter and no "the maker typed only")
@@ -233,13 +266,13 @@ test("the starter fallback fires only under three words", () => {
 
 test("the fallback is in the one place every unwritten film comes through, and the starter is kept", () => {
   const eng = read("app", "lib", "film-engine.server.ts");
-  assert.ok(eng.includes("import { DRAMA_BRIEF, GENRE_FILMS, genreTemplate, nudgeFor, startLine } from \"./film-genres\";"));
+  assert.ok(eng.includes("import { DRAMA_BRIEF, GENRE_FILMS, backdropsOf, genreLook, genreTemplate, nudgeFor, startLine } from \"./film-genres\";"));
   const fn = eng.slice(eng.indexOf("export async function previewFilmTreatment("), eng.indexOf("// ---- Assembly"));
   // never an episode (a series decides what happens next from its own recap), and only a story genre has starters
   // (…with nobody else's character in it, since 2026-11-26 — SPEC-S16, tests/character-mark.test.ts)
   // (…and never the name of a character the maker picked — review of S16a)
   assert.ok(fn.includes("const typedIdea = scrubFranchise((opts.topic || \"\").trim(), keepNames);"));
-  assert.ok(fn.includes("const nudged = series ? null : nudgeFor(tmpl.key, typedIdea, Math.floor(Math.random() * 0x7fffffff));"));
+  assert.ok(fn.includes("const nudged = series ? null : nudgeFor(tmpl.key, typedIdea, Math.floor(Math.random() * 0x7fffffff), { acted: !!tmpl.dialogue && !narrated });"));
   assert.ok(fn.includes("const topic = nudged ? nudged.topic : typedIdea;"));
   assert.ok(fn.indexOf("const series = ") < fn.indexOf("const nudged = ") && fn.indexOf("const picked = ") < fn.indexOf("const nudged = "));
   // said right after the theme, before the rule that holds a story to its idea
@@ -256,22 +289,26 @@ test("the fallback is in the one place every unwritten film comes through, and t
   assert.ok(read("app", "routes", "web.film.tsx").includes("try { treatment = await previewFilmTreatment(args); }"));
 });
 
-test("the seven new genres are templates made like the Short Film: live, acted, told, at its lengths", () => {
+test("the seven new genres are templates made like the Short Film: live, acted, told — at their own acted lengths", () => {
   assert.deepEqual(GENRE_FILMS.map((g) => g.key), NEW);
   assert.deepEqual(GENRE_FILMS.map((g) => g.name), ["Comedy Film", "Thriller Film", "Action Film", "Romance Film", "Sci-Fi Film", "Fantasy Film", "Mystery Film"]);
   // a stand-in for the Short Film's template: whatever its numbers are (they are another stream's to set), a
-  // genre has the same ones — and everything that makes it acted, captioned and live
+  // genre has the same ceiling — its own usual and fewest shots where it says them — and everything that makes it
+  // acted, captioned and live
   const base = { key: "testmovie", name: "Drama Film", brief: "b", sceneHint: "s", musicHint: "m", defaultScenes: 7, minScenes: 3, maxScenes: 31, captions: true, castBible: true, dialogue: true, live: true, faceMood: "a mood that is the base's" };
   for (const g of GENRE_FILMS) {
     const t = genreTemplate(base, g);
     assert.deepEqual([t.key, t.name, t.brief, t.sceneHint, t.musicHint], [g.key, g.name, g.brief, g.sceneHint, g.musicHint]);
-    assert.deepEqual([t.defaultScenes, t.minScenes, t.maxScenes, t.captions, t.castBible, t.dialogue, t.live], [7, 3, 31, true, true, true, true], `${g.key} inherits the Short Film's scene counts`);
+    assert.deepEqual([t.defaultScenes, t.minScenes, t.maxScenes, t.captions, t.castBible, t.dialogue, t.live], [g.defaultScenes ?? 7, g.minScenes ?? 3, 31, true, true, true, true], `${g.key}: its own acted lengths, the Short Film's ceiling`);
     assert.equal(t.faceMood, g.faceMood, "the faces are the genre's own, or nobody's — never inherited");
     assert.equal("faceMood" in t, !!g.faceMood);
     // …and so is the world: only a genre that says its world is its own has one (Fantasy)
     assert.equal(genreTemplate({ ...base, ownWorld: true }, g).ownWorld, g.ownWorld);
     assert.equal("ownWorld" in t, !!g.ownWorld);
   }
+  // (2026-11-26: a brief built on beats — three times worse, a question then its answer — opens with room for them,
+  //  four shots and two at the fewest, as Horror, Moral and the Kids Cartoon do; Drama stays at its own)
+  assert.deepEqual(GENRE_FILMS.map((g) => [g.key, g.defaultScenes, g.minScenes]), NEW.map((k) => [k, 4, 2]));
   assert.equal(base.key, "testmovie", "the base is not changed");
   // THE WIRING (film-engine.server.ts cannot be loaded in a test — it opens the database): each genre is the
   // Short Film's own template spread under its words, added before the list of live templates is taken…
@@ -311,10 +348,22 @@ test("a genre is a promise about what happens and how it ends — and a look tha
   assert.ok(by.comedy.brief.includes("ONE comic engine") && by.comedy.brief.includes("pushed further three times") && by.comedy.brief.includes("nobody winks at the camera") && by.comedy.brief.includes("the last line is the button"));
   assert.ok(by.thriller.brief.includes("the threat is a PERSON or a situation — never a ghost, a monster or anything supernatural") && by.thriller.brief.includes("a clock or a secret") && by.thriller.brief.includes("a turn the story already planted"));
   assert.ok(by.action.brief.includes("Something HAPPENS in every shot") && by.action.brief.includes("No gunfire, no gore and no explosion near the camera"));
+  // (2026-11-26: an ACTED action film is what the engine can film — two standing, or hurrying toward the camera; a
+  //  run, a climb or a jump was briefed and came out as a walk, or as two orders at once to the clip)
+  assert.ok(!by.action.brief.includes("a run, a climb") && !/\bterse\b/.test(by.action.brief) && by.action.brief.includes("Chases, jumps and falls happen between shots"));
+  // (…and no acted brief or note asks for SHORT lines: every take is at least five seconds, and a short line is dead
+  //  air the engine fills with silence or looped words — dialogue-fit.ts → linesTooShort)
+  assert.ok(!/\bShort lines\b|\bterse\b/.test(by.comedy.brief + by.action.brief));
+  for (const [k, key] of [["comedy", "drier"], ["action", "faster"]]) assert.ok(!notesOf(k).find((n) => n.key === key)!.ask.includes("shorter lines"), `${k}: ${key}`);
   assert.ok(by.romance.brief.includes("It ends on a GESTURE instead of a declaration") && by.romance.brief.includes("Tender, never explicit"));
+  // (2026-11-26: the acted two keep a natural distance, never side by side — so the gesture is made across it)
+  assert.ok(!by.romance.brief.includes("an umbrella shared"));
   assert.ok(by.scifi.brief.includes("ONE speculative idea in an otherwise ordinary near-future world") && by.scifi.brief.includes("No space battles") && by.scifi.brief.includes("any screen in a shot shows nothing that can be read"));
   assert.ok(by.fantasy.brief.includes("ONE piece of magic") && by.fantasy.brief.includes("that magic has a PRICE") && by.fantasy.brief.includes("never as glow, sparks, beams or light"));
   assert.ok(by.mystery.brief.includes("the first line asks the QUESTION") && by.mystery.brief.includes("Every shot holds one clue") && by.mystery.brief.includes("The answer was in plain sight earlier"));
+  // (2026-11-26: a place is drawn ONCE, from its first VISUAL, and no clip may add an object — so an acted mystery's
+  //  clues are all in view from that first VISUAL, and none is written: the film cannot show writing)
+  assert.ok(by.mystery.brief.includes("named in the FIRST VISUAL there") && by.mystery.brief.includes("Nothing written is a clue"));
   // (a sci-fi set may have a screen in it — it shows nothing that can be read; every other set has none)
   assert.ok(by.scifi.sceneHint.includes("a device or a screen shows only soft abstract light, never words or numbers") && !by.scifi.sceneHint.includes("or screens visible"));
   for (const k of NEW.filter((x) => x !== "scifi")) assert.ok(by[k].sceneHint.endsWith("signage, posters or screens visible"), k);
@@ -328,6 +377,29 @@ test("a genre is a promise about what happens and how it ends — and a look tha
   assert.deepEqual(GENRE_FILMS.filter((g) => g.faceMood).map((g) => g.key), ["comedy", "thriller", "action", "mystery"]);
   // DRAMA, sharpened: one relationship, a choice that costs, small actions, a decision and not a speech
   assert.ok(/^a short DRAMA, acted: ONE relationship under pressure/.test(DRAMA_BRIEF) && DRAMA_BRIEF.includes("a choice that will cost one of them something") && DRAMA_BRIEF.includes("small physical actions") && DRAMA_BRIEF.endsWith("It ends on a decision being MADE, never on a speech about it"));
+  // (2026-11-26: its examples are things DONE, from where each one stands — "a coat kept on" is no action, and "a chair
+  //  pulled closer" closes the distance the acted rules keep: acted-staging.ts → happensBrief, CAMERA_IS_DEALT)
+  assert.ok(!/kept on|pulled closer|key put down/.test(DRAMA_BRIEF));
+});
+
+test("a new genre's LOOK reaches its ACTED film: its light and colour, no lens — and nothing changes for any other", () => {
+  // (2026-11-26: the light and palette lived only in sceneHint, which an acted film's master and writer never saw —
+  //  every acted Comedy, Thriller or Romance was lit like the Drama Film, its WHERE example a night diner)
+  for (const g of GENRE_FILMS) {
+    const look = genreLook(g.key);
+    assert.ok(look.length >= 80 && look.length <= 220, `${g.key}: ${look.length}`);
+    assert.ok(!/mm lens/.test(look) && !look.includes(";"), `${g.key}: ${look}`);
+    for (const part of look.split(", ")) assert.ok(g.sceneHint.includes(part), `${g.key}: "${part}" is the look's own words`);
+  }
+  assert.equal(genreLook("comedy"), "bright even daylight or warm household lamps, clean saturated colours (warm yellow, sky blue, a red or two), everything in focus");
+  // Drama's, Horror's, Moral's and the Kids Cartoon's pictures stay as they were tuned
+  for (const k of ["testmovie", "horror", "moral", "kidstv", "", null]) assert.equal(genreLook(k), "", String(k));
+  // the engine: the writer of an acted film is told it with every place, and its WHERE example is one of its own places
+  const eng = read("app", "lib", "film-engine.server.ts");
+  assert.ok(eng.includes("const lookWords = acted ? genreLook(tmpl.key) : \"\";"));
+  assert.ok(eng.includes("const whereEx = lookWords ? backdropsOf(tmpl.key)[Math.floor(Math.random() * backdropsOf(tmpl.key).length)].where : \"a dim old diner at night, rain on the windows\";"));
+  assert.ok(eng.includes("(e.g. \"${whereEx}\"). EVERY shot has one") && eng.includes("${lookWords ? ` Every WHERE says this film's light and time of day in its own words — ${lookWords}.` : \"\"}\\n` +"));
+  assert.ok(eng.includes("(lookWords ? `Every place in \"places\" says this film's light and time of day in its own words — ${lookWords}.\\n` : \"\") +"));
 });
 
 test("every genre is on the shelves under its word: acted — and, but for Action, told", () => {

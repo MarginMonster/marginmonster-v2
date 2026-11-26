@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { LINE_VERSIONS, LINE_WORDS_MAX, LINE_WORDS_MIN, LINE_WORDS_WANT, fitAsk, linesTooLong, pickLine, saidWords, splitLine, takeRewrites } from "../app/lib/dialogue-fit.ts";
+import { LINE_VERSIONS, LINE_WORDS_MAX, LINE_WORDS_MIN, LINE_WORDS_SHORT, LINE_WORDS_WANT, fitAsk, growAsk, linesTooLong, linesTooShort, pickLine, pickLonger, saidWords, splitLine, takeLonger, takeRewrites } from "../app/lib/dialogue-fit.ts";
 import { clipSecondsFor } from "../app/lib/speech-meter.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -113,7 +113,7 @@ test("only a marked line can change; a wrong answer changes nothing", () => {
 
 test("the writer's lines go through it for an acted film — not a narrated story, not a song — and it says what it did", () => {
   const src = read("app", "lib", "film-engine.server.ts");
-  assert.ok(src.includes("import { LINE_WORDS_MAX, fitAsk, linesTooLong, saidWords, takeRewrites } from \"./dialogue-fit\";"));
+  assert.ok(src.includes("import { LINE_WORDS_MAX, LINE_WORDS_SHORT, fitAsk, growAsk, linesTooLong, linesTooShort, saidWords, takeLonger, takeRewrites } from \"./dialogue-fit\";"));
   assert.ok(src.includes("if (tmpl.dialogue && !narrated) {\n    const written = list.map((s) => s.caption || \"\");\n    const long = linesTooLong(written);\n    if (long.length) {"), "no extra call unless a line is too long");
   assert.ok(src.includes("jsonSchema: { name: \"dialogue_fit\", schema: { type: \"object\", properties: { lines: { type: \"array\", items: { type: \"array\", items: { type: \"string\" } } } }, required: [\"lines\"], additionalProperties: false } },"), "a list of versions for each line");
   assert.ok(src.includes("const next = takeRewrites(written, long, (JSON.parse(raw) as { lines?: unknown }).lines);"));
@@ -124,4 +124,48 @@ test("the writer's lines go through it for an acted film — not a narrated stor
   assert.ok(src.includes("console.error(`[film] the long lines could not be rewritten, kept as written: ${why}`);"), "any trouble: the lines stay as written");
   // the instruction it backs up is still given
   assert.ok(src.includes("NEVER more than 18 words"));
+});
+
+/* A LINE TOO SHORT FOR ITS SHOT (2026-11-26). The comedy brief asked for "Short lines" and the action brief for
+ * "terse" ones, while every take is at least five seconds: a four-word button leaves dead air, which the engine
+ * fills with silence or looped words. Only too-long lines were ever sent back. */
+test("a line too short for its shot goes back once, asked for at three LONGER lengths — in a new genre's film", () => {
+  assert.equal(LINE_WORDS_SHORT, 10);
+  // a two-word line and a nine-word one are short; fifteen is not; an empty line and an uncountable script are left alone
+  assert.deepEqual(linesTooShort(["MARA: Told you.", `JONAH: ${words(15)}`, "", "小皮：好", `MARA: ${words(9)}`]), [0, 4]);
+  assert.deepEqual(linesTooShort([null, undefined, "MARA:"]), [], "a wordless shot is not a short line");
+  // the one request: every line in order, the short ones marked
+  const lines = ["MARA: Told you.", `JONAH: ${words(15)}`];
+  const ask = growAsk(lines, linesTooShort(lines));
+  assert.ok(ask.includes("1. [TOO SHORT — 2 words] MARA: Told you."));
+  assert.ok(ask.includes(`2. JONAH: ${words(15)}`));
+  assert.ok(ask.includes("write THREE longer versions of it") && ask.includes("about 14, about 16 and about 18 spoken words"));
+  assert.ok(ask.includes("Return \"lines\": exactly 2 entries") && ask.includes("The entry for an unmarked line is an EMPTY list."));
+  // (…each line with WHAT WE SEE in its shot, and nothing new added — review of item 3: asked blind, a longer line could
+  //  invent a clue, a person or a fact the picture does not have)
+  const seenAsk = growAsk(lines, [0], ["CLOSE: Mara sets the third cup on the counter.", ""]);
+  assert.ok(seenAsk.includes("1. [TOO SHORT — 2 words] MARA: Told you.\n   (what we see in this shot: CLOSE: Mara sets the third cup on the counter.)"));
+  assert.ok(seenAsk.includes(`2. JONAH: ${words(15)}\n`) && !seenAsk.includes(`2. JONAH: ${words(15)}\n   (what we see`), "a shot with no words of its own adds nothing");
+  assert.ok(seenAsk.includes("Add no new object, person, place or fact: a longer line speaks only of what this story and its shot already have."));
+  assert.ok(read("app", "lib", "film-engine.server.ts").includes("growAsk(written, short, list.map((s) => s.visual || \"\"))"));
+  // of the versions: the longest that is still a line of the right length
+  assert.equal(pickLonger("MARA: Told you.", [`MARA: ${words(13)}`, `MARA: ${words(17)}`, `MARA: ${words(23)}`]), `MARA: ${words(17)}`);
+  // …never another speaker's, never one no longer than written, never one over the limit
+  assert.equal(pickLonger("MARA: Told you.", [`JONAH: ${words(15)}`]), "MARA: Told you.", "another speaker's words");
+  assert.equal(pickLonger("MARA: Told you.", ["MARA: I did."]), "MARA: Told you.", "not longer");
+  assert.equal(pickLonger("MARA: Told you.", [`MARA: ${words(LINE_WORDS_MAX + 1)}`]), "MARA: Told you.", "over the limit");
+  assert.equal(pickLonger("MARA: Told you.", [42, null, {}]), "MARA: Told you.", "not text");
+  // (numbering or a mark left on is taken off; the label keeps the form it was first written in)
+  assert.equal(pickLonger("MARA: Told you.", [`1. [TOO SHORT — 2 words] mara: ${words(16)}`]), `MARA: ${words(16)}`);
+  // only a marked line can change; a wrong answer changes nothing
+  assert.deepEqual(takeLonger(lines, [0], "nope"), lines);
+  assert.deepEqual(takeLonger(lines, [0], [[`MARA: ${words(16)}`]]), lines, "the wrong number of entries");
+  assert.deepEqual(takeLonger(lines, [0], [[`MARA: ${words(16)}`], [`JONAH: ${words(18)}`]]), [`MARA: ${words(16)}`, lines[1]]);
+  // the engine: for a NEW genre's acted film only (Drama, Horror, Moral and Kids are left as tuned), after the long ones
+  const src = read("app", "lib", "film-engine.server.ts");
+  const at = src.indexOf("if (tmpl.dialogue && !narrated && GENRE_FILMS.some((g) => g.key === tmpl.key)) {\n    const written = list.map((s) => s.caption || \"\");\n    const short = linesTooShort(written);");
+  assert.ok(at > 0 && at > src.indexOf("const long = linesTooLong(written);") && at < src.indexOf("return { list, castNote, lineNote };"));
+  assert.ok(src.includes("jsonSchema: { name: \"dialogue_grow\", schema: { type: \"object\", properties: { lines: { type: \"array\", items: { type: \"array\", items: { type: \"string\" } } } }, required: [\"lines\"], additionalProperties: false } },"));
+  assert.ok(src.includes("const next = takeLonger(written, short, (JSON.parse(raw) as { lines?: unknown }).lines);"));
+  assert.ok(src.includes("console.error(`[film] the short lines could not be rewritten, kept as written: "), "any trouble: the lines stay as written");
 });

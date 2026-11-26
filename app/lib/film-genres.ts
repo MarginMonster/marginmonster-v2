@@ -21,7 +21,8 @@
  *                 "Shorter"…): `label` is on the button, `ask` is the sentence handed to the writer.
  *
  * And for the seven NEW genres, what makes each a template of the engine (film-engine.server.ts spreads the
- * Short Film's template under each, so they are acted and told by the same pipelines, at its lengths): a
+ * Short Film's template under each, so they are acted and told by the same pipelines — each at its OWN acted
+ * lengths since 2026-11-26, four shots and two at the fewest, where the Short Film's are two and one): a
  * `brief` that is a promise about what HAPPENS and how it ends — never an adjective — the brief for when it
  * is told by a narrator, a photographed LOOK (light, lens, palette), a score, and how the faces are.
  *
@@ -105,7 +106,7 @@ export const FILM_GENRES: readonly FilmGenre[] = [
     ],
     notes: [
       { key: "funnier", label: "Funnier", ask: "Make this scene funnier by pushing the same comic problem one step further — something they do, not a joke they tell; nobody notices it is funny." },
-      { key: "drier", label: "Drier", ask: "Play this scene drier: both are completely serious about something ridiculous; shorter lines, no exclamation marks." },
+      { key: "drier", label: "Drier", ask: "Play this scene drier: both are completely serious about something ridiculous; plainer lines, no exclamation marks." },
       SHORTER,
       { key: "button", label: "Bigger button", ask: "Give this scene a stronger last line: a short one that turns the whole scene, set up by something said earlier in it." },
     ],
@@ -199,7 +200,7 @@ export const FILM_GENRES: readonly FilmGenre[] = [
     ],
     notes: [
       { key: "bigger", label: "Bigger moment", ask: "Give this scene one bigger physical thing that happens in it — a jump, a fall, a door forced — said as what is done, with no gunfire and no gore." },
-      { key: "faster", label: "Faster", ask: "Make this scene move faster: shorter lines, said while doing something; nobody stops to explain." },
+      { key: "faster", label: "Faster", ask: "Make this scene move faster: every line said while doing something, with no pause between them; nobody stops to explain." },
       SHORTER,
       { key: "obstacle", label: "Harder obstacle", ask: "Put one more thing between them and what they are after in this scene, and let them get past it with what is already there." },
     ],
@@ -408,8 +409,21 @@ export const categoryOf = (tmplKey: string | null | undefined): string => genreO
 /** The nine places a scene of this genre is offered; a format with none of its own is offered Drama's — the
  *  general nine, as the page did (`BACKDROPS_BY_FORMAT[format] || FILM_BACKDROPS`). */
 export const backdropsOf = (tmplKey: string | null | undefined): readonly Backdrop[] => (genreOf(tmplKey) || BY_TMPL.testmovie).backdrops;
-/** The genre's eight starter ideas; none for a format that is not a story genre. */
-export const startersOf = (tmplKey: string | null | undefined): readonly string[] => genreOf(tmplKey)?.starters || [];
+/** STARTERS AN ACTED FILM CANNOT FILM (2026-11-26) — dealt to a told story only: in a car there is no staging (a Horror
+ *  Film made there has no reveal), a talking wolf is lip-synced as a person, a voice on the phone is never heard, a page
+ *  or a letter cannot be read, and two "side by side" is what CAMERA_IS_DEALT forbids. Word for word (a test holds it). */
+export const TOLD_ONLY: ReadonlySet<string> = new Set([
+  "A woman is driving her husband home from the last train when her phone rings. It is her husband, still waiting at the station.",
+  "A stunt driver has to get a witness across the city in twenty minutes, with two cars behind them and every bridge closing.",
+  "Two exes are seated side by side at a friend's wedding. Each has a speech to give, and neither has said they kept the letters.",
+  "A woman gets a call from herself, eleven minutes in the future, begging her not to open the door to her brother.",
+  "A shepherd finds that the wolf at his fire can speak, and that it will trade one winter of safety for one name.",
+  "A librarian finds the same book returned every Friday with one more page missing. Tonight she and the caretaker wait to see who brings it.",
+  "A village postman notices that one house has had no post for a month, though he puts a letter through its door every single day.",
+]);
+/** The genre's eight starter ideas; none for a format that is not a story genre. An ACTED film's are those it can
+ *  film (all but the TOLD_ONLY ones). */
+export const startersOf = (tmplKey: string | null | undefined, o: { acted?: boolean } = {}): readonly string[] => { const all = genreOf(tmplKey)?.starters || []; return o.acted ? all.filter((s) => !TOLD_ONLY.has(s)) : all; };
 /** The director's four notes for rewriting a scene of this genre; Drama's for a format with none of its own. */
 export const notesOf = (tmplKey: string | null | undefined): readonly DirectorNote[] => (genreOf(tmplKey) || BY_TMPL.testmovie).notes;
 
@@ -427,9 +441,9 @@ function diceOf(seed: number): () => number {
 
 /** A FEW STARTERS, DEALT: `n` of the genre's eight (three unless said), a different few for another seed and
  *  never the same one twice in a deal. Fewer than `n` only when the genre has fewer; none for a format that is
- *  not a story genre. */
-export function dealStarters(tmplKey: string | null | undefined, seed: number, n = 3): string[] {
-  const left = [...startersOf(tmplKey)];
+ *  not a story genre. `acted`: only those an acted film can film (TOLD_ONLY). */
+export function dealStarters(tmplKey: string | null | undefined, seed: number, n = 3, o: { acted?: boolean } = {}): string[] {
+  const left = [...startersOf(tmplKey, o)];
   const dice = diceOf(seed);
   const out: string[] = [];
   const want = Math.max(0, Math.floor(n));
@@ -466,12 +480,13 @@ export type Nudge = {
 /** THE STARTER FALLBACK. An idea of fewer than three words becomes one of the genre's starters (the owner,
  *  2026-11-25: "atleast need a starter "nudge" couple sentences to hand to the writer"). A word or two the maker
  *  DID type is not thrown away: the starter that has that word in it is the one taken ("lighthouse" → the
- *  lighthouse one) and, when none has, the words ride along to be worked in. null: the idea stands as it is
+ *  lighthouse one) and, when none has — or the one taken does not hold them all ("werewolf cabin"), 2026-11-26 —
+ *  the words ride along to be worked in. null: the idea stands as it is
  *  (three words or more), or the format is not a story genre and has no starters. */
-export function nudgeFor(tmplKey: string | null | undefined, idea: string | null | undefined, seed: number): Nudge | null {
+export function nudgeFor(tmplKey: string | null | undefined, idea: string | null | undefined, seed: number, o: { acted?: boolean } = {}): Nudge | null {
   const typed = String(idea || "").replace(/\s+/g, " ").trim();
   if (ideaWords(typed) >= IDEA_MIN_WORDS) return null;
-  const all = startersOf(tmplKey);
+  const all = startersOf(tmplKey, o);
   if (!all.length) return null;
   // (a word of four letters or more: "the" and "and" are at the start of a word in every starter)
   const words = typed.toLowerCase().split(" ").map((w) => w.replace(/[^\p{L}\p{N}]/gu, "")).filter((w) => w.length >= 4);
@@ -485,7 +500,9 @@ export function nudgeFor(tmplKey: string | null | undefined, idea: string | null
   const nudge = from[Math.min(from.length - 1, Math.floor(dice() * from.length))];
   // (only WORDS ride along: "?" or "…" typed into the box is nothing to work in — the writer was told 'The maker
   //  typed only "?" … work it into the story')
-  return { topic: nudge, nudge, typed: fitting.length || !/[\p{L}\p{N}]/u.test(typed) ? "" : typed.slice(0, 60) };
+  // (…a word the dealt starter does NOT hold still rides along — "werewolf cabin" is the cabin one AND a werewolf)
+  const unheld = typed.toLowerCase().split(" ").map((w) => w.replace(/[^\p{L}\p{N}]/gu, "")).filter((w) => w.length >= 3 && !has(nudge, w));
+  return { topic: nudge, nudge, typed: !/[\p{L}\p{N}]/u.test(typed) || (fitting.length && !unheld.length) ? "" : typed.slice(0, 60) };
 }
 /** …and what the writer is told about a theme that was DEALT, right after it (film-engine → the THEME line):
  *   · a word or two the maker typed that the starter does not hold is worked in;
@@ -512,7 +529,8 @@ export function startLine(n: Nudge, castChosen: boolean, threat = false): string
 /* ---- THE SEVEN NEW GENRES AS TEMPLATES ---- */
 
 /** What makes a new genre a template of the engine. Everything else — that it is acted by the dialogue engine,
- *  can be told by a narrator, its captions, its scene counts — is the Short Film's (`genreTemplate`). */
+ *  can be told by a narrator, its captions, its most shots (and its acted lengths, where it says none) — is the
+ *  Short Film's (`genreTemplate`). */
 export type GenreFilm = {
   key: string;
   /** the template's own name: what its ACTED film is called ("Comedy Film") */
@@ -521,7 +539,8 @@ export type GenreFilm = {
   brief: string;
   /** …and of the story told by a NARRATOR */
   narrated: string;
-  /** the LOOK: light, lens, palette — said to the writer and to every picture */
+  /** the LOOK: light, lens, palette — said to the writer and to every picture (an ACTED film's writer and master
+   *  pictures are told its light and colour only: `genreLook`) */
   sceneHint: string;
   /** the score the track falls back to */
   musicHint: string;
@@ -534,6 +553,9 @@ export type GenreFilm = {
    *  because the pictures are still drawn from the words (story-picture.ts → TODAY_LOOK holds only "where these
    *  words do not say how old a place is"). */
   ownWorld?: boolean;
+  /** Its ACTED film's usual length and its shortest, in shots (one line a shot). Unsaid: the Short Film's. */
+  defaultScenes?: number;
+  minScenes?: number;
 };
 
 /* (every look ends the way the Short Film's does: the pictures are drawn from these words, and a set with
@@ -544,7 +566,7 @@ const NOTHING_TO_READ = "real-looking people; a clean, uncluttered set with NO r
  *  SHORT FILM where your cast actually SPEAKS real dialogue … The flagship movie maker." — which told the
  *  writer nothing about what happens. */
 export const DRAMA_BRIEF =
-  "a short DRAMA, acted: ONE relationship under pressure — two people who matter to each other, and a choice that will cost one of them something. They say less than they mean; what they feel shows in small physical actions (a key put down, a coat kept on, a chair pulled closer). It ends on a decision being MADE, never on a speech about it";
+  "a short DRAMA, acted: ONE relationship under pressure — two people who matter to each other, and a choice that will cost one of them something. They say less than they mean, in full spoken lines; what they feel shows in small physical actions each of them does from where they stand (a suitcase snapped shut, a drawer emptied onto the table, a coat pulled on). It ends on a decision being MADE, never on a speech about it";
 /* (told by a narrator, a Drama's brief is written in the engine's own list — NARRATED_BRIEF.testmovie — beside
  *  horror's and the moral's, where a test of the shows reads it.) */
 
@@ -552,7 +574,9 @@ export const GENRE_FILMS: readonly GenreFilm[] = [
   {
     key: "comedy",
     name: "Comedy Film",
-    brief: "a short COMEDY, acted: ONE comic engine — a lie that keeps growing, a mismatch, or a plan going wrong — pushed further three times, each worse than the last. The laugh is in what they DO and how seriously they take it, never a joke about jokes; neither of them knows it is funny, and nobody winks at the camera. Short lines; the last line is the button — it turns the whole scene, and something said earlier set it up",
+    defaultScenes: 4,
+    minScenes: 2,
+    brief: "a short COMEDY, acted: ONE comic engine — a lie that keeps growing, a mismatch, or a plan going wrong — pushed further three times, each worse than the last. The laugh is in what they DO and how seriously they take it, never a joke about jokes; neither of them knows it is funny, and nobody winks at the camera. Plain, dry lines, each still the full length the film asks for; the last line is the button — it turns the whole scene, and something said earlier set it up",
     narrated: "a short NARRATED COMEDY — a storyteller tells, completely deadpan, how one small lie, mismatch or plan got out of hand: it goes wrong three times, each worse than the last, and the last line is the button that turns it all",
     sceneHint: `a photorealistic live-action film scene from a comedy — bright even daylight or warm household lamps, a 28mm lens that keeps both people and the whole room in frame, clean saturated colours (warm yellow, sky blue, a red or two), everything in focus; ${NOTHING_TO_READ}`,
     musicHint: "light, dry comedy underscore — pizzicato strings, a walking bass, a clarinet",
@@ -561,6 +585,8 @@ export const GENRE_FILMS: readonly GenreFilm[] = [
   {
     key: "thriller",
     name: "Thriller Film",
+    defaultScenes: 4,
+    minScenes: 2,
     brief: "a short THRILLER, acted: the threat is a PERSON or a situation — never a ghost, a monster or anything supernatural. There is a clock or a secret, and it is said early; every line brings it closer or makes it worse; and it ends on a turn the story already planted, so that an earlier line now means something else. Tension, not violence: nothing graphic is shown",
     narrated: "a short NARRATED THRILLER — a storyteller's voice, tight and plain: the threat is a person or a situation, never the supernatural; a clock or a secret from the first lines, every scene closer to it, and an ending that turns on something the story already told",
     sceneHint: `a photorealistic live-action film scene from a thriller — night, or a room with the blinds drawn, lit by one hard practical source (a desk lamp, a street light through glass), a 50mm lens at eye level, cold steel-blue shadow against sodium-orange light, deep blacks, fine film grain; ${NOTHING_TO_READ}`,
@@ -570,7 +596,9 @@ export const GENRE_FILMS: readonly GenreFilm[] = [
   {
     key: "action",
     name: "Action Film",
-    brief: "a short ACTION film, acted: a physical goal, said in the first line, and an obstacle in the way of it. Something HAPPENS in every shot that a camera can film in one take — a run, a climb, a door forced, a jump, a getaway on foot — and the lines are terse, said while doing it. No gunfire, no gore and no explosion near the camera: the danger is height, speed, time and whoever is behind them. It ends in one move, the goal reached or lost",
+    defaultScenes: 4,
+    minScenes: 2,
+    brief: "a short ACTION film, acted: a physical goal, said in the first line, and an obstacle in the way of it. Something HAPPENS in every shot that the two can do in one take, both faces toward the camera — a door shouldered open, a rope hauled in, a hatch wrenched up, the two hurrying TOWARD the camera together — and every line is said while doing it, never a speech. Chases, jumps and falls happen between shots and are said, never shown. No gunfire, no gore and no explosion near the camera: the danger is height, speed, time and whoever is behind them. It ends in one move, the goal reached or lost",
     narrated: "a short NARRATED ACTION STORY — a storyteller's voice at a run: a physical goal, an obstacle, and something that HAPPENS in every scene (a chase on foot, a climb, a crossing, a getaway); no gunfire and no gore; it ends in one move, won or lost",
     sceneHint: `a photorealistic live-action film scene from an action film — hard low sun or floodlight, a 24mm lens low and close to the people, teal shadow and warm skin, dust or rain in the air, a fast shutter that freezes the movement; ${NOTHING_TO_READ}`,
     musicHint: "driving action score — fast drums, low brass, urgent strings",
@@ -579,7 +607,9 @@ export const GENRE_FILMS: readonly GenreFilm[] = [
   {
     key: "romance",
     name: "Romance Film",
-    brief: "a short ROMANCE, acted: two people, what each wants from the other, and the one thing in the way. They talk about something else — the feeling is in what is not said, in a look held a moment too long, in what their hands do. It ends on a GESTURE instead of a declaration: an umbrella shared, a seat kept, a door left open. Tender, never explicit",
+    defaultScenes: 4,
+    minScenes: 2,
+    brief: "a short ROMANCE, acted: two people, what each wants from the other, and the one thing in the way. They talk about something else — the feeling is in what is not said, in a look held a moment too long while their hands are busy with something. It ends on a GESTURE instead of a declaration, made across the space between them with both faces to us: a coat held out, a cup slid across the table, an umbrella offered, a seat kept, a door held open. Tender, never explicit",
     narrated: "a short NARRATED LOVE STORY — a storyteller's voice, warm and unhurried: two people, what each wants and what is in the way, told through the small things they do for each other; it ends on a gesture, not a declaration",
     sceneHint: `a photorealistic live-action film scene from a romance — soft window light or golden hour, an 85mm lens with the background fallen out of focus, warm amber and rose tones, gentle contrast, a little halation round the lights; ${NOTHING_TO_READ}`,
     musicHint: "tender romance score — solo piano and warm strings",
@@ -587,6 +617,8 @@ export const GENRE_FILMS: readonly GenreFilm[] = [
   {
     key: "scifi",
     name: "Sci-Fi Film",
+    defaultScenes: 4,
+    minScenes: 2,
     brief: "a short SCIENCE-FICTION film, acted: ONE speculative idea in an otherwise ordinary near-future world — everything else is as real and as familiar as today. The idea is never explained: it is seen in what it changes between two people, and the story is about them. No space battles, no aliens, no laboratory full of screens — and any screen in a shot shows nothing that can be read. It ends on what the idea has cost one of them, or given them",
     narrated: "a short NARRATED SCIENCE-FICTION STORY — a storyteller's voice: ONE speculative idea in an otherwise ordinary near-future world, never explained, seen in what it changes between two people; no space battles; it ends on what the idea cost them, or gave them",
     sceneHint: `a photorealistic live-action film scene set a few years from now — clean architecture and ordinary clothes, cool overcast daylight or soft white practical light, a 35mm lens, a restrained palette of slate, white and one accent of cyan; a device or a screen shows only soft abstract light, never words or numbers; real-looking people; a clean, uncluttered set with NO readable text, documents, papers, signage or posters visible`,
@@ -595,6 +627,8 @@ export const GENRE_FILMS: readonly GenreFilm[] = [
   {
     key: "fantasy",
     name: "Fantasy Film",
+    defaultScenes: 4,
+    minScenes: 2,
     brief: "a short FANTASY film, acted: a world that feels lived in — worn tools, mended clothes, mud on the boots — with ONE piece of magic in it, and that magic has a PRICE, which is said. The magic is seen only through what it does to ordinary things (a door that opens on the wrong room, bread that makes people tell the truth), never as glow, sparks, beams or light. It is an old world of its own, before engines and electricity: say every place as what it is there — its stone, timber, thatch and firelight — because the pictures are drawn from those words. It ends on the price being paid, or refused",
     narrated: "a short NARRATED FANTASY TALE — the kind told by a fire: an old world of its own, before engines and electricity, that feels lived in (say each place's stone, timber, thatch and firelight); ONE piece of magic with a price, seen through what it does and never as glow or sparks; it ends on the price being paid, or refused",
     ownWorld: true,
@@ -604,7 +638,9 @@ export const GENRE_FILMS: readonly GenreFilm[] = [
   {
     key: "mystery",
     name: "Mystery Film",
-    brief: "a short MYSTERY, acted: the first line asks the QUESTION the story answers. Every shot holds one clue — a physical thing that is seen or picked up — and the two reason it out aloud, getting it wrong before they get it right. The answer was in plain sight earlier: the last line names it, and a viewer can look back and find it. Nothing gory and no killing shown; the puzzle is the pleasure",
+    defaultScenes: 4,
+    minScenes: 2,
+    brief: "a short MYSTERY, acted: the first line asks the QUESTION the story answers. Every shot holds one clue — a big, ordinary thing already in view where the two are: every clue of a place is named in the FIRST VISUAL there (a stopped clock, a third cup, muddy boots), and in each later shot one of the two picks one up or points at it. They reason it out aloud, getting it wrong before they get it right. Nothing written is a clue. The answer was in plain sight earlier: the last line names it, and a viewer can look back and find it. Nothing gory and no killing shown; the puzzle is the pleasure",
     narrated: "a short NARRATED MYSTERY — a storyteller's voice that opens on the question: a clue in every scene, one wrong answer on the way, and a solution that was in plain sight in an earlier scene",
     sceneHint: `a photorealistic live-action film scene from a mystery — pools of lamplight in a dim room, or flat grey daylight through rain, a 40mm lens with the object that matters sharp in the foreground, muted greens, browns and brass, soft shadow; ${NOTHING_TO_READ}`,
     musicHint: "quiet, curious mystery score — plucked bass, vibraphone, brushed drums",
@@ -612,13 +648,27 @@ export const GENRE_FILMS: readonly GenreFilm[] = [
   },
 ];
 
-/** A new genre's template: the Short Film's, with the genre's own key, name, briefing, look, score and faces.
- *  Its lengths (default / fewest / most shots), its captions and that it is acted and can be told are the
- *  base's — one place to change them, and a genre never drifts from the film it is made like. */
-export function genreTemplate<T extends { key: string; name: string; brief: string; sceneHint: string; musicHint: string; faceMood?: string; ownWorld?: boolean }>(base: T, g: GenreFilm): T {
+/** A new genre's template: the Short Film's, with the genre's own key, name, briefing, look, score and faces —
+ *  and its acted lengths (default and fewest shots) where the genre says them: a brief built on beats (three
+ *  times worse, a question then its answer) opens with room for them (2026-11-26). Its most shots, its captions
+ *  and that it is acted and can be told are the base's — one place to change them, and a genre never drifts
+ *  from the film it is made like. */
+export function genreTemplate<T extends { key: string; name: string; brief: string; sceneHint: string; musicHint: string; faceMood?: string; ownWorld?: boolean; defaultScenes: number; minScenes: number }>(base: T, g: GenreFilm): T {
   const out: T = { ...base, key: g.key, name: g.name, brief: g.brief, sceneHint: g.sceneHint, musicHint: g.musicHint };
   // (the faces and the world are the genre's own, or nobody's: neither is ever inherited)
   if (g.faceMood) out.faceMood = g.faceMood; else delete out.faceMood;
   if (g.ownWorld) out.ownWorld = true; else delete out.ownWorld;
+  // (…and its acted lengths, where it says them: a brief built on beats opens with room for them)
+  if (g.defaultScenes) out.defaultScenes = g.defaultScenes;
+  if (g.minScenes) out.minScenes = g.minScenes;
   return out;
+}
+
+/** A NEW GENRE'S LOOK FOR ITS ACTED FILM (2026-11-26): the light and colours of its sceneHint — the words between " — "
+ *  and the first ";" — with no lens (the staging frames the two: acted-staging.ts → CAMERA_IS_DEALT). "" for every
+ *  other template: Drama's, Horror's, Moral's and the Kids Cartoon's masters stay as they were tuned. */
+export function genreLook(tmplKey: string | null | undefined): string {
+  const g = GENRE_FILMS.find((x) => x.key === tmplKey);
+  if (!g) return "";
+  return (g.sceneHint.split(" — ")[1] || "").split(";")[0].replace(/,?\s*\ban? \d{2}mm lens\b[^,;]*/g, "").replace(/\s+/g, " ").trim();
 }

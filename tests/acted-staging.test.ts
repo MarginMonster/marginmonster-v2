@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import {
   ACTED_STAGINGS, AGES_FIT_RELATION, AGE_RULES, CAMERA_IS_DEALT, EVENT_IDEAS, EVENT_IDEAS_SMALL, EVENT_MAX, EVENT_MAX_LAST, HEARD_AUDIO, HEARD_BEFORE_SAID,
   HEARD_FIRST_SECONDS, HEARD_NOT_DRAWN, HEARD_OPEN, HEARD_THEN, HEARD_UNSEEN, LINE_IN_EVERY_SHOT, LINE_IN_EVERY_SHOT_BUT_THE_LAST, NOBODY_SPEAKS, ONE_TAKE,
-  FILM_FPS, JOIN_TOLERANCE, PICTURE_DESC_MAX, REVEAL_DIM, REVEAL_MOVES, REVEAL_PARTS, SOUND_NOT_DRAWN, SOUND_NOT_SHOWN, lookAtPicture, lookTarget, REVEAL_REACT, REVEAL_STAY, REVEAL_UNSEEN_REACT, SEAM_FRAMES, SEEN_AT_THE_END, SEEN_WHEN_SEEN, SILENT_SHOT_SECONDS, TWO_ALWAYS,
+  FILM_FPS, JOIN_TOLERANCE, PICTURE_DESC_MAX, REVEAL_DIM, REVEAL_MOVES, REVEAL_PARTS, SOUND_NOT_DRAWN, SOUND_NOT_SHOWN, lookAtPicture, lookTarget, REVEAL_REACT, REVEAL_STAY, REVEAL_UNSEEN_REACT, SEAM_FRAMES, SEEN_AT_THE_END, SEEN_FROM_THE_FIRST, SEEN_WHEN_SEEN, SILENT_SHOT_SECONDS, TWO_ALWAYS,
   ageAsk, ageOf, castAgeProblem, clipEvent, clipFrames, clipHearsFirst, clipMoves, clipSilent, dealStagings, eventIdeas, faceNote, happensBrief, heardIn, heardSeconds,
   heardTalk, isActedStaging, joinCheck, joinGraph, kinLooks, kinNote, noRoomIn, ownTitle, relationOf, repairAges, revealClip, revealPart, revealPicture, sceneEvent, silentRules, stagedRules, stagedTwoShot,
   stagingClip, stagingPicture, stagingsFor, takeAgeFix, titleAsk, twoOnScreen, wordless,
@@ -192,7 +192,14 @@ test("the master's whole prompt in a staging: the scene's moment IN the picture,
   assert.equal(crypto.createHash("sha256").update(classic, "utf8").digest("hex"), "e8bb6ae6d7bcac2b9832b103383a6bad3754a8571fa7cc0d306df40bc6dbc062", "the two-shot's own prompt is not to change with this");
   // (since 2026-11-25 the film's THING rides along too, by its own picture, where the place's first scene has it in view —
   //  acted-staging.ts → thingBound; tests/acted-sighting.test.ts)
-  assert.ok(img.includes("const staged = opts.staging ? stagedTwoShot({ staging: opts.staging, cartoon, setting, personA, personB, act: action.replace(/\\s+/g, \" \").trim().slice(0, 560), mood, consistency: consistencyNote, roomNote, faceNote, thingNote, comp, ownWorld: opts.ownWorld }) : \"\";"));
+  assert.ok(img.includes("const staged = opts.staging ? stagedTwoShot({ staging: opts.staging, cartoon, setting, personA, personB, act: action.replace(/\\s+/g, \" \").trim().slice(0, 560), mood, look: opts.genreLook, consistency: consistencyNote, roomNote, faceNote, thingNote, comp, ownWorld: opts.ownWorld }) : \"\";"));
+  // (…and since 2026-11-26 a NEW genre's light and colour, in place of the fixed lighting — film-genres.ts → genreLook:
+  //  "" for every other template, whose pictures stay as they were tuned)
+  assert.ok(stagedTwoShot({ staging: "apart", ...parts, look: "x" }).endsWith("THE LOOK, in its light and colour only: x — both of them in sharp focus, both faces well lit, vertical composition, no on-screen text, no watermark."));
+  assert.equal(stagedTwoShot({ staging: "apart", ...parts, look: "" }), stagedTwoShot({ staging: "apart", ...parts }));
+  assert.equal(stagedTwoShot({ staging: "apart", cartoon: true, ...parts, look: "x" }), stagedTwoShot({ staging: "apart", cartoon: true, ...parts }), "a cartoon is lit as a cartoon");
+  assert.ok(read("app", "lib", "film-dialogue.server.ts").includes("genreLook: genreLook(tmpl.key), creatureA: creatureNamed(spkA)"));
+  assert.ok(img.includes("? `THE LOOK, in its light and colour only: ${grade} — both faces well lit and sharp, ${comp}, no on-screen text, no watermark.`"), "the close two-shot too");
   // (…drawn on the good model first, the everyday one only if it will not: story-picture.ts → STORY_MODEL)
   assert.ok(img.includes("for (const m of [STORY_MODEL, STORY_LAST_MODEL]) {") && img.includes("try { url = await repRun(m, storyPictureInput(m, { prompt: staged || prompt, refs, aspect: ar }), 150_000); used = m; break; }"));
   // (…and a staged picture of a photographed film is told today's world, a lived-in home and what a shadow is)
@@ -627,6 +634,25 @@ test("a scene that is a sound is read off its own words: heard — never one of 
     assert.equal(h!.unseen, unseen, scene);
     assert.ok(h!.sound.length > 5 && scene.includes(h!.sound), scene);
   }
+  // (2026-11-26, an Action film's forced door: one of the two kicks, shoulders or pounds it — the sound is theirs, in
+  //  view; read as unseen, the clip was told "the two only HEAR it" and the kick was taken out)
+  for (const scene of ["Mara kicks the door; it bangs against the wall", "A bang as Mara kicks the door open; it slams against the wall", "Mara and Jonah shoulder the door; it bangs open", "Mara pounds on the door; it rattles"]) assert.equal(heardIn(scene, ["Mara", "Jonah"])?.unseen, false, scene);
+  assert.equal(heardIn("Three knocks from inside the wall as Dagny grips Ylva's shoulder.", SISTERS)?.unseen, true);
+  // (…and ONLY that: a move straight after the name, ON a struck thing, with no other part of the scene heard, out of
+  //  sight or made by "something" — review of item 4, 2026-11-26: every one of these stays a sound from out of sight)
+  for (const scene of [
+    "Three slow knocks come from inside the wall as Ylva forces the window shut.",
+    "Something taps on the window as Ylva rams the bolt home.",
+    "Dagny shoves the dresser against the door as the knocking starts again.",
+    "Dagny forces a smile as three knocks come from inside the wall.",
+    "Ylva, heart pounding, presses her ear to the wall as three knocks answer.",
+    "Three knocks from inside the wall; Ylva yanks Dagny back from it.",
+    "Ylva shoulders her bag while something scratches behind the panel.",
+    "Dagny, hammer in hand, listens as three knocks come from inside the wall.",
+    "Ylva, shoulder to the door, listens as something scratches on the other side.",
+    "Dagny, boots still muddy, stops dead as footsteps cross the ceiling.",
+  ]) assert.equal(heardIn(scene, SISTERS)?.unseen, true, scene);
+  assert.equal(heardIn("Mara hears Victor pound on the front door downstairs.", ["Mara", "Victor"])?.unseen, true, "somebody HEARS it");
   assert.equal(heardIn(heard[0][0], SISTERS)!.sound, "Three slow, heavy knocks come from inside the bedroom wall, a full second apart");
   // something one of them DOES, or no sound at all
   for (const scene of [
@@ -765,6 +791,12 @@ test("the writer: a sound comes before any word about it, what is heard is not s
   // (THE LAST SHOT said only to what writes the film's end — 2026-11-25, a film can be written in parts)
   const seen = engine.indexOf("(tmpl.key === \"horror\" ? `${SEEN_WHEN_SEEN}\\n${ends ? `${SEEN_AT_THE_END}\\n` : \"\"}` : \"\")");
   assert.ok(two > 0 && heard > two && seen > heard);
+  // (…and in a thriller or a mystery, whoever is seen is in view from a place's first shot — 2026-11-26: only a horror
+  //  film can draw somebody into a place later, so a mystery's culprit who appeared at the end was never drawn)
+  const first = engine.indexOf("(tmpl.key === \"thriller\" || tmpl.key === \"mystery\" ? `${SEEN_FROM_THE_FIRST}\\n` : \"\")");
+  assert.ok(first > seen, "said after the horror film's own");
+  assert.ok(engine.includes("ONE_TAKE, SEEN_AT_THE_END, SEEN_FROM_THE_FIRST, SEEN_WHEN_SEEN, TWO_ALWAYS,"));
+  assert.ok(SEEN_FROM_THE_FIRST.includes("is IN VIEW from the FIRST VISUAL of the place where they are seen") && SEEN_FROM_THE_FIRST.includes("the film draws each place ONCE") && SEEN_FROM_THE_FIRST.endsWith("Otherwise the answer is one of the two."));
 });
 
 /* ---- NOBODY SMILES AT WHAT FRIGHTENS THEM ---- */
@@ -787,11 +819,35 @@ test("nobody smiles at what frightens them — said plainly, unless the script m
   assert.equal(faceNote({ speaker: "Pip", other: "Rosa" }), "");
   assert.equal(faceNote({ horror: true }), "Nobody smiles at any moment: every face shows fear.");
   for (const f of [faceNote({ horror: true, speaker: "Dagny's", other: "Ylva" }), faceNote({ horror: true })]) assert.ok(quoteFree(f), f);
+  // A GENRE'S OWN FACES reach the clip too (2026-11-26): only the master was told them, and a thriller line said
+  // "coldly, with quiet menace" could be grinned through — unless the line is said warmly or smiling, or the scene's
+  // words have the speaker smiling, where the mood forbids a smile
+  const THRILL = "Everybody in it looks watchful or under strain — nobody smiles, grins or laughs.";
+  const COMEDY = "Everybody in it is completely serious about what they are doing — nobody mugs, winks or looks at the camera.";
+  // (…a CLIP is told only what nobody does — the look before the dash ("set and out of breath") went into the voice too:
+  //  review of item 9, 2026-11-26)
+  const THRILL_CLIP = "Nobody smiles, grins or laughs.";
+  const COMEDY_CLIP = "Nobody mugs, winks or looks at the camera.";
+  assert.equal(faceNote({ tone: "coldly, with quiet menace", speaker: "Mara", other: "Jonah", mood: THRILL }), THRILL_CLIP);
+  assert.equal(faceNote({ tone: "warmly", speaker: "Mara", other: "Jonah", mood: THRILL }), "");
+  assert.equal(faceNote({ tone: "flatly", visual: "Mara smiles as she sets the cake down.", speaker: "Mara", other: "Jonah", mood: THRILL }), "");
+  assert.equal(faceNote({ tone: "warmly, with a laugh", speaker: "Pip", other: "Rosa", mood: COMEDY }), COMEDY_CLIP, "a comedy's own faces forbid no smile");
+  assert.equal(faceNote({ visual: "Pip lifts the vase.", speaker: "Pip", other: "Rosa", mood: COMEDY }), COMEDY_CLIP, "a wordless shot too");
+  // (…never "nobody smiles" over a scene whose words have ANYBODY smiling — the other one too — nor over a smirk)
+  assert.equal(faceNote({ tone: "coldly", visual: "Jonah grins as Mara slides the envelope across the desk.", speaker: "Mara", other: "Jonah", mood: THRILL }), "");
+  assert.equal(faceNote({ tone: "with a cruel smirk", speaker: "Mara", other: "Jonah", mood: THRILL }), "");
+  assert.equal(faceNote({ tone: "evenly", visual: "Mara turns the clue over; Jonah laughs, then stops.", speaker: "Mara", other: "Jonah", mood: "Everybody in it looks curious or guarded — nobody grins or laughs." }), "");
+  // (…and Action's "out of breath" never reaches the clip)
+  assert.equal(faceNote({ tone: "urgently", speaker: "Kai", other: "Rosa", mood: "Everybody in it looks set and out of breath — nobody smiles or poses." }), "Nobody smiles or poses.");
+  assert.equal(faceNote({ tone: "scared, voice shaking", speaker: "Pip", other: "Rosa", mood: THRILL }), "Pip does not smile at any moment: the face shows fear.", "a frightened line is still told its fear");
+  assert.equal(faceNote({ horror: true, tone: "quietly", speaker: "Ylva", other: "Dagny", mood: THRILL }), faceNote({ horror: true, tone: "quietly", speaker: "Ylva", other: "Dagny" }), "a horror film as it was");
+  assert.equal(faceNote({ horror: true, tone: "softly, fond and a little nostalgic", speaker: "Dagny", other: "Ylva", mood: THRILL }), "");
+  assert.ok(quoteFree(faceNote({ tone: "coldly", speaker: "Mara", mood: "Everybody “watchful” — nobody smiles." })), "it goes into silent shots too");
   // the clip is told it: a talking shot in its delivery, a shot nobody speaks in in its rules — behind the one switch
   const eng = read("app", "lib", "film-dialogue.server.ts");
-  assert.ok(eng.includes("const face = staged && !silent ? faceNote({ horror, tone, visual: scene.visual, speaker, other: turnB ? turnB.speaker : otherName }) : \"\";"));
+  assert.ok(eng.includes("const face = staged && !silent ? faceNote({ horror, tone, visual: scene.visual, speaker, other: turnB ? turnB.speaker : otherName, mood: tmpl.faceMood }) : \"\";"));
   assert.ok(eng.includes("NEVER flat or monotone.`}${face ? ` ${face}` : \"\"}`;"));
-  assert.ok(eng.includes("const scared = staged ? faceNote({ horror, visual: scene.visual, speaker: spkA, other: spkB }) : \"\";"));
+  assert.ok(eng.includes("const scared = staged ? faceNote({ horror, visual: scene.visual, speaker: spkA, other: spkB, mood: tmpl.faceMood }) : \"\";"));
   assert.ok(eng.includes("const staged = process.env.ACTED_STAGING !== \"off\";") && eng.includes("const horror = tmpl.key === \"horror\";"));
 });
 

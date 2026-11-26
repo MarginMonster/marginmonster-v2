@@ -234,6 +234,8 @@ export function stagedTwoShot(o: {
   comp: string;
   /** a genre whose world is its own (Fantasy): clothed, never "today" — actedRealism */
   ownWorld?: boolean;
+  /** a NEW genre's light and colour (film-genres.ts → genreLook) */
+  look?: string;
 }): string {
   const stage = stagingPicture(o.staging);
   if (!stage) return "";
@@ -253,8 +255,11 @@ export function stagedTwoShot(o: {
   const moment = act
     ? ` THE MOMENT this frame is taken at: ${act} — everything it names (what somebody holds, what is being done, what is in the place) is IN the picture, seen the way the moment says it is seen, and well above the picture's bottom edge.${unheard}${soundless}${eyeline ? ` ${eyeline}` : ""} Draw the instant it BEGINS, before it is done, so that it can happen in the seconds that follow: ONE picture of ONE instant — never a split screen, panels or a before-and-after. Where the moment says how somebody is placed (standing, sitting, crouching, walking), the moment decides; the distance between the two, the camera and their faces stay as described above.`
     : "";
+  const look = o.cartoon ? "" : oneLine(o.look);
   const tail = o.cartoon
     ? `Clean cheerful cartoon lighting, soft candy colors, rounded friendly shapes, ${o.comp}, no on-screen text, no watermark.`
+    : look
+    ? `THE LOOK, in its light and colour only: ${look} — both of them in sharp focus, both faces well lit, ${o.comp}, no on-screen text, no watermark.`
     : `Cinematic filmic lighting, both of them in sharp focus, ${o.comp}, no on-screen text, no watermark.`;
   // (two who are RELATED, drawn from words alone, are told so — and their ages — in the picture of the two of
   //  them: kinNote. Anybody bound to a reference picture is drawn from it, and nothing is said about them here.)
@@ -584,6 +589,14 @@ const DOER = /^(?:she|he|they|i|we|you|her|his|their|my|our|your)$/i;
 const BEING_SOUND = /^(?:knock(?:s|ed|ing)?|rap(?:s|ping)?|tap(?:s|ping)?|thump(?:s|ing)?|thud(?:s|ding)?|bang(?:s|ing)?|footsteps?|footfalls?|scratch(?:es|ing)?|scrap(?:e|es|ing)|whisper(?:s|ing)?|voices?|cry|cries|scream(?:s|ing)?|shriek(?:s|ing)?|wail(?:s|ing)?|moan(?:s|ing)?|groan(?:s|ing)?|laughter|giggl(?:e|es|ing)|singing|lullaby|whistl(?:e|es|ing)|hum(?:s|ming)?|howl(?:s|ing)?|growl(?:s|ing)?|sob(?:s|bing)?|breathing)$/i;
 /** …and the thing in the picture that is SEEN making it ("a grey hand knocks on the inside of the door"). */
 const SEEN_MAKER = /^(?:hands?|fingers?|knuckles?|fists?|arms?|claws?|nails?|figure|figures|face|faces|mouth|head|woman|man|girl|boy|child|creature)$/i;
+/** …unless one of the two DOES something forceful in the scene ("Mara kicks the door; it bangs against the wall"): the
+ *  sound is theirs, made in view, never "the two only HEAR it" (2026-11-26, an Action film's forced door). A name, then
+ *  within two words one of these. Not "drops", "grips" or "throws": in a horror film those are what the two do while
+ *  something unseen knocks. */
+const CONTACT = /^(?:kick(?:s|ed|ing)?|slam(?:s|med|ming)?|shoulder(?:s|ed|ing)?|smash(?:es|ed|ing)?|shov(?:e|es|ed|ing)|forc(?:e|es|ed|ing)|wrench(?:es|ed|ing)?|yank(?:s|ed|ing)?|stamp(?:s|ed|ing)?|hammer(?:s|ed|ing)?|pound(?:s|ed|ing)?|bash(?:es|ed|ing)?|ram(?:s|med|ming)?|boot(?:s|ed|ing)?)$/i;
+/** …done TO a thing in view, within three words of the move ("kicks the door", "pounds on the hatch"): a move with no
+ *  struck thing after it — "forces a smile", "hammer in hand", "shoulders her bag" — is no forceful sound of theirs. */
+const STRUCK = /^(?:doors?|gates?|hatch(?:es)?|lids?|windows?|shutters?|walls?|panels?|crates?|trunks?|chests?|locks?|bolts?|tables?|floors?|grates?|drawers?|cabinets?|lockers?|fences?|railings?)$/i;
 /** Where a scene's words break into the things that happen in it. */
 const CLAUSE_BREAK = /\s*(?:;|:\s|\.\s|\s[—–]\s|,\s+and\s|,?\s(?:as|while|when|until|before|then)\s|\sand\s(?=(?:a|an|the|one|two|three|four|five|six|several|some|another|more|something|someone|somebody|it)\b))\s*/i;
 /** A sound from out of sight: inside, behind or under something, upstairs, overhead, at a closed door — or
@@ -599,7 +612,8 @@ const UNSEEN = /\b(?:from|inside|within|behind|beneath|under|underneath|below|ab
  *  only that "something" makes it, or it is a sound only a living thing makes and nobody is said to make it
  *  ("The knocking starts again") — never when a thing in the picture is said to make it ("a grey hand knocks
  *  on the inside of the door": that is SEEN), and never when one of the two is also making a sound in that
- *  scene (the clip would be told two things at once: that nobody's hand knocks, and that hers does). `names`
+ *  scene (the clip would be told two things at once: that nobody's hand knocks, and that hers does) or does
+ *  something forceful in it ("Mara kicks the door; it bangs against the wall" — CONTACT). `names`
  *  = the people of the film, so that a name at the start of a sentence is known for one. */
 export function heardIn(event: string | null | undefined, names: ReadonlyArray<string | null | undefined> = []): { sound: string; unseen: boolean } | null {
   const text = oneLine(String(event || "").replace(/["“”«»]/g, ""));
@@ -613,7 +627,15 @@ export function heardIn(event: string | null | undefined, names: ReadonlyArray<s
   let heard: { sound: string; unseen: boolean } | null = null;
   let doing = false;
   let seen = false;
-  for (const clause of text.split(CLAUSE_BREAK).map((c) => c.trim()).filter(Boolean)) {
+  // ONE OF THE TWO DOES SOMETHING FORCEFUL to a thing in view — the move straight after their name, a struck thing within
+  // three words of it ("Mara kicks the door", "Jonah pounds on the hatch") — and NO OTHER part of the scene is a sound from
+  // out of sight, made by "something", or heard: then whatever sound the scene has is theirs, in view (CONTACT). (Review of
+  // item 4, 2026-11-26: "Three slow knocks come from inside the wall as Ylva forces the window shut", "Dagny, hammer in hand,
+  // listens as …", "Ylva, heart pounding, …" and "Mara hears Victor pound on the door" all stay heard, unseen.)
+  const parts = text.split(CLAUSE_BREAK).map((c) => c.trim()).filter(Boolean).map((c) => ({ c, ws: c.split(/\s+/).map(bare).filter(Boolean) }));
+  const forceAt = parts.findIndex((p) => !p.ws.some((w) => HEARS.test(w)) && p.ws.some((w, j) => known.has(w.toLowerCase()) && CONTACT.test(p.ws[j + 1] || "") && p.ws.slice(j + 2, j + 5).some((v) => STRUCK.test(v))));
+  if (forceAt >= 0 && !parts.some((p, i) => i !== forceAt && (p.ws.some((w) => SOMEONE.test(w) || HEARS.test(w)) || UNSEEN.test(p.c)))) doing = true;
+  for (const clause of parts.map((p) => p.c)) {
     const words = clause.split(/\s+/).map(bare).filter(Boolean);
     // (somebody HEARS it: whatever the clause names after that is heard, not done — "Dagny hears three knocks")
     let found = words.some((w) => HEARS.test(w));
@@ -730,24 +752,40 @@ export function heardTalk(t: {
  * SOUNDS, and the picture's "nobody smiles" (the format's own face mood) was not said to the clip. */
 
 const FEAR = /\b(?:afraid|scared|fear(?:ful|fully)?|frighten(?:ed|ing)?|terrif(?:ied|ying)|horror|horrif(?:ied|ying)|dread|panic(?:ked|king|ky)?|trembl(?:e|es|ing)|shak(?:y|ing|en)|petrified|alarm(?:ed)?|aghast)\b/i;
-const SMILE = /\b(?:smil(?:e|es|ed|ing)|grin(?:s|ned|ning)?|laugh(?:s|ed|ing)?|chuckl(?:e|es|ed|ing)|giggl(?:e|es|ed|ing)|beam(?:s|ed|ing))\b/i;
+const SMILE = /\b(?:smil(?:e|es|ed|ing)|grin(?:s|ned|ning)?|smirk(?:s|ed|ing)?|laugh(?:s|ed|ing)?|chuckl(?:e|es|ed|ing)|giggl(?:e|es|ed|ing)|beam(?:s|ed|ing))\b/i;
 /** A line said warmly — in a horror film, the calm before it (the owner's film opened on a fond line about old
  *  letters): its face is left to the line. */
 const WARM = /\b(?:warm(?:ly|th)?|fond(?:ly|ness)?|cheerful(?:ly)?|happ(?:y|ily)|amused|playful(?:ly)?|teasing(?:ly)?|light-?hearted(?:ly)?|nostalgic(?:ally)?|wistful(?:ly)?|tender(?:ly)?|affectionate(?:ly)?|joking(?:ly)?|relieved|excited(?:ly)?|proud(?:ly)?|reassuring(?:ly)?)\b/i;
 
 /** WHO MUST NOT SMILE IN THIS SHOT, said plainly: in a horror film both of the two, in every shot but one whose
  *  line is said warmly (and its tone says no fear); in any other film the one who says a frightened line (its
- *  TONE says fear). Never when the script makes the smile the horror — a scene whose words have that one smiling
+ *  TONE says fear) — and on any other line the format's own faces (`mood`, its faceMood, 2026-11-26: told only to
+ *  the master, a Thriller line said "coldly, with quiet menace" could be grinned through). Never when the script
+ *  makes the smile the horror — a scene whose words have that one smiling
  *  ("Ylva smiles at the wall"), or a tone that says the line is said smiling. "" = nothing to say. It has no
  *  quotation mark in it (it goes into silent shots too). */
-export function faceNote(o: { horror?: boolean; tone?: string | null; visual?: string | null; speaker?: string | null; other?: string | null }): string {
+export function faceNote(o: { horror?: boolean; tone?: string | null; visual?: string | null; speaker?: string | null; other?: string | null; /** the format's own faces (FilmTemplate.faceMood): said to a clip of a film that is not horror, on a line that is not afraid */ mood?: string | null }): string {
   const tone = oneLine(o.tone);
   const visual = oneLine(o.visual);
   const afraid = FEAR.test(tone);
-  if (o.horror ? WARM.test(tone) && !afraid : !afraid) return "";
   const smiles = (name: string): boolean => {
     try { return new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(name)}(?![\\p{L}\\p{N}])[^.;!?,]{0,32}?${SMILE.source}`, "iu").test(visual); } catch { return false; }
   };
+  // (A GENRE'S OWN FACES reached the master picture only — said to the clip too, unless the mood forbids a smile and the
+  //  line is said warmly or smiling, or the scene's words have the speaker smiling)
+  if (!o.horror && !afraid) {
+    const full = oneLine(o.mood).replace(/["“”«»]/g, "");
+    // (to a CLIP, only what nobody does — "Nobody smiles or poses." The look said before it, "set and out of breath", went
+    //  into the clip's VOICE too: a panting line with dead air, what the line-length check exists to stop — review of
+    //  item 9, 2026-11-26. The master picture is still told the whole mood.)
+    const rest = full.includes(" — ") ? full.split(" — ").slice(1).join(" — ").trim() : full;
+    const mood = rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : "";
+    const noSmile = /\b(?:smil|grin|laugh)/i.test(mood);
+    // (…and never "nobody smiles" over a scene whose words have ANYBODY smiling — "Jonah grins as Mara slides the envelope
+    //  across the desk" is the clip's own event)
+    return !mood || (noSmile && (WARM.test(tone) || SMILE.test(tone) || SMILE.test(visual))) ? "" : mood;
+  }
+  if (o.horror && WARM.test(tone) && !afraid) return "";
   const speaker = oneLine(o.speaker);
   const other = o.horror ? oneLine(o.other) : "";
   const who = [
@@ -1597,6 +1635,9 @@ export const HEARD_BEFORE_SAID = "A SOUND COMES BEFORE ANY WORD ABOUT IT — whe
  *  picture, and the last shot's reveal did not come — so she was never seen at all. Said before SEEN_AT_THE_END. */
 export const SEEN_WHEN_SEEN = "WHEN THEY SEE IT, WE SEE IT — when the IDEA has its people see the thing before the end (they shine a light and there it stands; they look out and it is there), the VISUAL of THAT shot shows it where the idea puts it: in the frame behind or beyond the two, far off and small, half in the dark, the way WHAT FRIGHTENS says such a thing is seen — and says what it is and what is wrong with it, in the same few words in every VISUAL that shows it. It is never only talked about.";
 export const SEEN_AT_THE_END = "THE LAST SHOT IS SEEN, NOT SAID — a horror film ends on something the viewer SEES, not on a line about it. So the LAST shot has NO LINE: its CAPTION is \"\" (empty — no NAME, no words) and it has no TONE. Nobody speaks in it, not a word and not a whisper; the last words of the film are the line of the shot BEFORE it. It is in the SAME PLACE as the shot before it — its WHERE is the same words, letter for letter: the thing is found where the two already are, WHERE ITS SOUND CAME FROM — at the door it knocked at, at the window it knocked on, in the wall only when the story has it IN the wall, or right behind one of them in the dark — never in another room; the film draws it into that place's own picture, the one thing in the film that was not in that place's first VISUAL. In that last shot's VISUAL the thing this story has been circling is IN the picture with the two of them, seen the way WHAT FRIGHTENS (below) says such a thing is seen — BARELY: only a part of it, the way a horror film shows it — at a door, the door eased open a hand's width on the dark and a tall shape in the gap with only its face in the light; at a window, its face close to the dark glass, OUTSIDE, the glass whole; in a wall (only when it is IN the wall), its FACE pressed into a hole broken in the plaster, one eye catching the light; at a TENT (always when its door was shut), it is OUTSIDE and only its SHADOW is seen — the lantern dims and its tall silhouette falls on the moonlit canvas, its palms pressed flat against the cloth from outside, or its shadow lying on the sagging roof — never its face in the cloth, never inside with them, never in an opening that is shut; anywhere else, a tall shape standing in the dark with only its face in the light — never a hand, an arm or a body reaching out into the light — never at the edge of the picture. Say its one or two wrongnesses in so many words (skin like old candle wax; an eye open far too wide that never blinks; a face a little too high up) — never just \"wrong\" or \"strange\". And what HAPPENS in that shot is IT, SLOWLY and IN PLACE: its eye turns to them, or its head tilts — it never comes out of where it is, never comes nearer, never reaches for anybody — and the two FREEZE, and one of them slowly turns to it. Neither of the two smiles — they are afraid of it — unless that smile IS the horror and the VISUAL says so. When it is not one of the two, it has no \"cast\" entry: say what it is, and the one or two things that are wrong with it, in that VISUAL (which may run to 40 words).";
+/** …AND IN A THRILLER OR A MYSTERY, WHOEVER IS SEEN IS THERE FROM THE FIRST SHOT OF THE PLACE (2026-11-26): only a horror
+ *  film can draw somebody into a place later (film-dialogue.server.ts → sightOn). */
+export const SEEN_FROM_THE_FIRST = "ANYBODY ELSE WHO IS SEEN — the one this story turns on, watching, waiting or found out — is IN VIEW from the FIRST VISUAL of the place where they are seen: far off and small, silent, named there in so many words and the same way in every later VISUAL there. Nobody walks in later, and nobody appears in a place's last shot who was not in its first: the film draws each place ONCE. Otherwise the answer is one of the two.";
 
 /* ---- PEOPLE WHO ARE RELATED ARE THE RIGHT AGES FOR IT ----
  * The owner, of the same live film: "Also want to note in that video they are "sisters" but one of them is 130

@@ -44,7 +44,7 @@ import { MOTION_GENTLE, MOTION_KEEPS_CAST, MOTION_NEGATIVE, fitFilter, fitScenes
 import { lyricLinesOf, sceneLineTimes } from "./lyric-sync";
 import { ORIGINAL_LYRICS_RULE } from "./lyrics-rules";
 import { episodeTitle, seriesWriterBrief, type SeriesBrief } from "./film-series";
-import { LINE_WORDS_MAX, fitAsk, linesTooLong, saidWords, takeRewrites } from "./dialogue-fit";
+import { LINE_WORDS_MAX, LINE_WORDS_SHORT, fitAsk, growAsk, linesTooLong, linesTooShort, saidWords, takeLonger, takeRewrites } from "./dialogue-fit";
 import { takeSeen, unseenAsk, unseenLines } from "./dialogue-cast";
 // (2026-11-24) a told story's places: a scene set at one says so in its own words
 import { WHAT_FRIGHTENS, inheritPlaces, keepGuess, placeNamed, placesAsk, takePlaces } from "./story-picture";
@@ -52,14 +52,14 @@ import { WHAT_FRIGHTENS, inheritPlaces, keepGuess, placeNamed, placesAsk, takePl
 import { ORIGINAL_CAST, castMoves, dealMarkThings, franchiseIn, markForFormat, markLead, markOf, markWriter, normalizeCastEntry, peelMark, scrubFranchise, setMarkIn, withMark } from "./character-mark";
 import { castEntry, sameCharacter } from "./story-picture";
 import { HORROR_SAFETY, IDEA_CHECK, IDEA_MAX, PREMISE_WINS, REAL_WORLD, STORY_SAFETY, chosenThreat } from "./premise-rules";
-import { DRAMA_BRIEF, GENRE_FILMS, genreTemplate, nudgeFor, startLine } from "./film-genres";
+import { DRAMA_BRIEF, GENRE_FILMS, backdropsOf, genreLook, genreTemplate, nudgeFor, startLine } from "./film-genres";
 // (2026-11-26) the anime maker: six drawn styles, each a told template of its own
 import { ANIME_STYLES, DRAWN_WORLD, animeBrief, animeTemplate } from "./anime-styles";
 import { tellerVisual } from "./character-series";
 import { planShots, shotInWords, shotListBrief } from "./story-shots";
 import { dealFresh, freshBrief, freshKeys, usedBefore, type Fresh, type Used } from "./story-variety";
 // (2026-11-24) an acted film: every shot is something that HAPPENS, and the camera is dealt, not written
-import { AGES_FIT_RELATION, AGE_RULES, CAMERA_IS_DEALT, DONE_STAYS_DONE, HEARD_BEFORE_SAID, LINE_IN_EVERY_SHOT, LINE_IN_EVERY_SHOT_BUT_THE_LAST, ONE_TAKE, SEEN_AT_THE_END, SEEN_WHEN_SEEN, TWO_ALWAYS, ageAsk, ageOf, castAgeProblem, eventIdeas, happensBrief, ownTitle, repairAges, storyThreat, takeAgeFix, titleAsk, wordless } from "./acted-staging";
+import { AGES_FIT_RELATION, AGE_RULES, CAMERA_IS_DEALT, DONE_STAYS_DONE, HEARD_BEFORE_SAID, LINE_IN_EVERY_SHOT, LINE_IN_EVERY_SHOT_BUT_THE_LAST, ONE_TAKE, SEEN_AT_THE_END, SEEN_FROM_THE_FIRST, SEEN_WHEN_SEEN, TWO_ALWAYS, ageAsk, ageOf, castAgeProblem, eventIdeas, happensBrief, ownTitle, repairAges, storyThreat, takeAgeFix, titleAsk, wordless } from "./acted-staging";
 // (2026-11-25) films up to five minutes: one limit for every story format, and a long script written in parts
 import { clampShots, maxShots, minShots, partBrief, planBrief, planSchema, scriptParts, takePlan, type FilmPlan, type FilmWay } from "./film-length";
 
@@ -340,7 +340,8 @@ export const FILM_TEMPLATES: Record<string, FilmTemplate> = {
 // THE NEW MOVIE CATEGORIES (film-genres.ts → GENRE_FILMS): Comedy, Thriller, Action, Romance, Sci-Fi, Fantasy,
 // Mystery. Each is the Short Film's template with its own key, name, briefing, look, score and faces — so
 // every pipeline that takes a template key (the acted engine, the narrator, the storyboard, the Archive)
-// makes it with no code of its own, and its lengths are the Short Film's by construction (genreTemplate).
+// makes it with no code of its own. Its most shots are the Short Film's by construction; its usual and fewest
+// are its own where it says them (genreTemplate — four and two, 2026-11-26: a brief built on beats needs room).
 for (const g of GENRE_FILMS) FILM_TEMPLATES[g.key] = genreTemplate(FILM_TEMPLATES.testmovie, g);
 // THE ANIME STYLES (anime-styles.ts; the owner, 2026-11-26: "also would like to add an Anime maker with different
 // styles"): each is its KIN's template — a movie category above, so it exists by now — with the style's own key, name,
@@ -612,7 +613,7 @@ export async function previewFilmTreatment(opts: {
   //  dragon" is told "a martial artist fights a dragon", before a starter is chosen from it, so the word never reaches a
   //  model; the writer is told why, too — ORIGINAL_CAST, below)
   const typedIdea = scrubFranchise((opts.topic || "").trim(), keepNames);
-  const nudged = series ? null : nudgeFor(tmpl.key, typedIdea, Math.floor(Math.random() * 0x7fffffff));
+  const nudged = series ? null : nudgeFor(tmpl.key, typedIdea, Math.floor(Math.random() * 0x7fffffff), { acted: !!tmpl.dialogue && !narrated });
   const topic = nudged ? nudged.topic : typedIdea;
   if (nudged) console.log(`[film] ${typedIdea ? `the idea was only "${typedIdea.slice(0, 40)}"` : "no idea was given"} — a ${tmpl.key} starter was dealt: "${nudged.nudge.slice(0, 80)}…"`);
   // Lip-sync Music Video: the chosen genre drives the song style, the artist and
@@ -665,14 +666,19 @@ export async function previewFilmTreatment(opts: {
   // to its writer by a few examples DEALT for this film — a fixed example comes back as the story.
   const acted = !!tmpl.dialogue && !narrated;
   const actIdeas = acted ? eventIdeas(Math.random, 4, !!tmpl.childSafe) : [];
+  // …AND A NEW GENRE'S OWN LIGHT, with every place (film-genres.ts → genreLook); its WHERE example one of its own places,
+  // dealt — every acted film's was "a dim old diner at night". "" and the diner, as before, for every other template.
+  const lookWords = acted ? genreLook(tmpl.key) : "";
+  const whereEx = lookWords ? backdropsOf(tmpl.key)[Math.floor(Math.random() * backdropsOf(tmpl.key).length)].where : "a dim old diner at night, rain on the windows";
   // (the example a cast is described by carries a DEALT name: the one it used to carry, "Pip", came back
   //  as a character's name in story after story)
   const exName = fresh ? (tmpl.childSafe ? fresh.names.small[0] : fresh.names.f[0]) || "Pip" : "Pip";
   const exLook = tmpl.childSafe
     ? "a cheerful 3-year-old boy with curly brown hair, round cheeks, a red-striped shirt and blue overalls"
     : "a wiry night-bus driver in her forties with a shaved head, round glasses, a mustard cardigan and a steel thermos";
-  const artistName = (opts.artistName || "").trim().slice(0, 60);
-  const castNames = (opts.castNames || []).map((n) => (n || "").trim()).filter(Boolean).slice(0, 4);
+  // (a music video's artist and co-stars are the music video's: a story never takes them)
+  const artistName = tmpl.lipSyncSinger ? (opts.artistName || "").trim().slice(0, 60) : "";
+  const castNames = tmpl.lipSyncSinger ? (opts.castNames || []).map((n) => (n || "").trim()).filter(Boolean).slice(0, 4) : [];
   const coStars = castNames.length
     ? ` Named co-stars who ALSO appear — use THESE EXACT names and NEVER invent other named people: ${castNames.join(", ")}. In every scene where more than the singer appears (a band, friends, a dance, a crowd of known faces), NAME which of them is there IN that scene's visual (e.g. "${castNames[0]} plays guitar beside ${artistName || "the singer"}"), so those scenes feature the real cast — not strangers. Everyone a VISUAL names is DRAWN in that picture: name someone only when they are IN the shot — never as the owner of a thing ("${castNames[0]}'s car"; say "a car").`
     // No co-stars picked = a SOLO artist. The old wording ("you may add ONE unnamed bandmate") still got a
@@ -881,7 +887,7 @@ export async function previewFilmTreatment(opts: {
     ? `\nWrite it as a SHORT FILM SCENE with CHARACTER DIALOGUE. Return EXACTLY ${scenes} consecutive SHOTS. Each shot has FOUR fields:\n` +
       `• VISUAL — ${happensBrief(actIdeas)}\n` +
       `• CAPTION — formatted EXACTLY as "NAME: what they say", ONE speaker per shot. Each line fills MOST of the ~10-second shot WITHOUT overrunning it: a two-sentence beat of about 15-18 words (~7-9 seconds of speech). This is a HARD window — NEVER a short one-liner (a line that doesn't fill the shot leaves dead air, which makes the AI voice stall or repeat words), and NEVER more than 18 words, because a longer line overruns the 10-second clip and gets cut off at the end. Count the words and stay inside 15-18. The speaker ALTERNATES shot to shot, building a real back-and-forth with a clear turn at the end; use the cast's names, and make each line a genuine REPLY to the one before it (never a non-sequitur). ONLY the two people in the shot ever speak: the NAME before the colon is always one of their two names, the same single word every time. Anyone else the story needs — a shopkeeper, a parent, a stranger — is talked ABOUT or stands silent in the background, and is never heard; when what they say or do matters, one of the two reports it (\"He says he can't thank us enough!\"). ${tmpl.key === "horror" && ends ? LINE_IN_EVERY_SHOT_BUT_THE_LAST : LINE_IN_EVERY_SHOT}\n` +
-      `• WHERE — the LOCATION this beat happens in, as a short vivid label (e.g. "a dim old diner at night, rain on the windows"). EVERY shot has one, and while the place stays the same it is the SAME words, letter for letter — other words are read as another place.\n` +
+      `• WHERE — the LOCATION this beat happens in, as a short vivid label (e.g. "${whereEx}"). EVERY shot has one, and while the place stays the same it is the SAME words, letter for letter — other words are read as another place.${lookWords ? ` Every WHERE says this film's light and time of day in its own words — ${lookWords}.` : ""}\n` +
       `• TONE — HOW this exact line is delivered: a short emotional direction for the voice (e.g. "coldly, with quiet menace", "voice rising in anger", "quietly, barely holding it together"). It must MATCH the words so the read is never flat or monotone.\n` +
       `${CAMERA_IS_DEALT}\n` +
       // (one scene of a long film: which places the film is set in, and whether it comes back to one, is its PLAN's)
@@ -898,7 +904,10 @@ export async function previewFilmTreatment(opts: {
       (one ? "" : `Keep the WHOLE conversation in ONE location unless the story genuinely moves the SAME characters somewhere else — only then start a NEW "where" (a real scene change; everyone is present in the new place). Prefer one flowing location over cutting between places — but when the IDEA moves them ("he ran to his parents' room"), that IS such a move: the shots that come after it are in the new place — and the move happens BEFORE the last shot, never in it: the last shot is in the same place as the shot before it (THE LAST SHOT, below).\n`) +
       // (a horror film ends on something SEEN — said last, so it is read as the exception to the line above)
       // (…the FILM does: only the scene that ends a long one is told how it ends)
-      (tmpl.key === "horror" ? `${SEEN_WHEN_SEEN}\n${ends ? `${SEEN_AT_THE_END}\n` : ""}` : "")
+      (tmpl.key === "horror" ? `${SEEN_WHEN_SEEN}\n${ends ? `${SEEN_AT_THE_END}\n` : ""}` : "") +
+      // (…and in a thriller or a mystery, whoever is seen is there from a place's first shot — 2026-11-26: only a horror
+      //  film can draw somebody into a place later, so a culprit who walked in at the end was never drawn)
+      (tmpl.key === "thriller" || tmpl.key === "mystery" ? `${SEEN_FROM_THE_FIRST}\n` : "")
     : tmpl.sung
     ? `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}, featuring the artist/cast performing) and a CAPTION that is the SUNG LYRIC LINE for that beat — one short, catchy, singable line (<=10 words) that rhymes and flows with the others. Read in order the captions ARE the song's lyrics: give the whole thing a clear, repeating, sing-along HOOK${tmpl.childSafe ? " a toddler can sing along to" : ""}, like a real ${tmpl.childSafe ? "preschool nursery sing-along" : "pop song"}.\n${VISUAL_STANDS_ALONE}\n`
     : tmpl.narrated
@@ -980,7 +989,8 @@ export async function previewFilmTreatment(opts: {
       markBrief +
       `\n${AGES_FIT_RELATION}` +
       genderLine +
-      planBrief(way, { sizes: partSizes, ending, placesAsk: narrated ? PLACES_ARE : undefined }) +
+      planBrief(way, { sizes: partSizes, ending, placesAsk: narrated ? PLACES_ARE : undefined, ...(lookWords ? { placeExample: whereEx } : {}) }) +
+      (lookWords ? `Every place in "places" says this film's light and time of day in its own words — ${lookWords}.\n` : "") +
       freshLine +
       (tmpl.key === "horror" ? `${WHAT_FRIGHTENS}\n` : "") +
       // (a genre whose world is its own is never told today's real world — not in its plan either: film-genres.ts → ownWorld)
@@ -1277,6 +1287,28 @@ export async function previewFilmTreatment(opts: {
         const why = e instanceof Error ? e.message.slice(0, 140) : String(e);
         console.error(`[film] the long lines could not be rewritten, kept as written: ${why}`);
         lineNote = { was: long.map((i) => saidWords(written[i])), now: long.map((i) => saidWords(written[i])), note: `a rewrite could not be made: ${why}` };
+      }
+    }
+  }
+  // …AND A LINE TOO SHORT FOR ITS SHOT, in a NEW GENRE (dialogue-fit.ts → linesTooShort): no take is shorter than five
+  // seconds, and a short line leaves the slack the engine pads with silence or looped words. Sent back once at three
+  // LONGER lengths; any trouble and the lines stay as written. (Drama, Horror, Moral and Kids are left as tuned.)
+  if (tmpl.dialogue && !narrated && GENRE_FILMS.some((g) => g.key === tmpl.key)) {
+    const written = list.map((s) => s.caption || "");
+    const short = linesTooShort(written);
+    if (short.length) {
+      try {
+        const raw = await anthropicText(growAsk(written, short, list.map((s) => s.visual || "")), {
+          model: "claude-sonnet-5", maxTokens: 1500,
+          jsonSchema: { name: "dialogue_grow", schema: { type: "object", properties: { lines: { type: "array", items: { type: "array", items: { type: "string" } } } }, required: ["lines"], additionalProperties: false } },
+        });
+        const next = takeLonger(written, short, (JSON.parse(raw) as { lines?: unknown }).lines);
+        const took = short.filter((i) => next[i] !== written[i]);
+        console.log(`[film] ${short.length} line${short.length === 1 ? "" : "s"} under ${LINE_WORDS_SHORT} words (${short.map((i) => saidWords(written[i])).join(", ")}) — ${took.length} rewritten longer (${took.map((i) => saidWords(next[i])).join(", ") || "none taken"})`);
+        list = list.map((s, i) => (next[i] && next[i] !== written[i] ? { ...s, caption: next[i] } : s));
+        lineNote = { was: [...(lineNote?.was || []), ...short.map((i) => saidWords(written[i]))], now: [...(lineNote?.now || []), ...short.map((i) => saidWords(next[i]))], ...(lineNote?.note ? { note: lineNote.note } : took.length < short.length ? { note: `${short.length - took.length} of ${short.length} short lines had no usable longer version` } : {}) };
+      } catch (e) {
+        console.error(`[film] the short lines could not be rewritten, kept as written: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
       }
     }
   }
