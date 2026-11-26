@@ -95,6 +95,8 @@ import { filmClock } from "../lib/film-flow";
 import { lengthStops, maxShots, renderMinutes, scriptParts, secondsFor, tokensFor, type FilmWay } from "../lib/film-length";
 // (2026-11-25) a told story over still pictures is priced as the cheapest rung — PicturesPick, under the Length slider
 import { priceWay } from "../lib/film-length";
+// (2026-11-26) …and how its still pictures move — CameraPick, under Still, and on each picture of the storyboard
+import { STILL_CAMERAS, STILL_CAMERA_NAMES, stillCameraOf, type StillCamera } from "../lib/story-motion";
 
 // (theme-color: in the DARK theme the Movie Maker is a theater — FS_THEATER, at the foot of this file — and
 //  a phone's own bar goes dark with it instead of framing it in white. The shell's loader knows the theme.)
@@ -1131,6 +1133,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         ...(narrated && askedLang ? { filmLang: askedLang } : {}),
         // THE LADDER (story-motion.ts): a told story asked for over STILL pictures — nothing is spent on motion
         ...(narrated && storyPicturesOf(form.get("filmPictures")) === "still" ? { filmPictures: "still" } : {}),
+        // …and THE CAMERA its stills move by (story-motion.ts → StillCamera: only a camera is passed on; the cut applies
+        // it only to a story told over its stills — narrated-story.server.ts)
+        ...(narrated && stillCameraOf(form.get("filmStillCamera")) ? { filmStillCamera: stillCameraOf(form.get("filmStillCamera")) } : {}),
         ...(filmCaptions !== "off" || narrated ? { filmCaptions } : {}),
         ...(filmGenre ? { filmGenre } : {}),
         ...(filmPace ? { filmPace } : {}),
@@ -1180,7 +1185,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 // (`singer`: Music Video featured verse — the NAME of the co-star who sings this scene; absent = the artist)
-type Scene = { visual: string; caption?: string; where?: string; shot?: string; tone?: string; kind?: "perform" | "broll"; singer?: string };
+type Scene = { visual: string; caption?: string; where?: string; shot?: string; tone?: string; kind?: "perform" | "broll"; singer?: string; /** a told story's still picture's OWN camera (CameraPick on the storyboard) */ camera?: StillCamera };
 // (`nudge`: the starter the server dealt when the idea was under three words — film-genres.ts → nudgeFor — in
 //  ENGLISH, as the dictionary keys it; the page puts it back in the idea box, said in the member's language)
 type Treatment = { title?: string; scenes: Scene[]; musicMood: string; cast?: string[]; nudge?: string };
@@ -1548,6 +1553,47 @@ function PicturesPick({ value, onPick, media, tokens, t }: {
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+/* THE CAMERA OF A STILL STORY (2026-11-26). The owner, of the still tier: "Image still story line needs optional selects
+ * for the image similar to other providers (shake, slight motion, etch etch)". So a story told over its stills says how
+ * they move — Gentle (what a still story always did, and stays unless its maker picks another), Zoom in, Zoom out, Pan,
+ * Handheld, Shake, No move (story-motion.ts → StillCamera; the moves are narrated-core.ts's, all in the cut's one
+ * perspective pass) — as ONE row of small tiles under Still, each the picture ITSELF doing its move, live: that is the
+ * explanation, there is no paragraph. The same row, on one picture of the storyboard, gives that picture its own camera
+ * (its first tile is the story's camera — `story`). The tiles' moves are each the camera's, made larger: a ten-second
+ * creep would not show in a tile. Less motion: the tiles stand still, and say their names. */
+const posterPicOf = (media: string): string => (TALL_STILLS.has(media) ? `/landing/film-still-${media}-tall.jpg?v=${STILL_V}` : stillOf(media));
+function CameraPick({ value, onPick, pic, story, t }: {
+  /** the camera picked — null on a storyboard picture that follows the story's */
+  value: StillCamera | null;
+  onPick: (k: StillCamera | null) => void;
+  /** what every tile moves: the format's poster in the Length step, the scene's own picture on the storyboard */
+  pic: string;
+  /** on a storyboard picture: the story's own camera (its tile comes first, "Story's camera") */
+  story?: StillCamera;
+  t: (s: string, p?: Record<string, string | number>) => string;
+}) {
+  const opts: ReadonlyArray<{ k: StillCamera | null; name: string; moves: StillCamera }> = [
+    ...(story ? [{ k: null, name: "Story's camera", moves: story }] : []),
+    ...STILL_CAMERAS.map((k) => ({ k, name: STILL_CAMERA_NAMES[k], moves: k })),
+  ];
+  return (
+    <div className={`mm-cams${story ? " is-scene" : ""}`} role="group" aria-label={t("The camera")}>
+      {opts.map((o) => {
+        const on = value === o.k;
+        return (
+          <button type="button" key={o.k || "story"} className={`mm-cam is-${o.moves}${o.k ? "" : " is-story"}${on ? " on" : ""}`} aria-pressed={on} onClick={() => onPick(o.k)}>
+            <span className="mm-cam-view" aria-hidden="true">
+              <span className="mm-cam-hand"><img src={pic} alt="" loading="lazy" onError={stillFallback} /></span>
+              {on && <span className="mm-cam-chk"><Ico n="check" size={10} /></span>}
+            </span>
+            <span className="mm-cam-nm">{t(o.name)}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -2256,6 +2302,10 @@ export default function FilmStudio() {
   // THE LADDER's first two rungs (story-motion.ts): do a told story's pictures move? They do unless its maker
   // says otherwise — and the choice is only offered where the server can make them move at all.
   const [pictures, setPictures] = useState<StoryPictures>("moving");
+  // …and told over its stills, how they move (CameraPick; story-motion.ts → StillCamera): Gentle unless its maker picks
+  // another. `camPick`: the storyboard picture whose own camera is being picked (one at a time), or null.
+  const [stillCamera, setStillCamera] = useState<StillCamera>("gentle");
+  const [camPick, setCamPick] = useState<number | null>(null);
   const [storyCard, setStoryCard] = useState<StoryCard | null>(null);
   const [storyDone, setStoryDone] = useState<Record<string, boolean>>({});
   const tapStory = (key: StoryCard) => { setStoryCard((cur) => (cur === key ? null : key)); setStoryDone((sd) => (sd[key] ? sd : { ...sd, [key]: true })); };
@@ -2637,6 +2687,7 @@ export default function FilmStudio() {
     setHeroId(h.id);
     setTemplate(h.tmpl); setScenes(nt?.lipSyncSinger ? mvWant : openNarrated ? d.narratedScenes.def : (nt?.defaultScenes || 6)); setTreatment(null); setFrames([]); setCast([]);
     setTold(openNarrated ? "narrated" : "acted"); setStoryPick([]); setStoryMonster(null); setNarrPick(""); setCapPick(""); setStoryCard(null); setStoryDone({}); setPictures("moving");
+    setStillCamera("gentle"); setCamPick(null);
     if (nt?.dialogue) setFilmAspect(openNarrated ? "9:16" : "16:9");
     // another format is an ordinary new film (a next episode sets its series again right after this)
     setSeries(null); setSeriesCast([]); setSeriesOwn([]);
@@ -2682,6 +2733,8 @@ export default function FilmStudio() {
       // (a story made over STILL pictures goes on over still pictures — the cheap tier its maker picked; it used to
       //  open on Moving, and the next episode was told over paid motion — review of S13)
       if (isNarr && s.still) setPictures("still");
+      // (…and it moves as the last one did — its CAMERA, 2026-11-26)
+      if (isNarr && s.camera) setStillCamera(s.camera);
       setStoryDone(done);
       setTopic(""); setIdeaChanged(false);
       setSeries({ from: c.from, title: c.title, episode: c.episode });
@@ -2731,6 +2784,8 @@ export default function FilmStudio() {
       setCapPick(st.captions);
       // (a story told over STILL pictures is edited as one — it used to open on Moving: review of S13)
       if (st.still) setPictures("still");
+      // (…with the CAMERA it was told with; each picture's own comes back on its scene, in st.treatment — 2026-11-26)
+      if (st.camera) setStillCamera(st.camera);
       if (st.narrator && (CHARACTER_VOICES.some((v) => v.id === st.narrator) || d.voices.some((v) => v.id === st.narrator) || d.myVoices.some((v) => v.voiceId === st.narrator))) { setNarrPick(st.narrator); done.voice = true; }
       setStoryDone(done);
       setTopic(st.topic); setIdeaChanged(false);
@@ -3114,6 +3169,19 @@ export default function FilmStudio() {
       setTreatment({ ...treatment, scenes: treatment.scenes.map((s, j) => (j === i ? { ...s, [field]: value } : s)) });
     }
   };
+  // A STILL PICTURE'S OWN CAMERA (CameraPick on the storyboard, 2026-11-26): kept ON its scene, so it goes where the
+  // scene goes (a scene removed takes its camera with it) and rides the approved story to the cut; null = the story's
+  const setSceneCamera = (i: number, cam: StillCamera | null) => {
+    const as = (s: Scene): Scene => { if (cam) return { ...s, camera: cam }; const { camera: _drop, ...rest } = s; return rest; };
+    if (seeds) setSeeds((prev) => (prev ? { ...prev, treatment: { ...prev.treatment, scenes: prev.treatment.scenes.map((s, j) => (j === i ? as(s) : s)) } } : prev));
+    else if (treatment) setTreatment({ ...treatment, scenes: treatment.scenes.map((s, j) => (j === i ? as(s) : s)) });
+  };
+  // (its row opens under the picture's card, and is brought into view on a phone)
+  useEffect(() => {
+    if (camPick === null) return;
+    const el = typeof document !== "undefined" ? document.querySelector(".mm-cam-drawer") : null;
+    if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [camPick]);
   // Each scene is a PERFORMANCE shot (the artist sings, lip-synced) or a CUT SCENE / b-roll (cars,
   // props, dancing — no lip-sync). The default is the director's cadence the pipeline films by — ONE
   // function for both (mv-pace.ts defaultRole): a short video leads with the performance, a longer one
@@ -3566,6 +3634,17 @@ export default function FilmStudio() {
                     <span className="mm-sb-num">{i + 1}</span>
                     {/* the picture was looked at and something was still off (someone missing, doubled, or a stray microphone) */}
                     {flagged && <button type="button" className="mm-sb-flag" onClick={() => rerollScene(i)} disabled={rerollingScene !== null || !!recasting} title={narrated ? t("We checked this picture and something looks off. Tap to draw it again.") : t("We checked this picture and something looks off — someone missing or doubled, the wrong clothes, or a stray microphone. Tap to draw it again.")}><Ico n="refresh" size={11} /> {flagWhy(i)}</button>}
+                    {/* THIS PICTURE'S CAMERA (a story told over its stills, 2026-11-26): the story's, quietly, until the
+                        maker gives the picture its own — then it is said in green. One tap opens the row under the card. */}
+                    {narrated && lenStill && !!seeds && (() => {
+                      const own = stillCameraOf(sc?.camera);
+                      const said = t("Scene {n} · camera: {name}", { n: i + 1, name: own ? t(STILL_CAMERA_NAMES[own]) : t("Story's camera") });
+                      return (
+                        <button type="button" className={`mm-sc-cam${own ? " is-own" : ""}${camPick === i ? " open" : ""}`} onClick={() => setCamPick(camPick === i ? null : i)} aria-expanded={camPick === i} aria-label={said} title={said}>
+                          <Ico n="camera" size={11} /><span>{t(STILL_CAMERA_NAMES[own || stillCamera])}</span>
+                        </button>
+                      );
+                    })()}
                     <button type="button" className="mm-sc-x" onClick={() => sbRemoveScene(i)} disabled={strip.scenes.length <= 1} title={t("Remove this scene")} aria-label={t("Remove scene {n}", { n: i + 1 })}>✕</button>
                     {seeds && (narrated || seeds.artistRef || seeds.castRef) && <button type="button" className="mm-sb-reroll" onClick={() => rerollScene(i)} disabled={rerollingScene !== null || !!recasting} title={t("Re-roll this scene")} aria-label={t("Re-roll scene {n}", { n: i + 1 })}><Ico n="refresh" size={12} /></button>}
                   </div>
@@ -3727,6 +3806,17 @@ export default function FilmStudio() {
                             </div>
                           </div>
                         )}
+                  </div>
+                )}
+                {/* …ITS ROW, opened from the chip on the picture: the story's camera first, then each camera — every tile
+                    THIS picture doing the move. A tap picks it and closes the row. */}
+                {narrated && lenStill && !!seeds && camPick === i && (
+                  <div className="mm-sc-drawer mm-cam-drawer" role="group" aria-label={t("Scene {n} · camera: {name}", { n: i + 1, name: stillCameraOf(sc?.camera) ? t(STILL_CAMERA_NAMES[stillCameraOf(sc?.camera) as StillCamera]) : t("Story's camera") })}>
+                    <div className="mm-sd-head">
+                      <span className="mm-sd-title"><span className="mm-sd-num">{i + 1}</span>{t("The camera")}</span>
+                      <button type="button" className="mm-sd-x" onClick={() => setCamPick(null)} aria-label={t("Close")}>✕</button>
+                    </div>
+                    <CameraPick value={stillCameraOf(sc?.camera)} story={stillCamera} pic={u || posterPicOf(heroById(heroId)?.media || "shortstory")} onPick={(k) => { setSceneCamera(i, k); setCamPick(null); }} t={t} />
                   </div>
                 )}
                 </Fragment>
@@ -4774,7 +4864,7 @@ export default function FilmStudio() {
               <span className="mm-val">{lenLabel(scenes)} · {narrated ? (scenes === 1 ? t("1 scene") : t("{n} scenes", { n: scenes })) : (scenes === 1 ? t("1 shot") : t("{n} shots", { n: scenes }))}</span>
               {/* (a told story's rung, said on the card itself — still or moving, and what that comes to) */}
               {narrated && d.storyMotion && (
-                <span className={`mm-val mm-val-pics is-${pictures}`}>{t(pictures === "still" ? "Still pictures" : "Moving pictures")} · <b>{t("≈ {n} tokens", { n: lenTokens(scenes).toLocaleString("en-US") })}</b></span>
+                <span className={`mm-val mm-val-pics is-${pictures}`}>{t(pictures === "still" ? "Still pictures" : "Moving pictures")}{pictures === "still" && stillCamera !== "gentle" ? <> · {t(STILL_CAMERA_NAMES[stillCamera])}</> : null} · <b>{t("≈ {n} tokens", { n: lenTokens(scenes).toLocaleString("en-US") })}</b></span>
               )}
             </button>
             {/* 3 · Shape */}
@@ -5021,6 +5111,14 @@ export default function FilmStudio() {
                     the length above; the slider's estimate follows the one picked */}
                 {narrated && d.storyMotion && (
                   <PicturesPick value={pictures} onPick={setPictures} media={heroById(heroId)?.media || "shortstory"} tokens={picTokens} t={t} />
+                )}
+                {/* THE CAMERA (a story told over its stills — picked Still, or where pictures cannot move at all): how they
+                    move, each tile the format's own picture doing it. Optional: Gentle is picked until another is. */}
+                {lenStill && (
+                  <div className="mm-camrow">
+                    <div className="mm-pics-h" aria-hidden="true">{t("The camera")}</div>
+                    <CameraPick value={stillCamera} onPick={(k) => setStillCamera(k || "gentle")} pic={posterPicOf(heroById(heroId)?.media || "shortstory")} t={t} />
+                  </div>
                 )}
               </div>
             )}
@@ -5273,6 +5371,8 @@ export default function FilmStudio() {
           {isStoryboard && series && <input type="hidden" name="seriesFrom" value={series.from} />}
           {isStoryboard && narrated && editing && <input type="hidden" name="editFrom" value={editing.from} />}
           {isStoryboard && narrated && pictures === "still" && <input type="hidden" name="filmPictures" value="still" />}
+          {/* (…and how its stills move, when its maker picked other than Gentle — a picture's own rides on its scene) */}
+          {isStoryboard && lenStill && stillCamera !== "gentle" && <input type="hidden" name="filmStillCamera" value={stillCamera} />}
           {/* (2026-11-25, review of the scene board: while a director's note is being written, Generate waits — sent
               then, the film was made from the script WITHOUT the note just tapped, and the new lines landed a
               moment later on a page that no longer said "sent": a second press made a second render) */}
@@ -6004,6 +6104,54 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-val-pics b{font-weight:800;color:var(--ink,#14201A);white-space:nowrap;}
 .mm-val-pics.is-still b{color:var(--green,#0C7A46);}
 @media(min-width:960px){.mm-val.mm-val-pics{margin-top:6px;font-size:13.5px;}}
+/* THE CAMERA OF A STILL STORY (CameraPick, 2026-11-26 — the owner: "optional selects for the image similar to other
+   providers (shake, slight motion, etch etch)"): small tiles, each the picture ITSELF doing its move — the tile is the
+   explanation. Phone first: four a row (the Length step's seven leave the last row's corner empty — where Helpurr
+   floats), one row on a wide panel. Each tile's move is its camera's, made larger (a ten-second creep would not show in
+   a tile): Gentle pushes in then drifts; the zooms dip to dark between goes, as a cut would; Pan crosses and comes
+   back; Handheld sways and tilts on two clocks that never line up; Shake jitters; No move stands still. */
+.mm-camrow{margin-top:14px;}
+.mm-cams{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;}
+@media(min-width:700px){.mm-cams{grid-template-columns:repeat(7,minmax(0,1fr));}.mm-cams.is-scene{grid-template-columns:repeat(8,minmax(0,1fr));}}
+.mm-cam{display:flex;flex-direction:column;align-items:stretch;gap:5px;min-width:0;min-height:44px;padding:4px 4px 6px;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:12px;cursor:pointer;font-family:Poppins,sans-serif;color:var(--ink,#14201A);text-align:center;transition:border-color .14s,box-shadow .14s;}
+.mm-cam:hover{border-color:var(--green2,#1EA85C);}
+.mm-cam.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 1.5px var(--green,#0C7A46),0 10px 20px -16px rgba(12,122,70,.6);}
+.mm-cam.is-story{border-style:dashed;}
+.mm-cam.is-story.on{border-style:solid;}
+.mm-cam-view{position:relative;display:block;height:62px;border-radius:8px;overflow:hidden;background:#14201A;}
+.mm-cam-hand{position:absolute;inset:0;}
+.mm-cam-hand img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 30%;}
+.mm-cam-chk{position:absolute;z-index:2;top:4px;inset-inline-end:4px;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;background:var(--green,#0C7A46);box-shadow:0 0 0 2px #fff;}
+.mm-cam-chk svg{stroke:#fff;stroke-width:2.8;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+.mm-cam-nm{display:flex;align-items:center;justify-content:center;min-height:2.4em;font-size:11px;font-weight:800;line-height:1.2;overflow-wrap:anywhere;}
+.mm-cam.on .mm-cam-nm{color:var(--green,#0C7A46);}
+.mm-cam.is-gentle img{animation:mmCamGentle 9s ease-in-out infinite alternate;}
+.mm-cam.is-zoomin img{animation:mmCamIn 3.6s ease-in-out infinite;}
+.mm-cam.is-zoomout img{animation:mmCamOut 3.6s ease-in-out infinite;}
+.mm-cam.is-pan img{animation:mmCamPan 3.8s ease-in-out infinite alternate;}
+.mm-cam.is-handheld .mm-cam-hand{animation:mmCamSway 5.3s ease-in-out infinite;}
+.mm-cam.is-handheld img{animation:mmCamTilt 3.7s ease-in-out infinite;}
+.mm-cam.is-shake .mm-cam-hand{animation:mmCamJit .5s linear infinite;}
+.mm-cam.is-shake img{animation:mmCamTilt 1.3s ease-in-out infinite;}
+@keyframes mmCamGentle{0%{transform:scale(1.02);}35%{transform:scale(1.15);}70%{transform:scale(1.15) translateX(-5%);}100%{transform:scale(1.07) translateX(3%);}}
+@keyframes mmCamIn{0%{transform:scale(1);opacity:0;}5%{opacity:1;}94%{opacity:1;}100%{transform:scale(1.24);opacity:0;}}
+@keyframes mmCamOut{0%{transform:scale(1.24);opacity:0;}5%{opacity:1;}94%{opacity:1;}100%{transform:scale(1);opacity:0;}}
+@keyframes mmCamPan{from{transform:scale(1.2) translateX(-6.5%);}to{transform:scale(1.2) translateX(6.5%);}}
+@keyframes mmCamSway{0%,100%{transform:translate(0,0);}22%{transform:translate(-2.4%,1.5%);}49%{transform:translate(1.8%,-2%);}76%{transform:translate(2.6%,1.2%);}}
+@keyframes mmCamTilt{0%,100%{transform:scale(1.14) rotate(-.8deg);}50%{transform:scale(1.14) rotate(.9deg);}}
+@keyframes mmCamJit{0%,100%{transform:translate(0,0);}14%{transform:translate(-2.6%,1.7%);}29%{transform:translate(2%,-1.3%);}43%{transform:translate(-1.3%,-2.2%);}57%{transform:translate(2.8%,1.1%);}71%{transform:translate(-2.2%,.7%);}86%{transform:translate(1.1%,2.4%);}}
+@media(prefers-reduced-motion:reduce){.mm-cam img,.mm-cam .mm-cam-hand{animation:none !important;}}
+[dir=rtl] .mm-camrow .mm-pics-h{letter-spacing:0;}
+/* …and ON A STORYBOARD PICTURE: a small chip, bottom left — the story's camera quietly, a picture's own in green. It
+   stands above the re-roll button's corner (a flagged picture's note takes the bottom: the chip goes up under the
+   number), and reaches 44 px to the finger. */
+.mm-sc-cam{position:absolute;z-index:3;left:7px;bottom:7px;display:inline-flex;align-items:center;gap:3px;max-width:calc(100% - 44px);height:24px;padding:0 7px 0 6px;border:0;border-radius:999px;background:rgba(10,20,15,.66);color:#fff;font-family:Poppins,sans-serif;font-size:10px;font-weight:800;line-height:1;cursor:pointer;box-shadow:0 4px 12px -6px rgba(0,0,0,.6);transition:background .14s;}.mm-sc-cam::after{content:"";position:absolute;inset:-10px -4px;}
+.mm-sc-cam span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mm-sc-cam svg{flex:none;stroke:currentColor;stroke-width:2.2;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+.mm-sc-cam:hover,.mm-sc-cam.open{background:rgba(10,20,15,.86);}
+.mm-sc-cam.is-own{background:var(--green,#0C7A46);box-shadow:0 0 0 1.5px rgba(255,255,255,.85),0 4px 12px -6px rgba(0,0,0,.6);}
+.mm-sb-flag ~ .mm-sc-cam{bottom:auto;top:33px;}
+.mm-cam-drawer .mm-cams{margin-top:2px;}
 .mm-shapepick .mm-lenopt b{font-size:14.5px;}
 .mm-shape{display:block;border:2px solid currentColor;border-radius:4px;color:var(--ink3,#9AA39B);background:rgba(20,32,26,.04);}
 .mm-shape.s16x9{width:44px;height:25px;margin:9px 0;}
