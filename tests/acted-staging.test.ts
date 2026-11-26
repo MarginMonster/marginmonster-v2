@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import {
   ACTED_STAGINGS, AGES_FIT_RELATION, AGE_RULES, CAMERA_IS_DEALT, EVENT_IDEAS, EVENT_IDEAS_SMALL, EVENT_MAX, EVENT_MAX_LAST, HEARD_AUDIO, HEARD_BEFORE_SAID,
   HEARD_FIRST_SECONDS, HEARD_NOT_DRAWN, HEARD_OPEN, HEARD_THEN, HEARD_UNSEEN, LINE_IN_EVERY_SHOT, LINE_IN_EVERY_SHOT_BUT_THE_LAST, NOBODY_SPEAKS, ONE_TAKE,
-  FILM_FPS, JOIN_TOLERANCE, PICTURE_DESC_MAX, REVEAL_DIM, REVEAL_MOVES, REVEAL_PARTS, SOUND_NOT_DRAWN, SOUND_NOT_SHOWN, lookAtPicture, lookTarget, REVEAL_REACT, REVEAL_STAY, REVEAL_UNSEEN_REACT, SEAM_FRAMES, SEEN_AT_THE_END, SEEN_WHEN_SEEN, SILENT_SHOT_SECONDS, TWO_ALWAYS,
+  FILM_FPS, JOIN_TOLERANCE, PICTURE_DESC_MAX, REVEAL_DIM, REVEAL_MOVES, REVEAL_PARTS, SOUND_NOT_DRAWN, SOUND_NOT_SHOWN, lookAtPicture, lookTarget, REVEAL_REACT, REVEAL_STAY, REVEAL_UNSEEN_REACT, SEAM_FRAMES, SEEN_AT_THE_END, SEEN_FROM_THE_FIRST, SEEN_WHEN_SEEN, SILENT_SHOT_SECONDS, TWO_ALWAYS,
   ageAsk, ageOf, castAgeProblem, clipEvent, clipFrames, clipHearsFirst, clipMoves, clipSilent, dealStagings, eventIdeas, faceNote, happensBrief, heardIn, heardSeconds,
   heardTalk, isActedStaging, joinCheck, joinGraph, kinLooks, kinNote, noRoomIn, ownTitle, relationOf, repairAges, revealClip, revealPart, revealPicture, sceneEvent, silentRules, stagedRules, stagedTwoShot,
   stagingClip, stagingPicture, stagingsFor, takeAgeFix, titleAsk, twoOnScreen, wordless,
@@ -776,6 +776,12 @@ test("the writer: a sound comes before any word about it, what is heard is not s
   // (THE LAST SHOT said only to what writes the film's end — 2026-11-25, a film can be written in parts)
   const seen = engine.indexOf("(tmpl.key === \"horror\" ? `${SEEN_WHEN_SEEN}\\n${ends ? `${SEEN_AT_THE_END}\\n` : \"\"}` : \"\")");
   assert.ok(two > 0 && heard > two && seen > heard);
+  // (…and in a thriller or a mystery, whoever is seen is in view from a place's first shot — 2026-11-26: only a horror
+  //  film can draw somebody into a place later, so a mystery's culprit who appeared at the end was never drawn)
+  const first = engine.indexOf("(tmpl.key === \"thriller\" || tmpl.key === \"mystery\" ? `${SEEN_FROM_THE_FIRST}\\n` : \"\")");
+  assert.ok(first > seen, "said after the horror film's own");
+  assert.ok(engine.includes("ONE_TAKE, SEEN_AT_THE_END, SEEN_FROM_THE_FIRST, SEEN_WHEN_SEEN, TWO_ALWAYS,"));
+  assert.ok(SEEN_FROM_THE_FIRST.includes("is IN VIEW from the FIRST VISUAL of the place where they are seen") && SEEN_FROM_THE_FIRST.includes("the film draws each place ONCE") && SEEN_FROM_THE_FIRST.endsWith("Otherwise the answer is one of the two."));
 });
 
 /* ---- NOBODY SMILES AT WHAT FRIGHTENS THEM ---- */
