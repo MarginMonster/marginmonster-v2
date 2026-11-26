@@ -60,6 +60,24 @@ test("the tiles MOVE, each as its camera does — live, on the picture itself �
   assert.ok(css.includes("@keyframes mmCamIn{0%{transform:scale(1);opacity:0;}"));
   // a storyboard picture's chip reaches 44 px to the finger
   assert.ok(css.includes(".mm-sc-cam::after{content:\"\";position:absolute;inset:-10px -4px;}"));
+  // NAMES THAT FIT (review of S13b, photographed at 390 px): the chip has about 60 px for its name on a phone — a long
+  // one takes a second line, never an ellipsis (German "Handka…", "Keine Be…" could not be read); a tile's name breaks
+  // inside its tile (break-word let French "Panoramique" run out past the border: the flex box's text never shrank)
+  assert.ok(css.includes(".mm-sc-cam span{min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:normal;overflow-wrap:anywhere;"));
+  assert.ok(!/\.mm-sc-cam span\{[^}]*text-overflow:ellipsis/.test(css));
+  assert.ok(/\.mm-cam-nm\{[^}]*overflow-wrap:anywhere;/.test(css));
+});
+
+test("names short enough for the chip: No move is said as a camera that does not move is called", async () => {
+  const { UI_DICT } = await import("../app/lib/ui-i18n-dict.ts");
+  const tr = (l: "es" | "fr" | "de", s: string) => UI_DICT[l]?.[s];
+  assert.equal(tr("es", "No move"), "Fija");
+  assert.equal(tr("fr", "No move"), "Fixe");
+  assert.equal(tr("de", "No move"), "Statisch");
+  assert.equal(tr("fr", "Shake"), "Secousses");
+  // (a soft hyphen: invisible unless the line breaks there — so it breaks at the syllable on any browser)
+  assert.equal(tr("fr", "Pan"), "Pano­ramique");
+  assert.equal(tr("de", "Handheld"), "Hand­kamera");
 });
 
 test("a storyboard picture: a chip on it says its camera; a tap opens the row under its card; a pick is kept ON the scene", () => {
