@@ -55,7 +55,7 @@ export function pictureSize(ffmpegReport: string): { w: number; h: number } | nu
   return m ? { w: Number(m[1]), h: Number(m[2]) } : null;
 }
 
-/** The side of the small grey square the picture is read at. (96: a band of 3% is three lines.) */
+/** The side of the small grey square the picture is read at. (96: a band of 2% is two lines.) */
 export const BAND_SIZE = 96;
 /** A line is FLAT when its lightest and darkest points are this close (0–255). */
 export const BAND_FLAT = 6;
@@ -63,8 +63,9 @@ export const BAND_FLAT = 6;
 export const BAND_DRIFT = 4;
 /** A band HOLDS its colour to its end: its last three lines are this close to the edge line's. */
 export const BAND_HOLD = 2;
-/** A band is at least this deep (a fraction of the frame). */
-export const BAND_MIN = 0.03;
+/** A band is at least this deep (a fraction of the frame). (It was 3% — review of S14: a cream strip 2.5% deep, 69 px of a
+ *  2752 px frame and plain to see, passed; at 2%, two lines of the small read, the 1,518 pictures flag nothing new.) */
+export const BAND_MIN = 0.02;
 /** The band ENDS in a straight edge: on one of the next lines, this share of the points has left its colour… */
 export const BAND_EDGE_SHARE = 0.75;
 /** …by more than this. */
@@ -119,7 +120,7 @@ export function edgeMeasure(gray: Uint8Array, side: BandSide, S = BAND_SIZE): { 
   //  plain — and then it is the edge, not the band: review of S14, a letterboxed night picture whose black band over a
   //  dark road ended in a line 2.3 off black, so the band never "held" and the cover kept a third of the frame black)
   const off = (k: number): number => Math.abs(meanOf(line(k)) - colour);
-  if (depth > 3 && off(depth - 1) > BAND_HOLD && [2, 3, 4].every((j) => off(depth - j) <= BAND_HOLD)) depth--;
+  if (depth >= 3 && off(depth - 1) > BAND_HOLD && [2, 3, 4].filter((j) => j <= depth).every((j) => off(depth - j) <= BAND_HOLD)) depth--;
   let hold = 0;
   for (let k = Math.max(0, depth - 3); k < depth; k++) hold = Math.max(hold, Math.abs(meanOf(line(k)) - colour));
   let jump = false;

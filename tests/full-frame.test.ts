@@ -67,9 +67,14 @@ test("a flat band of ANY colour at ANY edge is found — cream, white, grey, bla
   const hb = frameBand(half, TALL.w, TALL.h);
   assert.deepEqual(hb?.sides, ["top", "bottom"], "both bars, the half line taken as the edge");
   assert.ok(hb && hb.box.y + hb.box.h <= (S - 29) / S + 1e-9, "the cover leaves the half line out too");
-  // …two lines (2%) is not a band yet; three is
-  assert.equal(frameBand(banded("bottom", 2, 228), TALL.w, TALL.h), null);
-  assert.ok(frameBand(banded("bottom", 3, 228), TALL.w, TALL.h));
+  // …one line (1%) is not a band yet; two (2%) are — review of S14: it was three, and a cream strip 2.5% deep (69 px of
+  //  a 2752 px frame, plain to see) passed; at two the 1,518 real pictures flag nothing new
+  assert.equal(frameBand(banded("bottom", 1, 228), TALL.w, TALL.h), null);
+  assert.ok(frameBand(banded("bottom", 2, 228), TALL.w, TALL.h));
+  // …and a thin band whose last line is half band (three lines of the small read, the third a blend): two lines held
+  const thinHalf = pic((x, y) => (y < 2 ? 16 : y === 2 ? 13 : scene(x, y)));
+  assert.equal(edgeMeasure(thinHalf, "top").depth, 2, "the half line is the edge, not the band");
+  assert.deepEqual(frameBand(thinHalf, TALL.w, TALL.h)?.sides, ["top"]);
 });
 
 test("dark and bright scenes with no band pass: a night sky, a white wall, a snowfield, fog, a black-clothed back", () => {
