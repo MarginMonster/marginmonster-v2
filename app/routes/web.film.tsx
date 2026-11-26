@@ -5697,6 +5697,23 @@ ${CAST_ID_CSS}
 /* the format's loop, faded in over its still while the card is pointed at (see LoopCover) */
 .fs-fmt-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .35s ease;pointer-events:none;}
 .fs-fmt-vid.on{opacity:1;}
+/* THE STILL SHELF (2026-11-26): A STILL POSTER MOVES THE WAY A STILL STORY MOVES. The owner, of the still tier: "Maybe
+   just make it an additional tier on the actual movie maker (would look like more options)" — and nine posters the
+   Stories shelf already shows, standing still, read as the same shelf twice. So a poster on it plays no loop: its
+   picture drifts as the story's own default camera moves a picture — Gentle, S13b's mmCamGentle (push in, drift,
+   ease back) — slowly, 14 s a way and back again, a transform and nothing else (no video, no script). Its neighbours
+   start at another point of the move, so the row breathes rather than marching. Where there is a mouse it moves
+   while the poster is pointed at or has the keyboard's focus, as a loop plays; on a touch screen, always. Nothing
+   moves for anyone who asks for less motion. (Within the cover: at its widest the move shifts the picture 5.75% of
+   its width at 115% — 7.5% to spare on each side; at its end 3.2% at 107%, with 3.5% — no edge ever shows.) */
+.fs-shelf.is-still .fs-fmt-cover img{animation:mmCamGentle 14s ease-in-out infinite alternate;}
+.fs-shelf.is-still .fs-fmt:nth-child(3n+2) .fs-fmt-cover img{animation-delay:-4.7s;}
+.fs-shelf.is-still .fs-fmt:nth-child(3n) .fs-fmt-cover img{animation-delay:-9.3s;}
+@media(hover:hover) and (pointer:fine){
+  .fs-shelf.is-still .fs-fmt-cover img{animation-play-state:paused;}
+  .fs-shelf.is-still .fs-fmt:hover .fs-fmt-cover img,.fs-shelf.is-still :focus-visible > .fs-fmt-cover img{animation-play-state:running;}
+}
+@media(prefers-reduced-motion:reduce){.fs-shelf.is-still .fs-fmt-cover img{animation:none;}}
 /* the covers MOVE now, so the title has to win: a deeper, taller shade under it and a bigger, heavier name */
 .fs-fmt-cover::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(6,14,10,.94) 0%,rgba(6,14,10,.62) 24%,rgba(6,14,10,.14) 50%,transparent 68%);}
 .fs-fmt-ico{position:absolute;z-index:2;top:8px;left:8px;width:28px;height:28px;border-radius:9px;display:grid;place-items:center;box-shadow:0 5px 14px -5px rgba(0,0,0,.6);}

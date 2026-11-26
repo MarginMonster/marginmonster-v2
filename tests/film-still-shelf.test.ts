@@ -170,6 +170,57 @@ test("entering from the still shelf opens the hero on the still rung — and the
   assert.ok(page.includes("onClick={() => enterFormat(playing.id)}") && page.includes("onClick={() => enterFormat(LYRIC_HERO.id)}"));
 });
 
+test("a still poster moves the way a still story moves: Gentle, slowly, a transform only — and never past its picture's edge", () => {
+  const before = FS_STYLE.slice(0, FS_STYLE.indexOf("/* ───────── THE ROWS — each shelf is ONE row of its posters, swiped sideways ─────────"));
+  const rules = [
+    ".fs-shelf.is-still .fs-fmt-cover img{animation:mmCamGentle 14s ease-in-out infinite alternate;}",
+    ".fs-shelf.is-still .fs-fmt:nth-child(3n+2) .fs-fmt-cover img{animation-delay:-4.7s;}",
+    ".fs-shelf.is-still .fs-fmt:nth-child(3n) .fs-fmt-cover img{animation-delay:-9.3s;}",
+    // where there is a mouse: while it is pointed at, or has the keyboard's focus (as a loop plays); on a touch screen, always
+    "@media(hover:hover) and (pointer:fine){\n  .fs-shelf.is-still .fs-fmt-cover img{animation-play-state:paused;}\n  .fs-shelf.is-still .fs-fmt:hover .fs-fmt-cover img,.fs-shelf.is-still :focus-visible > .fs-fmt-cover img{animation-play-state:running;}\n}",
+    // nothing moves for anyone who asks for less motion
+    "@media(prefers-reduced-motion:reduce){.fs-shelf.is-still .fs-fmt-cover img{animation:none;}}",
+  ];
+  for (const r of rules) assert.equal(count(before, r), 1, r);
+  // the page's own sheet (mounted on the home, always), before the rows — whose rules move nothing by themselves
+  assert.equal(count(page, "<style dangerouslySetInnerHTML={{ __html: FS_STYLE }} />"), 1);
+  // only the still shelf's covers drift: no other rule animates a poster's picture
+  const flat = FS_STYLE.replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.deepEqual([...flat.matchAll(/([^{}]*\.fs-fmt-cover img)\{[^}]*animation:[^;}]+/g)].map((m) => m[1].trim()), [".fs-shelf.is-still .fs-fmt-cover img", ".fs-shelf.is-still .fs-fmt-cover img"]);
+
+  // the move is S13b's GENTLE — the still story's own default camera — the keyframes the Length step's tile plays
+  const kf = /@keyframes mmCamGentle\{((?:\d+%\{[^}]*\})+)\}/.exec(FS_STYLE);
+  assert.ok(kf, "mmCamGentle is in the page's sheet");
+  assert.ok(FS_STYLE.includes(".mm-cam.is-gentle img{animation:mmCamGentle 9s ease-in-out infinite alternate;}"));
+  // a transform and nothing else
+  const steps = [...kf[1].matchAll(/(\d+)%\{([^}]*)\}/g)].map((m) => {
+    assert.ok(/^transform:[^;]+;$/.test(m[2]), m[2]);
+    const s = Number(/scale\(([\d.]+)\)/.exec(m[2])?.[1] ?? 1);
+    const tx = Number(/translateX\((-?[\d.]+)%\)/.exec(m[2])?.[1] ?? 0);
+    return { at: Number(m[1]), s, tx };
+  });
+  assert.deepEqual(steps.map((x) => x.at), [0, 35, 70, 100]);
+  // NO EDGE EVER SHOWS. `scale(s) translateX(tx%)` about the picture's middle moves it s·tx% of the cover's width and
+  // leaves (s − 1)/2 of it to spare on each side. Between two keyframes both numbers move together (a missing
+  // translateX is a translateX(0)), so the path is checked along every segment.
+  let worst = 1;
+  for (let k = 0; k + 1 < steps.length; k++) {
+    for (let i = 0; i <= 100; i++) {
+      const u = i / 100;
+      const s = steps[k].s + (steps[k + 1].s - steps[k].s) * u;
+      const tx = steps[k].tx + (steps[k + 1].tx - steps[k].tx) * u;
+      const spare = (s - 1) / 2 * 100 - s * Math.abs(tx);
+      assert.ok(spare >= 0, `${steps[k].at}%→${steps[k + 1].at}% at ${u}: an edge shows`);
+      worst = Math.min(worst, spare);
+    }
+  }
+  assert.ok(worst >= 0.25, `the closest it comes to an edge is ${worst.toFixed(2)}% of the cover's width`);
+  // (the comment's figures are these: 5.75% at 115% with 7.5% to spare; 3.2% at 107% with 3.5%)
+  assert.ok(Math.abs(1.15 * 5 - 5.75) < 1e-9 && Math.abs(1.07 * 3 - 3.21) < 1e-9);
+  // it never stops at a hard end: alternate, so it eases back the way it came
+  assert.ok(/mmCamGentle 14s ease-in-out infinite alternate/.test(before));
+});
+
 test("the still shelf has its own accent — a cool steel blue — and its words in all five languages", () => {
   const before = FS_STYLE.slice(0, FS_STYLE.indexOf("/* ───────── THE ROWS"));
   assert.ok(before.includes(".fs-shelf.is-told{--shelf:#A8741B;--shelf-soft:rgba(168,116,27,.1);}\n/* (the STILL shelf"));
