@@ -4292,7 +4292,7 @@ export default function FilmStudio() {
             {/* THE CHOSEN WAY'S ROW — one at a time: Picture Book's are pages (its posters drift and sit on a cream mat), the
                 Story's the same genres moving, Film's the acted ones, Anime's its styles, Kids' and Music Video's theirs. The
                 header says what to do; the way's tag and line are on its card above, said once. */}
-            {shelves.filter((sh) => sh.key === wayOn).map((sh) => (
+            {shelves.filter((sh) => sh.key !== "still").map((sh) => (
             <section key={sh.key} className={`fs-shelf is-${sh.key}`} aria-labelledby={`fs-shelf-${sh.key}`}>
               {/* the card's ENGRAVING (THE TICKET, in the stylesheet): a layer that covers the card and cuts
                   itself to the card's shape, so the card itself clips nothing — a picture only */}
@@ -4301,8 +4301,10 @@ export default function FilmStudio() {
                 <span className="fs-shelf-ico" aria-hidden="true"><Ico n={WAY_ICON[sh.key]} size={18} /></span>
                 <span className="fs-shelf-txt">
                   <h2 className="fs-shelf-name" id={`fs-shelf-${sh.key}`}>{t(sh.name)}</h2>
-                  <span>{t(sh.heroes.length + (sh.key === "sung" && d.lyricVideo ? 1 : 0) > 1 ? sh.pick : "Tap it to start")}</span>
+                  <span>{t(sh.line)}</span>
                 </span>
+                {/* (the uniques stay ON DISPLAY — the owner, 11-26: "Those need to be on display") */}
+                {sh.group === "only" ? <em className="fs-shelf-tag">✦ {t("Only on EasyMode")}</em> : <em className="fs-shelf-tag">{t(sh.tag)}</em>}
               </header>
           <div className={`fs-fmtgrid${anim === "in" ? " throw" : ""}`} role="tablist" aria-label={t(sh.name)}>
             {/* one poster per HERO (film-heroes.ts): the movie category on its picture — "Comedy", not "Comedy Film" — and
@@ -4340,15 +4342,16 @@ export default function FilmStudio() {
             ))}
             {/* CAUGHT ON CAM (film-heroes.ts → CAUGHT_ON_CAM): Found Footage's cameras — each opens its own builder on that
                 camera (?camera=). A door, not a hero this page builds; operators only, like the builder it opens. */}
-            {wayOn === "cam" && d.foundFootage && (
+            {d.foundFootage && (
             <section key="cam" className="fs-shelf is-cam" aria-labelledby="fs-shelf-cam">
               <span className="fs-shelf-wm" aria-hidden="true" />
               <header className="fs-shelf-h">
                 <span className="fs-shelf-ico" aria-hidden="true"><Ico n="camera" size={18} /></span>
                 <span className="fs-shelf-txt">
                   <h2 className="fs-shelf-name" id="fs-shelf-cam">{t(CAUGHT_ON_CAM.name)}</h2>
-                  <span>{t(CAUGHT_ON_CAM.pick)}</span>
+                  <span>{t(CAUGHT_ON_CAM.short)}</span>
                 </span>
+                <em className="fs-shelf-tag">✦ {t("Only on EasyMode")}</em>
               </header>
           <div className={`fs-fmtgrid${anim === "in" ? " throw" : ""}`} role="tablist" aria-label={t(CAUGHT_ON_CAM.name)}>
             {CAUGHT_ON_CAM.cameras.map((c) => (
@@ -4476,32 +4479,13 @@ export default function FilmStudio() {
               uniques" — "Those need to be on display". So: big cards — THE LADDER, how a story is told from the cheapest to
               the most cinematic, then "Only on EasyMode" — and one tap shows that way's row below. Nothing navigates, and
               each thing appears ONCE. */}
+          {/* ROWS DESIGNATED, ALL AT ONCE (2026-11-26, that evening — the owner, with photos of the ways grid: "Because this
+              setup is hard to understand narrated/acted being at the top of the selection looks odd and easy to misunderstand.
+              I liked when it was rows designated", then "Fix the FUCKING MOVIE PAGE"). The ways grid is gone: every way is its
+              own labelled row, one under the other, each poster one tap into its builder. A told story's still pictures are
+              picked in its Length step, so there is no second row of the same stories. */}
           <div className={`fs-ways${anim === "in" ? " throw" : ""}`} role="group" aria-label={t("Pick what to make")}>
-            {(["ladder", "only"] as const).map((g) => {
-              const cards = wayCards.filter((w) => w.group === g);
-              if (!cards.length) return null;
-              return [
-                <div key={g} className={`fs-ways-grp is-${g}`} style={{ ["--n" as string]: cards.length }}>
-                  <div className="fs-ways-h">{g === "only" ? <><span aria-hidden="true">✦</span> {t("Only on EasyMode")}</> : t("How it's told")}</div>
-                  <div className="fs-ways-row">
-                    {cards.map((w) => (
-                      <button type="button" key={w.key} className={`fs-way is-${w.key}${wayOn === w.key ? " on" : ""}`} aria-pressed={wayOn === w.key} onClick={() => pickWay(w.key)}>
-                        <span className="fs-way-art" aria-hidden="true"><WayCover art={w.art} on={wayOn === w.key} /></span>
-                        <span className="fs-way-tag">{t(w.tag)}</span>
-                        {WAY_STEP[w.key] ? <span className="fs-way-step" aria-hidden="true">{[1, 2, 3].map((k) => <i key={k} className={k <= (WAY_STEP[w.key] || 0) ? "on" : undefined} />)}</span> : null}
-                        {/* (a phone shows the SHORT line — "need better descriptions here", the owner — a wider screen the long one) */}
-                        <span className="fs-way-name"><b>{t(w.name)}</b><small className="is-short">{t(w.short)}</small><small className="is-long">{t(w.line)}</small></span>
-                      </button>
-                    ))}
-                  </div>
-                </div>,
-                // (THE ROW OPENS UNDER THE GROUP THAT WAS TAPPED — 2026-11-26, the owner: "Selected at the top the type then
-                //  outputs at the bottom - I think that is the confusing part": it was drawn after both groups, on a phone
-                //  below the whole "Only on EasyMode" block. A wide screen, where the groups stand side by side, still has
-                //  it under both: .fs-ways wraps it onto a line of its own.)
-                wayGroup === g ? wayRow : null,
-              ];
-            })}
+            {wayRow}
           </div>
         </>)}
 

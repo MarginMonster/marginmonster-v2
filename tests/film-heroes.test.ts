@@ -276,11 +276,9 @@ test("the posters stand on WAYS — the ladder (Picture Book · Story · Film), 
   assert.equal(ui.split("heroShelves(").length - 1, 1, "one call");
   assert.ok(ui.includes("const shelves = heroShelves(heroes, { still: d.storyMotion });"));
   assert.ok(ui.includes("...(d.foundFootage ? [CAUGHT_ON_CAM] : []),"), "Caught on Cam is an operator's, as its builder is");
-  assert.ok(ui.includes("{shelves.filter((sh) => sh.key === wayOn).map((sh) => ("));
-  assert.ok(ui.includes("<button type=\"button\" key={w.key} className={`fs-way is-${w.key}${wayOn === w.key ? \" on\" : \"\"}`} aria-pressed={wayOn === w.key} onClick={() => pickWay(w.key)}>"));
+  assert.ok(ui.includes("{shelves.filter((sh) => sh.key !== \"still\").map((sh) => ("));
   assert.ok(ui.includes("<section key={sh.key} className={`fs-shelf is-${sh.key}`} aria-labelledby={`fs-shelf-${sh.key}`}>"));
   assert.ok(ui.includes("<h2 className=\"fs-shelf-name\" id={`fs-shelf-${sh.key}`}>{t(sh.name)}</h2>"));
-  assert.ok(ui.includes("<span>{t(sh.heroes.length + (sh.key === \"sung\" && d.lyricVideo ? 1 : 0) > 1 ? sh.pick : \"Tap it to start\")}</span>") && !ui.includes("<em className=\"fs-shelf-tag\">{t(sh.tag)}</em>"), "the row says what to do; the tag is on its card, once");
   assert.ok(ui.includes("<div className={`fs-fmtgrid${anim === \"in\" ? \" throw\" : \"\"}`} role=\"tablist\" aria-label={t(sh.name)}>"), "each row is its own list of formats");
   assert.ok(ui.includes("{sh.heroes.map((h) => ("));
   for (const k of [".fs-shelf.is-told{--shelf:", ".fs-shelf.is-still{--shelf:", ".fs-shelf.is-anime{--shelf:", ".fs-shelf.is-acted{--shelf:", ".fs-shelf.is-sung{--shelf:", ".fs-shelf.is-kids{--shelf:", ".fs-shelf.is-cam{--shelf:", ".fs-shelves.throw .fs-shelf{background:transparent;border-color:transparent;}"]) assert.ok(ui.includes(k), k);
@@ -288,8 +286,10 @@ test("the posters stand on WAYS — the ladder (Picture Book · Story · Film), 
   // every word on the cards and rows is in all five languages
   const dict = fs.readFileSync(new URL("../app/lib/ui-i18n-dict.ts", import.meta.url), "utf8");
   for (const sh of [...shelves, CAUGHT_ON_CAM]) for (const k of [sh.name, sh.tag, sh.line, sh.pick, sh.short]) assert.ok(dict.split(`${JSON.stringify(k)}:`).length - 1 >= 5, k);
-  assert.ok(ui.includes("<span className=\"fs-way-name\"><b>{t(w.name)}</b><small className=\"is-short\">{t(w.short)}</small><small className=\"is-long\">{t(w.line)}</small></span>"), "a phone shows the short line, a wider screen the long one");
   for (const k of ["Pick what to make", "Only on EasyMode", "How it's told", "Tap it to start"]) assert.ok(dict.split(`${JSON.stringify(k)}:`).length - 1 >= 5, k);
+  // (2026-11-26, that evening: the ways grid is gone — every way its own labelled row, saying what it is, its tag or ✦ Only on EasyMode)
+  assert.ok(ui.includes("<span>{t(sh.line)}</span>") && ui.includes("{sh.group === \"only\" ? <em className=\"fs-shelf-tag\">✦ {t(\"Only on EasyMode\")}</em> : <em className=\"fs-shelf-tag\">{t(sh.tag)}</em>}"));
+  assert.ok(!ui.includes("pickWay(w.key)") && !ui.includes("<WayCover "), "no way cards on the home");
 });
 
 test("THE ROW OPENS UNDER THE GROUP THAT WAS TAPPED (2026-11-26 — the owner: \"Selected at the top the type then outputs at the bottom - I think that is the confusing part\")", async () => {
@@ -297,12 +297,10 @@ test("THE ROW OPENS UNDER THE GROUP THAT WAS TAPPED (2026-11-26 — the owner: \
   const ui = fs.readFileSync(new URL("../app/routes/web.film.tsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   // the row is built once, and drawn right after the group holding the chosen way — the ladder's under the ladder, an
   // original's under "Only on EasyMode"
-  assert.ok(ui.includes('const wayGroup = wayCards.find((w) => w.key === wayOn)?.group || "ladder";'));
   assert.ok(ui.includes("const wayRow = (\n          <div key=\"row\" className={`fs-shelves${anim === \"in\" ? \" throw\" : \"\"}`}>"));
-  assert.equal(ui.split("wayGroup === g ? wayRow : null,").length - 1, 1);
-  const ways = ui.slice(ui.indexOf("<div className={`fs-ways${anim"), ui.indexOf("</>)}", ui.indexOf("<div className={`fs-ways${anim")));
-  assert.ok(ways.includes("wayGroup === g ? wayRow : null,"), "inside the ways, after each group");
   assert.equal(ui.split('className={`fs-shelves${anim === "in" ? " throw" : ""}`}').length - 1, 1, "one row in the markup");
+  // (that evening every row is drawn at once, in the ways' place)
+  assert.ok(ui.includes("{wayRow}"));
   // the ways fade by their groups, so the tapped poster in the row still pops; a wide screen wraps the row under both
   assert.ok(ui.includes(".fs-ways.throw > .fs-ways-grp{opacity:0;transform:scale(.97);pointer-events:none;}"));
   assert.ok(!ui.includes(".fs-ways.throw{opacity:0;"));

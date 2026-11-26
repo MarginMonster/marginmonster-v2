@@ -703,7 +703,7 @@ test("the Movie Maker's door to Found Footage: the Caught on Cam card — operat
   for (const f of [FOUND_FOOTAGE_DOOR.still, FOUND_FOOTAGE_DOOR.clip]) assert.ok(fs.existsSync(path.join(root, "public", f)), f);
   const ui = read("app", "routes", "web.film.tsx");
   assert.ok(ui.includes("foundFootage: isAdminEmail(account.email),"), "the same operator check as every admin-only format");
-  assert.ok(ui.includes("...(d.foundFootage ? [CAUGHT_ON_CAM] : []),") && ui.includes('{wayOn === "cam" && d.foundFootage && ('), "the card and its row: an operator's");
+  assert.ok(ui.includes("...(d.foundFootage ? [CAUGHT_ON_CAM] : []),") && ui.includes('{d.foundFootage && ('), "the card and its row: an operator's");
   assert.ok(ui.includes("href={`${FOUND_FOOTAGE_DOOR.href}?camera=${c.key}`}"), "each camera opens the builder on it");
   assert.ok(ui.includes("<LoopCover k={`ff-${c.key}`} still={c.still} clip={c.clip} />"));
   // (each camera's card has its own footage: the phone's is the smiling woman with the iPhone screen, the camcorder's the

@@ -104,7 +104,7 @@ test("a poster's key says which shelf it stands on, so the same hero pops only w
 
 test("the page: one map draws every shelf; a still poster opens its hero on the still rung, plays no loop, and says so", () => {
   // (2026-11-26, THE WAYS: the one map draws the CHOSEN way's row — the page calls heroShelves once, up top)
-  const block = between(page, "{shelves.filter((sh) => sh.key === wayOn).map((sh) => (", "{entered && (");
+  const block = between(page, "{shelves.filter((sh) => sh.key !== \"still\").map((sh) => (", "{entered && (");
   // the SAME single map — the still shelf is not a second block of markup
   assert.equal(count(page, "heroShelves("), 1);
   assert.equal(count(block, "{sh.heroes.map((h) => ("), 1);

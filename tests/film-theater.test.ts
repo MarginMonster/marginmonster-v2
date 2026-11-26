@@ -638,7 +638,7 @@ test("each shelf is ONE row, swiped sideways, in both themes: 2.3 posters on a p
   //  shelf's rung, its zoom key its shelf's (posterKey), chosen only while that rung is, "Still pictures" its note)
   for (const k of [
     // (2026-11-26, THE WAYS: one way's row at a time — the owner's "A")
-    "{shelves.filter((sh) => sh.key === wayOn).map((sh) => (",
+    "{shelves.filter((sh) => sh.key !== \"still\").map((sh) => (",
     "<section key={sh.key} className={`fs-shelf is-${sh.key}`} aria-labelledby={`fs-shelf-${sh.key}`}>",
     "<div className={`fs-fmtgrid${anim === \"in\" ? \" throw\" : \"\"}`} role=\"tablist\" aria-label={t(sh.name)}>",
     "{sh.heroes.map((h) => (",
@@ -647,7 +647,7 @@ test("each shelf is ONE row, swiped sideways, in both themes: 2.3 posters on a p
   ]) assert.equal(count(ui, k), 1, k);
   // (…and nothing under a poster: the way's card says how it is told, once — "This has become repetitive", the owner)
   assert.equal(count(ui, "className=\"fs-fmt-sub\""), 0);
-  const shelvesJsx = ui.slice(ui.indexOf("{shelves.filter((sh) => sh.key === wayOn).map((sh) => ("), ui.indexOf("{entered && ("));
+  const shelvesJsx = ui.slice(ui.indexOf("{shelves.filter((sh) => sh.key !== \"still\").map((sh) => ("), ui.indexOf("{entered && ("));
   // (2026-11-25: a wide screen's ARROWS sit beside a row that runs on — FS_SHELF_GO. They are for a mouse only:
   //  plain marks, hidden from a screen reader and out of the Tab order, and what moves a row is a CLICK on one —
   //  a function outside this markup. Nothing here moves a row by itself, and no poster leaves the Tab order.)
