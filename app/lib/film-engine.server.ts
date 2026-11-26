@@ -52,7 +52,7 @@ import { WHAT_FRIGHTENS, inheritPlaces, keepGuess, placeNamed, placesAsk, takePl
 import { ORIGINAL_CAST, castMoves, dealMarkThings, franchiseIn, markForFormat, markLead, markOf, markWriter, normalizeCastEntry, peelMark, scrubFranchise, setMarkIn, withMark } from "./character-mark";
 import { castEntry, sameCharacter } from "./story-picture";
 import { HORROR_SAFETY, IDEA_CHECK, IDEA_MAX, PREMISE_WINS, REAL_WORLD, STORY_SAFETY, chosenThreat } from "./premise-rules";
-import { DRAMA_BRIEF, GENRE_FILMS, genreTemplate, nudgeFor, startLine } from "./film-genres";
+import { DRAMA_BRIEF, GENRE_FILMS, backdropsOf, genreLook, genreTemplate, nudgeFor, startLine } from "./film-genres";
 // (2026-11-26) the anime maker: six drawn styles, each a told template of its own
 import { ANIME_STYLES, DRAWN_WORLD, animeBrief, animeTemplate } from "./anime-styles";
 import { tellerVisual } from "./character-series";
@@ -666,6 +666,10 @@ export async function previewFilmTreatment(opts: {
   // to its writer by a few examples DEALT for this film — a fixed example comes back as the story.
   const acted = !!tmpl.dialogue && !narrated;
   const actIdeas = acted ? eventIdeas(Math.random, 4, !!tmpl.childSafe) : [];
+  // …AND A NEW GENRE'S OWN LIGHT, with every place (film-genres.ts → genreLook); its WHERE example one of its own places,
+  // dealt — every acted film's was "a dim old diner at night". "" and the diner, as before, for every other template.
+  const lookWords = acted ? genreLook(tmpl.key) : "";
+  const whereEx = lookWords ? backdropsOf(tmpl.key)[Math.floor(Math.random() * backdropsOf(tmpl.key).length)].where : "a dim old diner at night, rain on the windows";
   // (the example a cast is described by carries a DEALT name: the one it used to carry, "Pip", came back
   //  as a character's name in story after story)
   const exName = fresh ? (tmpl.childSafe ? fresh.names.small[0] : fresh.names.f[0]) || "Pip" : "Pip";
@@ -882,7 +886,7 @@ export async function previewFilmTreatment(opts: {
     ? `\nWrite it as a SHORT FILM SCENE with CHARACTER DIALOGUE. Return EXACTLY ${scenes} consecutive SHOTS. Each shot has FOUR fields:\n` +
       `• VISUAL — ${happensBrief(actIdeas)}\n` +
       `• CAPTION — formatted EXACTLY as "NAME: what they say", ONE speaker per shot. Each line fills MOST of the ~10-second shot WITHOUT overrunning it: a two-sentence beat of about 15-18 words (~7-9 seconds of speech). This is a HARD window — NEVER a short one-liner (a line that doesn't fill the shot leaves dead air, which makes the AI voice stall or repeat words), and NEVER more than 18 words, because a longer line overruns the 10-second clip and gets cut off at the end. Count the words and stay inside 15-18. The speaker ALTERNATES shot to shot, building a real back-and-forth with a clear turn at the end; use the cast's names, and make each line a genuine REPLY to the one before it (never a non-sequitur). ONLY the two people in the shot ever speak: the NAME before the colon is always one of their two names, the same single word every time. Anyone else the story needs — a shopkeeper, a parent, a stranger — is talked ABOUT or stands silent in the background, and is never heard; when what they say or do matters, one of the two reports it (\"He says he can't thank us enough!\"). ${tmpl.key === "horror" && ends ? LINE_IN_EVERY_SHOT_BUT_THE_LAST : LINE_IN_EVERY_SHOT}\n` +
-      `• WHERE — the LOCATION this beat happens in, as a short vivid label (e.g. "a dim old diner at night, rain on the windows"). EVERY shot has one, and while the place stays the same it is the SAME words, letter for letter — other words are read as another place.\n` +
+      `• WHERE — the LOCATION this beat happens in, as a short vivid label (e.g. "${whereEx}"). EVERY shot has one, and while the place stays the same it is the SAME words, letter for letter — other words are read as another place.${lookWords ? ` Every WHERE says this film's light and time of day in its own words — ${lookWords}.` : ""}\n` +
       `• TONE — HOW this exact line is delivered: a short emotional direction for the voice (e.g. "coldly, with quiet menace", "voice rising in anger", "quietly, barely holding it together"). It must MATCH the words so the read is never flat or monotone.\n` +
       `${CAMERA_IS_DEALT}\n` +
       // (one scene of a long film: which places the film is set in, and whether it comes back to one, is its PLAN's)
@@ -982,6 +986,7 @@ export async function previewFilmTreatment(opts: {
       `\n${AGES_FIT_RELATION}` +
       genderLine +
       planBrief(way, { sizes: partSizes, ending, placesAsk: narrated ? PLACES_ARE : undefined }) +
+      (lookWords ? `Every place in "places" says this film's light and time of day in its own words — ${lookWords}.\n` : "") +
       freshLine +
       (tmpl.key === "horror" ? `${WHAT_FRIGHTENS}\n` : "") +
       // (a genre whose world is its own is never told today's real world — not in its plan either: film-genres.ts → ownWorld)

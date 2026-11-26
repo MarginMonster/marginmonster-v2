@@ -234,6 +234,8 @@ export function stagedTwoShot(o: {
   comp: string;
   /** a genre whose world is its own (Fantasy): clothed, never "today" — actedRealism */
   ownWorld?: boolean;
+  /** a NEW genre's light and colour (film-genres.ts → genreLook) */
+  look?: string;
 }): string {
   const stage = stagingPicture(o.staging);
   if (!stage) return "";
@@ -253,8 +255,11 @@ export function stagedTwoShot(o: {
   const moment = act
     ? ` THE MOMENT this frame is taken at: ${act} — everything it names (what somebody holds, what is being done, what is in the place) is IN the picture, seen the way the moment says it is seen, and well above the picture's bottom edge.${unheard}${soundless}${eyeline ? ` ${eyeline}` : ""} Draw the instant it BEGINS, before it is done, so that it can happen in the seconds that follow: ONE picture of ONE instant — never a split screen, panels or a before-and-after. Where the moment says how somebody is placed (standing, sitting, crouching, walking), the moment decides; the distance between the two, the camera and their faces stay as described above.`
     : "";
+  const look = o.cartoon ? "" : oneLine(o.look);
   const tail = o.cartoon
     ? `Clean cheerful cartoon lighting, soft candy colors, rounded friendly shapes, ${o.comp}, no on-screen text, no watermark.`
+    : look
+    ? `THE LOOK, in its light and colour only: ${look} — both of them in sharp focus, both faces well lit, ${o.comp}, no on-screen text, no watermark.`
     : `Cinematic filmic lighting, both of them in sharp focus, ${o.comp}, no on-screen text, no watermark.`;
   // (two who are RELATED, drawn from words alone, are told so — and their ages — in the picture of the two of
   //  them: kinNote. Anybody bound to a reference picture is drawn from it, and nothing is said about them here.)

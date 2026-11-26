@@ -44,6 +44,7 @@ import { letterboxCrop, parseCropdetect } from "./letterbox";
 import { coveredIfBanded } from "./full-frame.server";
 import { mirrorRender } from "./object-storage.server";
 import { filmShots, filmTemplate, ownCheckpoint, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
+import { genreLook } from "./film-genres";
 import { episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
 // PART 2 IS THE SAME FILM, CONTINUED (S10b, 2026-11-25 — film-series.ts: what an acted film records, and what Part N uses)
 import { carriedPlaceFor, carriedThreat, carryRecord, castWithCarry, opensWhereItEnded } from "./film-series";
@@ -941,7 +942,7 @@ export async function generateTestMovie(opts: {
     let castOk = true;
     for (let attempt = 0; attempt < 3; attempt++) {
       const staging = attempt === 2 && !url ? undefined : dealt;
-      const tryUrl = await removeLetterbox(await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA, faceB, descA: bibleFor(spkA), descB: bibleFor(spkB), nameA: nameOf(spkA), nameB: nameOf(spkB), lookA: faceA ? castLooks[firstName(spkA)] : undefined, lookB: faceB ? castLooks[firstName(spkB)] : undefined, creatureA: creatureNamed(spkA), creatureB: creatureNamed(spkB), staging, action, mood: tmpl.faceMood, setting: nightSetting(cleanSetting(where), opts.topic, action), style: twoStyle, aspect, thing: thingIn && threat ? { url: abs(threat.img) || threat.img, name: threat.name, look: threat.look } : null, ownWorld: tmpl.ownWorld }));
+      const tryUrl = await removeLetterbox(await renderSideBySideTwoShot({ roomRefUrl: roomRef, faceA, faceB, descA: bibleFor(spkA), descB: bibleFor(spkB), nameA: nameOf(spkA), nameB: nameOf(spkB), lookA: faceA ? castLooks[firstName(spkA)] : undefined, lookB: faceB ? castLooks[firstName(spkB)] : undefined, genreLook: genreLook(tmpl.key), creatureA: creatureNamed(spkA), creatureB: creatureNamed(spkB), staging, action, mood: tmpl.faceMood, setting: nightSetting(cleanSetting(where), opts.topic, action), style: twoStyle, aspect, thing: thingIn && threat ? { url: abs(threat.img) || threat.img, name: threat.name, look: threat.look } : null, ownWorld: tmpl.ownWorld }));
       // (a picture came back, or did not — either way the film is at work, and says so: see `say`)
       await say(alive);
       if (!tryUrl) continue;

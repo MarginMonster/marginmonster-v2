@@ -523,7 +523,8 @@ export type GenreFilm = {
   brief: string;
   /** …and of the story told by a NARRATOR */
   narrated: string;
-  /** the LOOK: light, lens, palette — said to the writer and to every picture */
+  /** the LOOK: light, lens, palette — said to the writer and to every picture (an ACTED film's writer and master
+   *  pictures are told its light and colour only: `genreLook`) */
   sceneHint: string;
   /** the score the track falls back to */
   musicHint: string;
@@ -645,4 +646,13 @@ export function genreTemplate<T extends { key: string; name: string; brief: stri
   if (g.defaultScenes) out.defaultScenes = g.defaultScenes;
   if (g.minScenes) out.minScenes = g.minScenes;
   return out;
+}
+
+/** A NEW GENRE'S LOOK FOR ITS ACTED FILM (2026-11-26): the light and colours of its sceneHint — the words between " — "
+ *  and the first ";" — with no lens (the staging frames the two: acted-staging.ts → CAMERA_IS_DEALT). "" for every
+ *  other template: Drama's, Horror's, Moral's and the Kids Cartoon's masters stay as they were tuned. */
+export function genreLook(tmplKey: string | null | undefined): string {
+  const g = GENRE_FILMS.find((x) => x.key === tmplKey);
+  if (!g) return "";
+  return (g.sceneHint.split(" — ")[1] || "").split(";")[0].replace(/,?\s*\ban? \d{2}mm lens\b[^,;]*/g, "").replace(/\s+/g, " ").trim();
 }

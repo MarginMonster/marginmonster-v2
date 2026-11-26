@@ -192,7 +192,14 @@ test("the master's whole prompt in a staging: the scene's moment IN the picture,
   assert.equal(crypto.createHash("sha256").update(classic, "utf8").digest("hex"), "e8bb6ae6d7bcac2b9832b103383a6bad3754a8571fa7cc0d306df40bc6dbc062", "the two-shot's own prompt is not to change with this");
   // (since 2026-11-25 the film's THING rides along too, by its own picture, where the place's first scene has it in view —
   //  acted-staging.ts → thingBound; tests/acted-sighting.test.ts)
-  assert.ok(img.includes("const staged = opts.staging ? stagedTwoShot({ staging: opts.staging, cartoon, setting, personA, personB, act: action.replace(/\\s+/g, \" \").trim().slice(0, 560), mood, consistency: consistencyNote, roomNote, faceNote, thingNote, comp, ownWorld: opts.ownWorld }) : \"\";"));
+  assert.ok(img.includes("const staged = opts.staging ? stagedTwoShot({ staging: opts.staging, cartoon, setting, personA, personB, act: action.replace(/\\s+/g, \" \").trim().slice(0, 560), mood, look: opts.genreLook, consistency: consistencyNote, roomNote, faceNote, thingNote, comp, ownWorld: opts.ownWorld }) : \"\";"));
+  // (…and since 2026-11-26 a NEW genre's light and colour, in place of the fixed lighting — film-genres.ts → genreLook:
+  //  "" for every other template, whose pictures stay as they were tuned)
+  assert.ok(stagedTwoShot({ staging: "apart", ...parts, look: "x" }).endsWith("THE LOOK, in its light and colour only: x — both of them in sharp focus, both faces well lit, vertical composition, no on-screen text, no watermark."));
+  assert.equal(stagedTwoShot({ staging: "apart", ...parts, look: "" }), stagedTwoShot({ staging: "apart", ...parts }));
+  assert.equal(stagedTwoShot({ staging: "apart", cartoon: true, ...parts, look: "x" }), stagedTwoShot({ staging: "apart", cartoon: true, ...parts }), "a cartoon is lit as a cartoon");
+  assert.ok(read("app", "lib", "film-dialogue.server.ts").includes("genreLook: genreLook(tmpl.key), creatureA: creatureNamed(spkA)"));
+  assert.ok(img.includes("? `THE LOOK, in its light and colour only: ${grade} — both faces well lit and sharp, ${comp}, no on-screen text, no watermark.`"), "the close two-shot too");
   // (…drawn on the good model first, the everyday one only if it will not: story-picture.ts → STORY_MODEL)
   assert.ok(img.includes("for (const m of [STORY_MODEL, STORY_LAST_MODEL]) {") && img.includes("try { url = await repRun(m, storyPictureInput(m, { prompt: staged || prompt, refs, aspect: ar }), 150_000); used = m; break; }"));
   // (…and a staged picture of a photographed film is told today's world, a lived-in home and what a shadow is)

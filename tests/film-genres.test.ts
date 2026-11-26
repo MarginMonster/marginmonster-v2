@@ -15,7 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  DRAMA_BRIEF, FILM_GENRES, GENRE_FILMS, IDEA_MIN_WORDS, backdropsOf, categoryOf, dealStarters, genreOf, genreTemplate, ideaWords, notesOf, nudgeFor, startLine, startersOf,
+  DRAMA_BRIEF, FILM_GENRES, GENRE_FILMS, IDEA_MIN_WORDS, backdropsOf, categoryOf, dealStarters, genreLook, genreOf, genreTemplate, ideaWords, notesOf, nudgeFor, startLine, startersOf,
 } from "../app/lib/film-genres.ts";
 import { FILM_HEROES, FORMER_HERO_NAMES, LOOP_MEDIA, TALL_STILL_MEDIA, heroName, heroOf, heroShelves } from "../app/lib/film-heroes.ts";
 import { isFormatName } from "../app/lib/film-series.ts";
@@ -233,7 +233,7 @@ test("the starter fallback fires only under three words", () => {
 
 test("the fallback is in the one place every unwritten film comes through, and the starter is kept", () => {
   const eng = read("app", "lib", "film-engine.server.ts");
-  assert.ok(eng.includes("import { DRAMA_BRIEF, GENRE_FILMS, genreTemplate, nudgeFor, startLine } from \"./film-genres\";"));
+  assert.ok(eng.includes("import { DRAMA_BRIEF, GENRE_FILMS, backdropsOf, genreLook, genreTemplate, nudgeFor, startLine } from \"./film-genres\";"));
   const fn = eng.slice(eng.indexOf("export async function previewFilmTreatment("), eng.indexOf("// ---- Assembly"));
   // never an episode (a series decides what happens next from its own recap), and only a story genre has starters
   // (…with nobody else's character in it, since 2026-11-26 — SPEC-S16, tests/character-mark.test.ts)
@@ -339,6 +339,26 @@ test("a genre is a promise about what happens and how it ends — and a look tha
   assert.deepEqual(GENRE_FILMS.filter((g) => g.faceMood).map((g) => g.key), ["comedy", "thriller", "action", "mystery"]);
   // DRAMA, sharpened: one relationship, a choice that costs, small actions, a decision and not a speech
   assert.ok(/^a short DRAMA, acted: ONE relationship under pressure/.test(DRAMA_BRIEF) && DRAMA_BRIEF.includes("a choice that will cost one of them something") && DRAMA_BRIEF.includes("small physical actions") && DRAMA_BRIEF.endsWith("It ends on a decision being MADE, never on a speech about it"));
+});
+
+test("a new genre's LOOK reaches its ACTED film: its light and colour, no lens — and nothing changes for any other", () => {
+  // (2026-11-26: the light and palette lived only in sceneHint, which an acted film's master and writer never saw —
+  //  every acted Comedy, Thriller or Romance was lit like the Drama Film, its WHERE example a night diner)
+  for (const g of GENRE_FILMS) {
+    const look = genreLook(g.key);
+    assert.ok(look.length >= 80 && look.length <= 220, `${g.key}: ${look.length}`);
+    assert.ok(!/mm lens/.test(look) && !look.includes(";"), `${g.key}: ${look}`);
+    for (const part of look.split(", ")) assert.ok(g.sceneHint.includes(part), `${g.key}: "${part}" is the look's own words`);
+  }
+  assert.equal(genreLook("comedy"), "bright even daylight or warm household lamps, clean saturated colours (warm yellow, sky blue, a red or two), everything in focus");
+  // Drama's, Horror's, Moral's and the Kids Cartoon's pictures stay as they were tuned
+  for (const k of ["testmovie", "horror", "moral", "kidstv", "", null]) assert.equal(genreLook(k), "", String(k));
+  // the engine: the writer of an acted film is told it with every place, and its WHERE example is one of its own places
+  const eng = read("app", "lib", "film-engine.server.ts");
+  assert.ok(eng.includes("const lookWords = acted ? genreLook(tmpl.key) : \"\";"));
+  assert.ok(eng.includes("const whereEx = lookWords ? backdropsOf(tmpl.key)[Math.floor(Math.random() * backdropsOf(tmpl.key).length)].where : \"a dim old diner at night, rain on the windows\";"));
+  assert.ok(eng.includes("(e.g. \"${whereEx}\"). EVERY shot has one") && eng.includes("${lookWords ? ` Every WHERE says this film's light and time of day in its own words — ${lookWords}.` : \"\"}\\n` +"));
+  assert.ok(eng.includes("(lookWords ? `Every place in \"places\" says this film's light and time of day in its own words — ${lookWords}.\\n` : \"\") +"));
 });
 
 test("every genre is on the shelves under its word: acted — and, but for Action, told", () => {
