@@ -169,8 +169,11 @@ export const ANIME_STYLES: readonly AnimeStyle[] = [
 export const ANIME_KEYS: readonly string[] = ANIME_STYLES.map((s) => s.key);
 
 const BY_KEY: Record<string, AnimeStyle> = Object.fromEntries(ANIME_STYLES.map((s) => [s.key, s]));
-/** The anime style a template key is — undefined for every other template. */
-export const animeStyleOf = (key: string | null | undefined): AnimeStyle | undefined => (key ? BY_KEY[key] : undefined);
+/** The anime style a template key is — undefined for every other template. (Its OWN keys only: a template key can
+ *  arrive from a form, and a plain object answers "constructor" or "toString" with a function — review of S15a,
+ *  2026-11-26.) */
+export const animeStyleOf = (key: string | null | undefined): AnimeStyle | undefined =>
+  key && Object.prototype.hasOwnProperty.call(BY_KEY, key) ? BY_KEY[key] : undefined;
 
 /** A style's whole look, as its template's `sceneHint`: its own words, then the tail every anime picture is told. */
 export const animeSceneHint = (s: AnimeStyle): string => `${s.look}; ${ANIME_TAIL}`;

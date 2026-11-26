@@ -59,6 +59,11 @@ test("six styles, each told as a movie category, each with its own poster word a
   // a style is found by its key, and nothing else is one
   assert.equal(animeStyleOf("animeink")?.card, "Dark Ink");
   for (const k of ["mystery", "testmovie", "anime", "", null, undefined]) assert.equal(animeStyleOf(k), undefined);
+  // (a key from a form that a plain object would answer with a function — no style, and no lead)
+  for (const k of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+    assert.equal(animeStyleOf(k), undefined, k);
+    assert.equal(drawnLead(k), "", k);
+  }
 });
 
 test("named in plain words: no studio, director, show, film or game — and no photograph in any look", () => {
@@ -226,6 +231,10 @@ test("THE WIRING: a drawn story's narrator, and its style said first in every on
   assert.ok(nar.indexOf("export const DEFAULT_NARRATOR: Record<string, string> = {") < nar.indexOf(loop) && nar.indexOf("  mystery: \"English_ManWithDeepVoice\",\n};") < nar.indexOf(loop));
   assert.ok(nar.indexOf(loop) < nar.indexOf("export const narratorFor = "));
   assert.ok(nar.includes("English_SereneWoman and Retro by English_ConfidentWoman") && nar.includes("LISTEN before trusting either"));
+  // (…and every kin HAS a voice in the literal the loop reads, so a style without its own is never left to the
+  //  generic fallback — the module cannot be loaded here: it opens the database)
+  const voices = nar.slice(nar.indexOf("export const DEFAULT_NARRATOR: Record<string, string> = {"), nar.indexOf(loop));
+  for (const s of ANIME_STYLES) assert.ok(new RegExp(`\\n  ${s.kin}: "English_[A-Za-z_]+",\\n`).test(voices), `${s.kin} has a narrator`);
   // `safe`: what every picture of the story is told first — the G-rating, and a drawn story's style
   assert.equal(count(nar, "const safe = "), 1);
   assert.ok(nar.includes("  const safe = `${tmpl.childSafe ? \"Wholesome, child-safe, G-rated, bright and friendly. \" : \"\"}${tmpl.drawn ? drawnLead(tmpl.key) : \"\"}`;"));
