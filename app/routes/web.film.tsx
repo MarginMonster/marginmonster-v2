@@ -61,6 +61,8 @@ import { LYRIC_HERO } from "../lib/film-heroes";
 import { FOUND_FOOTAGE_DOOR } from "../lib/film-heroes";
 // (2026-11-26) THE WAYS: the home's big cards — the ladder, then "Only on EasyMode" (Caught on Cam's cameras among them)
 import { CAUGHT_ON_CAM, wayParamOf, type WayArt, type WayKey } from "../lib/film-heroes";
+// (2026-11-26) THE GUIDE BOX's answer — where an idea would be made — and its starters and Found Footage handoff
+import { IDEA_HANDOFF_KEY, dealHeroStarters, packHandoff, routeIdea, type HeroStarter, type IdeaRoute } from "../lib/idea-route";
 import { LYRIC_LOOKS, RIGHTS_ASK, RIGHTS_LINE, RIGHTS_NOTE, lyricEtaMinutes, songTitleOf, type LyricLook, type LyricShape } from "../lib/lyric-video";
 import { castFromJobPayloads, episodeCardFor, latestEpisode, nextEpisodeCards, sameThing, seriesBriefOf, seriesKeyOf, type NextEpisodeCard, type SeriesBrief } from "../lib/film-series";
 import type { StoryToEdit } from "../lib/story-edit";
@@ -280,6 +282,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // THE WAY A LINK OPENS ON (?way=still|told|acted|anime|kids|sung|cam — film-heroes.ts → wayParamOf): read here so the
     // first paint is already right; a way this account is not offered falls back to the Story on the page
     openWay: wayParamOf(new URL(request.url).searchParams.get("way")),
+    // the day the guide box's three starters are dealt by — the server's, so the page never deals them twice
+    day: Math.floor(Date.now() / 86_400_000),
     hasPlan: !!shop.activePlan?.active,
     trialing: planTrialing(shop.activePlan),
     canFilm: capabilitiesFor(shop.activePlan).has("creatorvideo"),
@@ -2165,8 +2169,11 @@ export default function FilmStudio() {
   ];
   const [way, setWay] = useState<WayKey>(() => (d.openWay as WayKey | null) || "told");
   const wayOn: WayKey = wayCards.some((w) => w.key === way) ? way : (wayCards.find((w) => w.key === "told") || wayCards[0])?.key || "told";
+  // (a tapped way HOLDS: the guide box then guesses only the pick inside it — the member's own tap is never overruled)
+  const [wayHeld, setWayHeld] = useState(() => !!d.openWay);
   const pickWay = (k: WayKey) => {
     setWay(k);
+    setWayHeld(true);
     if (typeof window === "undefined") return;
     // …and the row it shows is brought into view (no navigation: the same page, one row swapped)
     window.requestAnimationFrame(() => {
@@ -2939,6 +2946,70 @@ export default function FilmStudio() {
     //  is on the hero, not the template)
     window.setTimeout(() => { if (key !== heroId) switchHero(key); if (rung) setPictures(rung); setEntered(true); setAnim(""); setZoomKey(null); }, reduce ? 0 : 400);
   };
+  /* THE GUIDE BOX (2026-11-26 — the owner: "I'm not really sure what the describe box at the top hero will be for, unless it
+   * guides user on page to actual prompt to use"). It IS the builder's own box, raised to the top: bound to the same
+   * `topic`, so whatever way into a builder is taken carries the idea. The line under it says WHERE it would be made
+   * (idea-route.ts → routeIdea: keywords — free, instant); a chip SHOWS that place (its card lit, its row below, the
+   * poster ringed); Start goes there — the poster's own path, enterFormat — or, for Caught on Cam, to Found Footage with
+   * the idea in this tab's sessionStorage. NOTHING is made or spent from here: the builder's Generate does that. */
+  const [starterRoute, setStarterRoute] = useState<{ text: string; route: IdeaRoute } | null>(null);
+  const [askUrge, setAskUrge] = useState(false);
+  const idea = topic.trim();
+  const guess: IdeaRoute = starterRoute && starterRoute.text === topic ? starterRoute.route : routeIdea(topic, { heroes, ways: wayCards.map((w) => w.key), current: wayOn, held: wayHeld });
+  const guessKey = !idea ? null : guess.way === "cam" ? `cam:${guess.camera || "house"}` : guess.heroId ? posterKey(guess.heroId, guess.rung) : null;
+  const guessWay = wayCards.find((w) => w.key === guess.way);
+  const guessPick = !idea ? null : guess.way === "cam" ? CAUGHT_ON_CAM.cameras.find((c) => c.key === (guess.camera || "house"))?.name || null
+    : guess.heroId ? (() => { const h = heroes.find((x) => x.id === guess.heroId); return h && (shelves.find((sh) => sh.key === guess.way)?.heroes.length || 0) > 1 ? h.card : null; })() : null;
+  const starters: HeroStarter[] = dealHeroStarters(wayCards.map((w) => w.key), d.day);
+  const showGuess = () => {
+    setWay(guess.way);
+    setWayHeld(false);
+    if (typeof window === "undefined") return;
+    window.requestAnimationFrame(() => {
+      const still = !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      document.querySelector(".fs-ways")?.scrollIntoView({ block: "start", behavior: still ? "auto" : "smooth" });
+    });
+  };
+  const startIdea = () => {
+    if (!idea) {
+      document.getElementById("fs-ask-in")?.focus();
+      setAskUrge(true);
+      window.setTimeout(() => setAskUrge(false), 900);
+      return;
+    }
+    if (guess.way === "cam") {
+      try { window.sessionStorage.setItem(IDEA_HANDOFF_KEY, packHandoff(idea, Date.now())); } catch { /* the camera is still the one asked for */ }
+      navigate(`/web/found-footage?camera=${guess.camera || "house"}`);
+      return;
+    }
+    if (!guess.heroId) { showGuess(); return; }
+    setWay(guess.way);
+    enterFormat(guess.heroId, guess.rung);
+  };
+  const pickStarter = (st: HeroStarter) => {
+    const shown = t(st.text);
+    setTopic(shown);
+    setStarterRoute({ text: shown, route: st.route });
+    setWayHeld(false);
+  };
+  // THE IDEA LANDS: a builder entered with words already in the box glides to that box and glows once, so the member
+  // SEES their words arrive (never for a next episode, an edit, or a builder already holding a script or pictures; the
+  // caret only where there is a mouse — a phone's keyboard never pops over the builder)
+  useEffect(() => {
+    if (!entered || !topic.trim() || series || editing || treatment || seeds) return;
+    const id = window.setTimeout(() => {
+      const box = document.getElementById("fs-topic-in") || document.getElementById("mm-topic-in");
+      if (!box) return;
+      const r = box.getBoundingClientRect();
+      const still = !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      if (r.top < 0 || r.bottom > window.innerHeight) box.scrollIntoView({ block: "center", behavior: still ? "auto" : "smooth" });
+      const wrap = box.closest(".mm-topic");
+      wrap?.classList.add("is-landed");
+      window.setTimeout(() => wrap?.classList.remove("is-landed"), 1600);
+      if (window.matchMedia?.("(pointer: fine)").matches) (box as HTMLElement).focus({ preventScroll: true });
+    }, 450);
+    return () => window.clearTimeout(id);
+  }, [entered]); // eslint-disable-line react-hooks/exhaustive-deps
   const exitFormat = () => {
     setAnim("out");
     window.setTimeout(() => { setEntered(false); setAnim(""); setLyricOn(false); }, 300);
@@ -4209,7 +4280,24 @@ export default function FilmStudio() {
         <div className="fs-head-copy">
           <span className="fs-head-eyebrow"><Ico n="film" size={13} /> {t("Easymode Studio")}</span>
           <b>{t("Make a movie.")} <em>{t("Just describe it.")}</em></b>
-          <span>{t("Pick a format, tell us the idea — we write it and film it. You just press go.")}</span>
+          {/* THE GUIDE BOX: the builder's own idea, raised to the top — it says where it would be made, and Start takes it
+              there. Nothing is made from here. */}
+          <form className="fs-ask" onSubmit={(e) => { e.preventDefault(); startIdea(); }}>
+            <input id="fs-ask-in" className="fs-ask-in" type="text" value={topic} maxLength={IDEA_MAX} autoComplete="off" enterKeyHint="go"
+              placeholder={t("Got an idea? Type it here")} aria-label={t("What's your movie about?")} aria-describedby="fs-ask-line"
+              onChange={(e) => { setTopic(e.target.value.replace(/[\r\n]+/g, " ")); if (!e.target.value.trim()) setWayHeld(false); }} />
+            <button type="submit" className="fs-ask-go">{t("Start")} <span aria-hidden="true">▶</span></button>
+          </form>
+          <span id="fs-ask-line" className="fs-ask-line" aria-live="polite">
+            {idea && guessWay ? (<>
+              {t("We'd make this:")}
+              <button type="button" className="fs-ask-pick is-way" onClick={showGuess}>{t(guessWay.name)} <span aria-hidden="true">▾</span></button>
+              {guessPick ? <button type="button" className="fs-ask-pick" onClick={showGuess}>{t(guessPick)} <span aria-hidden="true">▾</span></button> : null}
+            </>) : t("We'll take you to the right place with your idea in it. Nothing is made yet.")}
+          </span>
+          <div className={`fs-ask-ideas${askUrge ? " is-urge" : ""}`}>
+            {starters.map((st, i) => <button type="button" key={st.text} style={{ ["--i" as string]: i }} onClick={() => pickStarter(st)}>{t(st.text)}</button>)}
+          </div>
         </div>
         {/* what is playing — and a way straight into making one */}
         {(() => {
@@ -4313,7 +4401,7 @@ export default function FilmStudio() {
                 nothing under it (the way above says how it is told, once). A screen reader is still told the whole name,
                 its line and its note. A RUNG row (Picture Book) re-lists the Story's heroes and opens each ON THAT RUNG. */}
             {sh.heroes.map((h) => (
-              <button type="button" role="tab" key={h.id} className={`fs-fmt${zoomKey === posterKey(h.id, sh.rung) ? " zoom" : ""}${h.told === "narrated" ? " is-told" : ""}`}
+              <button type="button" role="tab" key={h.id} className={`fs-fmt${zoomKey === posterKey(h.id, sh.rung) ? " zoom" : ""}${h.told === "narrated" ? " is-told" : ""}${guessKey === posterKey(h.id, sh.rung) ? " is-guess" : ""}`}
                 aria-selected={heroId === h.id && (!sh.rung || pictures === sh.rung)} aria-label={[t(h.name), h.kick ? t(h.kick) : "", sh.rung === "still" ? t("Still pictures") : h.meta ? t(h.meta) : ""].filter(Boolean).join(" · ")} onClick={() => enterFormat(h.id, sh.rung)}>
                 <span className="fs-fmt-cover">
                   <LoopCover k={h.media} loop={sh.rung === "still" ? false : undefined} />
@@ -4356,7 +4444,8 @@ export default function FilmStudio() {
               </header>
           <div className={`fs-fmtgrid${anim === "in" ? " throw" : ""}`} role="tablist" aria-label={t(CAUGHT_ON_CAM.name)}>
             {CAUGHT_ON_CAM.cameras.map((c) => (
-              <a role="tab" aria-selected={false} key={c.key} data-cam={c.key} className="fs-fmt fs-door" href={`${FOUND_FOOTAGE_DOOR.href}?camera=${c.key}`} aria-label={[t(c.name), t(FOUND_FOOTAGE_DOOR.name)].join(" · ")}>
+              <a role="tab" aria-selected={false} key={c.key} data-cam={c.key} className={`fs-fmt fs-door${guessKey === `cam:${c.key}` ? " is-guess" : ""}`} href={`${FOUND_FOOTAGE_DOOR.href}?camera=${c.key}`} aria-label={[t(c.name), t(FOUND_FOOTAGE_DOOR.name)].join(" · ")}
+                onClick={() => { if (idea) { try { window.sessionStorage.setItem(IDEA_HANDOFF_KEY, packHandoff(idea, Date.now())); } catch { /* the camera is still the one asked for */ } } }}>
                 <span className="fs-fmt-cover">
                   <LoopCover k={`ff-${c.key}`} still={`/landing/ff-cam-${c.key}.jpg`} clip={`/landing/ff-cam-${c.key}.mp4`} />
                   <span className={`fs-fmt-ico ${FOUND_FOOTAGE_DOOR.tint}`} aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="14" height="12" rx="2" /><path d="M16 10l6-3v10l-6-3" /><circle cx="6" cy="9.5" r="1" /></svg></span>
@@ -7017,6 +7106,38 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-note-req{display:flex;align-items:center;justify-content:center;gap:7px;text-align:center;font-size:12.5px;font-weight:700;color:var(--green-d,#0A5E37);background:rgba(12,122,70,.07);border:1px solid #CDE8D9;border-radius:11px;padding:10px 13px;margin-top:0;}
 .mm-note-req svg{stroke:var(--green,#0C7A46);stroke-width:2;fill:none;flex:none;}
 @media (prefers-reduced-motion:reduce){.mm-go::after{animation:none;}.mm-card{transition:none;}}
+
+/* ───────── THE ASK — the guide box at the top (2026-11-26) ─────────
+   The builder's own idea, raised to the hero: a white box with Start, the line that says where it would be made (two
+   lines reserved, so typing never moves the starters), and three starters. Tap targets reach 44px. */
+.fs-ask{display:flex;align-items:center;gap:6px;margin-top:14px;padding:4px;border-radius:15px;background:rgba(255,255,255,.97);box-shadow:0 10px 28px rgba(0,0,0,.25);max-width:520px;}
+.fs-ask:focus-within{box-shadow:0 0 0 3px #8FE9BC,0 10px 28px rgba(0,0,0,.25);}
+.fs-ask-in{flex:1;min-width:0;height:44px;border:0;background:transparent;padding:0 12px;font:500 16px/1.2 Poppins,system-ui,sans-serif;color:#14201A;outline:none;}
+.fs-ask-in::placeholder{color:#6B756F;}
+.fs-ask-go{flex:none;min-height:44px;padding:0 18px;border:0;border-radius:11px;background:#0C7A46;color:#fff;font:800 15px/1 Poppins,system-ui,sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:7px;}
+.fs-ask-go:hover{background:#0A6A3C;}
+.fs-head-copy>.fs-ask-line{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-height:calc(1.5em * 2);max-width:520px;margin-top:8px;}
+.fs-ask-pick{position:relative;min-height:30px;padding:4px 11px;border:0;border-radius:999px;background:#F3D98C;color:#14201A;font:700 12.5px/1 Poppins,system-ui,sans-serif;cursor:pointer;}
+.fs-ask-pick.is-way{background:#FDFCF7;color:#0A5E37;}
+.fs-ask-pick::after{content:"";position:absolute;inset:-7px -3px;}
+.fs-ask-ideas{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;padding-block:4px;max-width:560px;}
+.fs-ask-ideas button{position:relative;min-height:36px;padding:6px 13px;border:1px solid rgba(255,255,255,.28);border-radius:999px;background:rgba(255,255,255,.12);color:#fff;font:500 12.5px/1.2 Poppins,system-ui,sans-serif;cursor:pointer;}
+.fs-ask-ideas button:hover{background:rgba(255,255,255,.2);}
+.fs-ask-ideas button::after{content:"";position:absolute;inset:-4px 0;}
+.fs-ask-ideas.is-urge button{animation:fk-stir .5s ease calc(var(--i,0) * 70ms) 1 backwards;}
+.fs-shelf .fs-fmt.is-guess{box-shadow:0 0 0 3px var(--shelf),0 12px 24px -12px rgba(20,32,26,.4);}
+.mm-topic.is-landed{animation:fsLand 1.4s ease 1;}
+@keyframes fsLand{0%{box-shadow:0 0 0 0 rgba(18,168,94,.55);}40%{box-shadow:0 0 0 6px rgba(18,168,94,.35);}100%{box-shadow:0 0 0 0 rgba(18,168,94,0);}}
+@media(max-width:640px){
+  .fs-ask,.fs-head-copy>.fs-ask-line,.fs-ask-ideas{max-width:none;width:calc(100vw - 68px);}
+  .fs-ask-ideas{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;}
+  .fs-ask-ideas::-webkit-scrollbar{display:none;}
+  .fs-ask-ideas button{flex:none;}
+}
+@media(prefers-reduced-motion:reduce){
+  .fs-ask-ideas.is-urge button{animation:none;}
+  .mm-topic.is-landed{animation:none;box-shadow:0 0 0 2px rgba(12,122,70,.4);}
+}
 
 /* ───────── THE WAYS — big cards: the ladder, then "Only on EasyMode" (2026-11-26, the owner's "A") ─────────
    One tap shows that way's row below. The ladder reads left to right, cheapest to most cinematic, with its rung dots;

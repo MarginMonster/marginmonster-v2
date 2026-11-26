@@ -642,7 +642,7 @@ test("each shelf is ONE row, swiped sideways, in both themes: 2.3 posters on a p
     "<section key={sh.key} className={`fs-shelf is-${sh.key}`} aria-labelledby={`fs-shelf-${sh.key}`}>",
     "<div className={`fs-fmtgrid${anim === \"in\" ? \" throw\" : \"\"}`} role=\"tablist\" aria-label={t(sh.name)}>",
     "{sh.heroes.map((h) => (",
-    "<button type=\"button\" role=\"tab\" key={h.id} className={`fs-fmt${zoomKey === posterKey(h.id, sh.rung) ? \" zoom\" : \"\"}${h.told === \"narrated\" ? \" is-told\" : \"\"}`}\n                aria-selected={heroId === h.id && (!sh.rung || pictures === sh.rung)} aria-label={[t(h.name), h.kick ? t(h.kick) : \"\", sh.rung === \"still\" ? t(\"Still pictures\") : h.meta ? t(h.meta) : \"\"].filter(Boolean).join(\" · \")} onClick={() => enterFormat(h.id, sh.rung)}>",
+    "<button type=\"button\" role=\"tab\" key={h.id} className={`fs-fmt${zoomKey === posterKey(h.id, sh.rung) ? \" zoom\" : \"\"}${h.told === \"narrated\" ? \" is-told\" : \"\"}${guessKey === posterKey(h.id, sh.rung) ? \" is-guess\" : \"\"}`}\n                aria-selected={heroId === h.id && (!sh.rung || pictures === sh.rung)} aria-label={[t(h.name), h.kick ? t(h.kick) : \"\", sh.rung === \"still\" ? t(\"Still pictures\") : h.meta ? t(h.meta) : \"\"].filter(Boolean).join(\" · \")} onClick={() => enterFormat(h.id, sh.rung)}>",
     "<span className=\"fs-fmt-label\"><b>{t(h.card)}</b></span>",
   ]) assert.equal(count(ui, k), 1, k);
   // (…and nothing under a poster: the way's card says how it is told, once — "This has become repetitive", the owner)

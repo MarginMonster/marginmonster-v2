@@ -9,6 +9,18 @@
 import type { UiLang } from "./ui-i18n";
 
 const es: Record<string, string> = {
+  // (2026-11-26) THE GUIDE BOX at the top of the Movie Maker, and its starters
+  "Got an idea? Type it here": "¿Tienes una idea? Escríbela aquí",
+  "We'd make this:": "Lo haríamos así:",
+  "We'll take you to the right place with your idea in it. Nothing is made yet.": "Te llevamos al lugar correcto con tu idea ya escrita. Todavía no se hace nada.",
+  "A night guard hears skates after closing": "Un vigilante oye patines tras el cierre",
+  "Two sisters, one house, one will": "Dos hermanas, una casa, un testamento",
+  "A lighthouse keeper finds a 1952 letter": "Un farero encuentra una carta de 1952",
+  "A best man loses the rings": "El padrino pierde los anillos",
+  "The getaway driver never shows up": "El conductor de la fuga nunca aparece",
+  "Caught on a doorbell cam at 3 AM": "Grabado por un timbre con cámara a las 3",
+  "A bedtime cartoon about a brave little bus": "Un dibujo para dormir: un autobús valiente",
+  "A summer song for a drive at dusk": "Una canción de verano para el atardecer",
   // (2026-11-26) THE WAYS on the Movie Maker home — the ladder and "Only on EasyMode"
   "Pick what to make": "Elige qué hacer",
   "Only on EasyMode": "Solo en EasyMode",
@@ -3625,6 +3637,18 @@ const es: Record<string, string> = {
 };
 
 const fr: Record<string, string> = {
+  // (2026-11-26) THE GUIDE BOX at the top of the Movie Maker, and its starters
+  "Got an idea? Type it here": "Une idée ? Écris-la ici",
+  "We'd make this:": "On en ferait :",
+  "We'll take you to the right place with your idea in it. Nothing is made yet.": "On t'emmène au bon endroit, ton idée déjà écrite. Rien n'est encore créé.",
+  "A night guard hears skates after closing": "Un gardien entend des patins après la fermeture",
+  "Two sisters, one house, one will": "Deux sœurs, une maison, un testament",
+  "A lighthouse keeper finds a 1952 letter": "Un gardien de phare trouve une lettre de 1952",
+  "A best man loses the rings": "Le témoin perd les alliances",
+  "The getaway driver never shows up": "Le chauffeur du casse ne vient jamais",
+  "Caught on a doorbell cam at 3 AM": "Filmé par une sonnette à 3 h du matin",
+  "A bedtime cartoon about a brave little bus": "Un dessin animé du soir : un petit bus courageux",
+  "A summer song for a drive at dusk": "Une chanson d'été pour rouler au crépuscule",
   // (2026-11-26) THE WAYS on the Movie Maker home — the ladder and "Only on EasyMode"
   "Pick what to make": "Choisis quoi créer",
   "Only on EasyMode": "Seulement sur EasyMode",
@@ -7222,6 +7246,18 @@ const fr: Record<string, string> = {
 };
 
 const de: Record<string, string> = {
+  // (2026-11-26) THE GUIDE BOX at the top of the Movie Maker, and its starters
+  "Got an idea? Type it here": "Eine Idee? Schreib sie hier",
+  "We'd make this:": "Wir würden daraus machen:",
+  "We'll take you to the right place with your idea in it. Nothing is made yet.": "Wir bringen dich an die richtige Stelle, deine Idee schon drin. Noch wird nichts gemacht.",
+  "A night guard hears skates after closing": "Ein Wachmann hört nach Feierabend Rollschuhe",
+  "Two sisters, one house, one will": "Zwei Schwestern, ein Haus, ein Testament",
+  "A lighthouse keeper finds a 1952 letter": "Ein Leuchtturmwärter findet einen Brief von 1952",
+  "A best man loses the rings": "Der Trauzeuge verliert die Ringe",
+  "The getaway driver never shows up": "Der Fluchtfahrer taucht nie auf",
+  "Caught on a doorbell cam at 3 AM": "Um 3 Uhr nachts von der Türklingel gefilmt",
+  "A bedtime cartoon about a brave little bus": "Ein Gute-Nacht-Cartoon über einen mutigen Bus",
+  "A summer song for a drive at dusk": "Ein Sommerlied für eine Fahrt in der Dämmerung",
   // (2026-11-26) THE WAYS on the Movie Maker home — the ladder and "Only on EasyMode"
   "Pick what to make": "Wähle, was du machst",
   "Only on EasyMode": "Nur bei EasyMode",
@@ -10829,6 +10865,18 @@ const de: Record<string, string> = {
 };
 
 const zh: Record<string, string> = {
+  // (2026-11-26) THE GUIDE BOX at the top of the Movie Maker, and its starters
+  "Got an idea? Type it here": "有想法吗？写在这里",
+  "We'd make this:": "我们会做成：",
+  "We'll take you to the right place with your idea in it. Nothing is made yet.": "我们会带你到合适的地方，你的想法已经填好。现在还不会制作任何东西。",
+  "A night guard hears skates after closing": "夜班保安在打烊后听到溜冰声",
+  "Two sisters, one house, one will": "两姐妹，一栋房子，一份遗嘱",
+  "A lighthouse keeper finds a 1952 letter": "灯塔看守人发现一封1952年的信",
+  "A best man loses the rings": "伴郎把戒指弄丢了",
+  "The getaway driver never shows up": "接应的司机始终没有出现",
+  "Caught on a doorbell cam at 3 AM": "凌晨三点被门铃摄像头拍下",
+  "A bedtime cartoon about a brave little bus": "睡前动画：一辆勇敢的小巴士",
+  "A summer song for a drive at dusk": "一首适合黄昏兜风的夏日歌曲",
   // (2026-11-26) THE WAYS on the Movie Maker home — the ladder and "Only on EasyMode"
   "Pick what to make": "选择要制作的内容",
   "Only on EasyMode": "仅在 EasyMode",
@@ -14487,6 +14535,18 @@ const zh: Record<string, string> = {
 };
 
 const ur: Record<string, string> = {
+  // (2026-11-26) THE GUIDE BOX at the top of the Movie Maker, and its starters
+  "Got an idea? Type it here": "کوئی خیال ہے؟ یہاں لکھیں",
+  "We'd make this:": "ہم اسے یوں بنائیں گے:",
+  "We'll take you to the right place with your idea in it. Nothing is made yet.": "ہم آپ کو صحیح جگہ لے جائیں گے، آپ کا خیال پہلے سے لکھا ہوا۔ ابھی کچھ نہیں بنتا۔",
+  "A night guard hears skates after closing": "ایک چوکیدار بندش کے بعد اسکیٹس کی آواز سنتا ہے",
+  "Two sisters, one house, one will": "دو بہنیں، ایک گھر، ایک وصیت",
+  "A lighthouse keeper finds a 1952 letter": "ایک لائٹ ہاؤس کیپر کو 1952 کا خط ملتا ہے",
+  "A best man loses the rings": "دولہے کا دوست انگوٹھیاں کھو دیتا ہے",
+  "The getaway driver never shows up": "فرار کا ڈرائیور کبھی نہیں آتا",
+  "Caught on a doorbell cam at 3 AM": "رات 3 بجے ڈور بیل کیمرے میں قید",
+  "A bedtime cartoon about a brave little bus": "سونے سے پہلے کا کارٹون: ایک بہادر ننھی بس",
+  "A summer song for a drive at dusk": "شام کی سیر کے لیے گرمیوں کا ایک گانا",
   // (2026-11-26) THE WAYS on the Movie Maker home — the ladder and "Only on EasyMode"
   "Pick what to make": "منتخب کریں کیا بنانا ہے",
   "Only on EasyMode": "صرف EasyMode پر",
