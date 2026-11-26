@@ -238,6 +238,9 @@ test("the words: what the writer and the pictures are told", () => {
   }
   assert.ok(moveLine("Kai", "the Gale", { drawn: false, childSafe: true }).endsWith(" It is a game: nobody is hit and nothing breaks."));
   assert.ok(moveLine("Kai", "the Gale", { drawn: true, childSafe: false }).includes("no second panel, no words"));
+  // (the first drawn move came back with the blade already in the crate, a white flash and sparks — LOOKED at, 2026-11-26)
+  assert.ok(moveLine("Kai", "the Gale", { drawn: true, childSafe: false }).includes("around it — never a flash, sparks, a glow or a beam of light. Nobody is struck or hurt — it is the instant before it lands, and nothing has been hit yet."));
+  assert.ok(moveLine("Kai", "the Gale", { drawn: false, childSafe: false }).includes("it is the instant before it lands, and nothing has been hit yet."));
   // the lead, the tag's form, the chosen cast, the dealt name
   assert.ok(photo.startsWith("WHAT THEY ALWAYS HAVE. Each lead of this story has ONE thing they always have with them — worn or carried ("));
   assert.ok(photo.includes(`exactly so: [always: … | move: …] — leave out a part they do not have. An entry that already has one keeps it word for word.`));

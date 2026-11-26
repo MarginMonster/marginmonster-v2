@@ -452,10 +452,14 @@ export const markLine = (name: string, has: string, n: number): string => `${nam
  *  aimed at what it is aimed at and never at the lens (NO_LENS and the lens check would redraw a hero posing to camera),
  *  and nobody hurt — the instant before it lands. Drawn: anime's own effects, drawn wind and speed lines, one picture,
  *  no lettering. Photoreal: a stunt performer's real move frozen by a fast shutter (the Action look's own words), nothing
- *  glowing or appearing from nowhere — NOTHING_GLOWS, HORROR_CLIP_REAL, Fantasy's "no visual effects". */
+ *  glowing or appearing from nowhere — NOTHING_GLOWS, HORROR_CLIP_REAL, Fantasy's "no visual effects".
+ *  (…and in a drawn one, "never a flash, sparks, a glow or a beam of light", and in both "nothing has been hit yet":
+ *   the first drawn move made for this, 2026-11-26 — a TEST mechanic's leaping stroke at a falling crate, Neon City —
+ *   came back with the wooden sword already IN the crate, a white flash bursting from it and orange sparks at the crane
+ *   hook. Told the same with these words, it came back as the instant before the blow — tests/character-mark.test.ts.) */
 export function moveLine(name: string, move: string, o: { drawn: boolean; childSafe: boolean }): string {
   const line = o.drawn
-    ? `This picture is ${name}'s special move, ${move}: drawn at its peak, one frozen instant with ${name}'s whole body in it, aimed at what the move is aimed at and never at the viewer, with drawn speed lines and a swirl of drawn wind, dust, water or leaves around it. Nobody is struck or hurt — it is the instant before it lands. One picture: no second panel, no words.`
-    : `This picture is ${name}'s special move, ${move}: a real move a trained stunt performer could do, caught at its peak by a fast shutter, with ${name}'s whole body in it, aimed at what the move is aimed at and never at the camera. Nothing glows and nothing appears from nowhere: no beam, no sparks, no trail of light, no magic — only the body, what ${name} always has, and what the move stirs (dust, water, leaves, a door). Nobody is struck or hurt — it is the instant before it lands.`;
+    ? `This picture is ${name}'s special move, ${move}: drawn at its peak, one frozen instant with ${name}'s whole body in it, aimed at what the move is aimed at and never at the viewer, with drawn speed lines and a swirl of drawn wind, dust, water or leaves around it — never a flash, sparks, a glow or a beam of light. Nobody is struck or hurt — it is the instant before it lands, and nothing has been hit yet. One picture: no second panel, no words.`
+    : `This picture is ${name}'s special move, ${move}: a real move a trained stunt performer could do, caught at its peak by a fast shutter, with ${name}'s whole body in it, aimed at what the move is aimed at and never at the camera. Nothing glows and nothing appears from nowhere: no beam, no sparks, no trail of light, no magic — only the body, what ${name} always has, and what the move stirs (dust, water, leaves, a door). Nobody is struck or hurt — it is the instant before it lands, and nothing has been hit yet.`;
   return o.childSafe ? `${line} It is a game: nobody is hit and nothing breaks.` : line;
 }
