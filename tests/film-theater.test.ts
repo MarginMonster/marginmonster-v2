@@ -874,7 +874,7 @@ test("in the dark the Next-episode cards are tickets under a sign in gold — an
   assert.deepEqual(props(pseudo[0].body), ["background", "border-color"]);
   // the shelves' words are not a theme's to change: three shelves, their names, lines and tags
   assert.deepEqual(heroShelves(FILM_HEROES).map((s) => [s.name, s.tag, s.line]), [
-    ["Stories", "Narrated", "A narrator tells it over moving pictures · ready in minutes"],
+    ["Stories", "Narrated", "A narrator tells it over moving pictures or cheaper stills"],
     ["Films", "Acted", "Actors speak the lines on camera"],
     ["Music videos", "Sung", "Your artist sings on camera"],
   ]);

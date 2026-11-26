@@ -154,10 +154,16 @@ export function heroesFor(templateKeys: string[], narratableKeys: string[]): Fil
  * with a photo of that grid: "Narrated and acted need segregated in an attractive way my friend, currently
  * it's a bit confusing without clicking through". So the grid is three shelves, and each says in a line what
  * every poster on it has in common — before anything is clicked. The stories first: they are ready in
- * minutes. (Which shelf leads is his to change — the order of `SHELVES` is the order on the page.) */
+ * minutes. (Which shelf leads is his to change — the order of `SHELVES` is the order on the page.)
+ * THE STORIES' LINE SAYS BOTH RUNGS (2026-11-25). It said "A narrator tells it over moving pictures · ready in
+ * minutes" — and a story can be told over its STILL pictures too, the cheapest thing the Movie Maker makes
+ * (film-length.ts → 1 token a second against 2.5). The owner, with a photo of this heading: "Stories narrated moving
+ * pictures - we also need the timeless pictures with narration as an extremely cheap base tier". So it names both,
+ * and which costs least; each poster under it still says "narrated in minutes", and the builder's Length step is
+ * where the two are chosen, each with its own estimate. */
 export type HeroShelf = { key: "told" | "acted" | "sung"; name: string; tag: string; line: string; heroes: FilmHero[] };
 const SHELVES: ReadonlyArray<Omit<HeroShelf, "heroes"> & { has: (h: FilmHero) => boolean }> = [
-  { key: "told", name: "Stories", tag: "Narrated", line: "A narrator tells it over moving pictures · ready in minutes", has: (h) => h.told === "narrated" },
+  { key: "told", name: "Stories", tag: "Narrated", line: "A narrator tells it over moving pictures or cheaper stills", has: (h) => h.told === "narrated" },
   { key: "acted", name: "Films", tag: "Acted", line: "Actors speak the lines on camera", has: (h) => h.told === "acted" },
   { key: "sung", name: "Music videos", tag: "Sung", line: "Your artist sings on camera", has: (h) => h.told === null },
 ];

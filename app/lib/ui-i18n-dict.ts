@@ -9,6 +9,7 @@
 import type { UiLang } from "./ui-i18n";
 
 const es: Record<string, string> = {
+  "A narrator tells it over moving pictures or cheaper stills": "Un narrador la cuenta sobre imágenes en movimiento o fijas, más baratas",
   "Picked up again after a restart": "Retomado tras un reinicio",
   "Should be night": "Debería ser de noche",
   "Continue this footage — the next night, on the same camera": "Continúa este metraje: la noche siguiente, con la misma cámara",
@@ -3577,6 +3578,7 @@ const es: Record<string, string> = {
 };
 
 const fr: Record<string, string> = {
+  "A narrator tells it over moving pictures or cheaper stills": "Un narrateur la raconte sur des images animées, ou fixes et moins chères",
   "Picked up again after a restart": "Repris après un redémarrage",
   "Should be night": "Devrait être la nuit",
   "Continue this footage — the next night, on the same camera": "Continue ces images : la nuit suivante, avec la même caméra",
@@ -7126,6 +7128,7 @@ const fr: Record<string, string> = {
 };
 
 const de: Record<string, string> = {
+  "A narrator tells it over moving pictures or cheaper stills": "Ein Erzähler erzählt sie zu bewegten Bildern oder günstigeren Standbildern",
   "Picked up again after a restart": "Nach einem Neustart fortgesetzt",
   "Should be night": "Sollte Nacht sein",
   "Continue this footage — the next night, on the same camera": "Dieses Material fortsetzen: die nächste Nacht, mit derselben Kamera",
@@ -10685,6 +10688,7 @@ const de: Record<string, string> = {
 };
 
 const zh: Record<string, string> = {
+  "A narrator tells it over moving pictures or cheaper stills": "旁白配着动态画面讲述，或用更便宜的静态画面",
   "Picked up again after a restart": "重启后已继续制作",
   "Should be night": "应该是夜晚",
   "Continue this footage — the next night, on the same camera": "接着拍这段录像：下一夜，同一台摄像机",
@@ -14296,6 +14300,7 @@ const zh: Record<string, string> = {
 };
 
 const ur: Record<string, string> = {
+  "A narrator tells it over moving pictures or cheaper stills": "ایک راوی اسے متحرک تصویروں پر سناتا ہے، یا سستی ساکن تصویروں پر",
   "Picked up again after a restart": "ری اسٹارٹ کے بعد دوبارہ جاری",
   "Should be night": "رات ہونی چاہیے",
   "Continue this footage — the next night, on the same camera": "اس فوٹیج کو آگے بڑھائیں: اگلی رات، اسی کیمرے سے",

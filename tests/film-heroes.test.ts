@@ -215,7 +215,14 @@ test("the posters stand on three shelves — told, acted, sung — and each says
   assert.equal(new Set(shelves.flatMap((s) => s.heroes.map((h) => h.id))).size, FILM_HEROES.length);
   assert.ok(shelves[0].heroes.every((h) => h.told === "narrated") && shelves[1].heroes.every((h) => h.told === "acted") && shelves[2].heroes.every((h) => h.told === null));
   // the line under each name is what nobody should have to click to learn
-  assert.ok(/narrator/i.test(shelves[0].line) && /minutes/.test(shelves[0].line));
+  // (the Stories' line said "ready in minutes" until 2026-11-25; every poster on it still says "narrated in minutes".
+  //  It now names BOTH rungs of a told story and which costs least — the owner: "we also need the timeless pictures
+  //  with narration as an extremely cheap base tier")
+  assert.ok(/narrator/i.test(shelves[0].line) && /moving/.test(shelves[0].line) && /still/.test(shelves[0].line) && /cheaper/.test(shelves[0].line));
+  assert.ok(shelves[0].heroes.every((h) => /minutes/.test(h.meta)), "how soon a story is ready is said on each of its posters");
+  // (two lines of a phone's heading at most, as the line it replaced: "…moving or still pictures · stills are cheapest"
+  //  ran to three at 390 px, seen on the TEST page)
+  assert.ok(shelves[0].line.length <= 58, "a heading's line, not a paragraph");
   assert.ok(/actors/i.test(shelves[1].line) && /camera/.test(shelves[1].line));
   assert.ok(/sings/.test(shelves[2].line));
   // a page that offers fewer formats shows fewer shelves — never an empty one
