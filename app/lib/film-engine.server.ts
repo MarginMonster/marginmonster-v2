@@ -44,7 +44,7 @@ import { MOTION_GENTLE, MOTION_KEEPS_CAST, MOTION_NEGATIVE, fitFilter, fitScenes
 import { lyricLinesOf, sceneLineTimes } from "./lyric-sync";
 import { ORIGINAL_LYRICS_RULE } from "./lyrics-rules";
 import { episodeTitle, seriesWriterBrief, type SeriesBrief } from "./film-series";
-import { LINE_WORDS_MAX, fitAsk, linesTooLong, saidWords, takeRewrites } from "./dialogue-fit";
+import { LINE_WORDS_MAX, LINE_WORDS_SHORT, fitAsk, growAsk, linesTooLong, linesTooShort, saidWords, takeLonger, takeRewrites } from "./dialogue-fit";
 import { takeSeen, unseenAsk, unseenLines } from "./dialogue-cast";
 // (2026-11-24) a told story's places: a scene set at one says so in its own words
 import { WHAT_FRIGHTENS, inheritPlaces, keepGuess, placeNamed, placesAsk, takePlaces } from "./story-picture";
@@ -1278,6 +1278,28 @@ export async function previewFilmTreatment(opts: {
         const why = e instanceof Error ? e.message.slice(0, 140) : String(e);
         console.error(`[film] the long lines could not be rewritten, kept as written: ${why}`);
         lineNote = { was: long.map((i) => saidWords(written[i])), now: long.map((i) => saidWords(written[i])), note: `a rewrite could not be made: ${why}` };
+      }
+    }
+  }
+  // …AND A LINE TOO SHORT FOR ITS SHOT, in a NEW GENRE (dialogue-fit.ts → linesTooShort): no take is shorter than five
+  // seconds, and a short line leaves the slack the engine pads with silence or looped words. Sent back once at three
+  // LONGER lengths; any trouble and the lines stay as written. (Drama, Horror, Moral and Kids are left as tuned.)
+  if (tmpl.dialogue && !narrated && GENRE_FILMS.some((g) => g.key === tmpl.key)) {
+    const written = list.map((s) => s.caption || "");
+    const short = linesTooShort(written);
+    if (short.length) {
+      try {
+        const raw = await anthropicText(growAsk(written, short), {
+          model: "claude-sonnet-5", maxTokens: 1500,
+          jsonSchema: { name: "dialogue_grow", schema: { type: "object", properties: { lines: { type: "array", items: { type: "array", items: { type: "string" } } } }, required: ["lines"], additionalProperties: false } },
+        });
+        const next = takeLonger(written, short, (JSON.parse(raw) as { lines?: unknown }).lines);
+        const took = short.filter((i) => next[i] !== written[i]);
+        console.log(`[film] ${short.length} line${short.length === 1 ? "" : "s"} under ${LINE_WORDS_SHORT} words (${short.map((i) => saidWords(written[i])).join(", ")}) — ${took.length} rewritten longer (${took.map((i) => saidWords(next[i])).join(", ") || "none taken"})`);
+        list = list.map((s, i) => (next[i] && next[i] !== written[i] ? { ...s, caption: next[i] } : s));
+        lineNote = { was: [...(lineNote?.was || []), ...short.map((i) => saidWords(written[i]))], now: [...(lineNote?.now || []), ...short.map((i) => saidWords(next[i]))], ...(lineNote?.note ? { note: lineNote.note } : took.length < short.length ? { note: `${short.length - took.length} of ${short.length} short lines had no usable longer version` } : {}) };
+      } catch (e) {
+        console.error(`[film] the short lines could not be rewritten, kept as written: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
       }
     }
   }

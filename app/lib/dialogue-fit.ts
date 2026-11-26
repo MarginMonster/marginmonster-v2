@@ -96,3 +96,58 @@ export function takeRewrites(captions: ReadonlyArray<string | null | undefined>,
     return pickLine(orig, Array.isArray(r) ? r : [r]);
   });
 }
+
+/** A line with fewer spoken words than this goes back too (2026-11-26). No take is shorter than five seconds
+ *  (speech-meter.ts → CLIP_MIN_SECONDS) and a line under ten words does not fill one: the slack is what the engine
+ *  pads with silence or looped words. */
+export const LINE_WORDS_SHORT = 10;
+/** The three lengths every short line is asked for, in words. */
+export const LINE_LONGER: readonly [number, number, number] = [14, 16, 18];
+
+/** The lines that are too short, by position. A wordless shot and a script with no spaces are left alone. */
+export function linesTooShort(captions: ReadonlyArray<string | null | undefined>): number[] {
+  const out: number[] = [];
+  captions.forEach((c, i) => {
+    if (!c || CJK.test(c)) return;
+    const n = saidWords(c);
+    if (n > 0 && n < LINE_WORDS_SHORT) out.push(i);
+  });
+  return out;
+}
+
+/** The one request for the short ones: every line in order, the short ones marked, each at three LONGER lengths. */
+export function growAsk(captions: ReadonlyArray<string | null | undefined>, short: ReadonlyArray<number>): string {
+  const [a, b, c] = LINE_LONGER;
+  const sheet = captions.map((l, i) => `${i + 1}. ${short.includes(i) ? `[TOO SHORT — ${saidWords(l)} words] ` : ""}${(l || "").replace(/\s+/g, " ").trim()}`).join("\n");
+  return (
+    `These are the lines of a short acted scene, in order, one speaker per line, each written as "NAME: what they say". ` +
+    `Every line is spoken in ONE shot that is never shorter than five seconds, so a line needs about ${a} to ${c} spoken words (the NAME is not spoken) or the shot is left with dead air. The lines marked [TOO SHORT] have fewer.\n\n` +
+    `${sheet}\n\n` +
+    `For EVERY marked line write THREE longer versions of it — the SAME speaker, the same meaning, feeling and punch, in the language the line is written in, at three LENGTHS: about ${a}, about ${b} and about ${c} spoken words, as two short sentences, never a speech. Longer means more is SAID (a reason, a detail, a beat of reaction), never filler and never a word repeated; a line that lands a joke still ends on it.\n` +
+    `Return "lines": exactly ${captions.length} entries, one for each line above in the same order. The entry for a marked line is the list of its three versions, shortest first, each as "NAME: what they say" and nothing else (no numbers, no marks). The entry for an unmarked line is an EMPTY list.`
+  );
+}
+
+/** Of a short line's versions: the SAME speaker's, longer than written, never over LINE_WORDS_MAX — the longest wins. */
+export function pickLonger(original: string, versions: ReadonlyArray<unknown>): string {
+  const was = splitLine(original);
+  const had = saidWords(original);
+  let best: { said: string; n: number } | null = null;
+  for (const v of versions) {
+    if (typeof v !== "string") continue;
+    const now = splitLine(v.replace(/^\s*\d+\.\s*/, "").replace(/^\s*\[[^\]]*\]\s*/, "").replace(/\s+/g, " ").trim());
+    if (now.name.toLowerCase() !== was.name.toLowerCase()) continue;
+    const n = (now.said.match(/\S+/g) || []).length;
+    if (n <= had || n > LINE_WORDS_MAX) continue;
+    if (!best || n > best.n) best = { said: now.said, n };
+  }
+  if (!best) return original;
+  return was.name ? `${was.name}: ${best.said}` : best.said;
+}
+
+/** The lines after the longer versions came back: only a marked line can change; a wrong answer changes nothing. */
+export function takeLonger(captions: ReadonlyArray<string | null | undefined>, short: ReadonlyArray<number>, rewritten: unknown): string[] {
+  const base = captions.map((c) => c || "");
+  if (!Array.isArray(rewritten) || rewritten.length !== captions.length) return base;
+  return base.map((orig, i) => (short.includes(i) ? pickLonger(orig, Array.isArray(rewritten[i]) ? rewritten[i] : [rewritten[i]]) : orig));
+}

@@ -106,7 +106,7 @@ export const FILM_GENRES: readonly FilmGenre[] = [
     ],
     notes: [
       { key: "funnier", label: "Funnier", ask: "Make this scene funnier by pushing the same comic problem one step further — something they do, not a joke they tell; nobody notices it is funny." },
-      { key: "drier", label: "Drier", ask: "Play this scene drier: both are completely serious about something ridiculous; shorter lines, no exclamation marks." },
+      { key: "drier", label: "Drier", ask: "Play this scene drier: both are completely serious about something ridiculous; plainer lines, no exclamation marks." },
       SHORTER,
       { key: "button", label: "Bigger button", ask: "Give this scene a stronger last line: a short one that turns the whole scene, set up by something said earlier in it." },
     ],
@@ -200,7 +200,7 @@ export const FILM_GENRES: readonly FilmGenre[] = [
     ],
     notes: [
       { key: "bigger", label: "Bigger moment", ask: "Give this scene one bigger physical thing that happens in it — a jump, a fall, a door forced — said as what is done, with no gunfire and no gore." },
-      { key: "faster", label: "Faster", ask: "Make this scene move faster: shorter lines, said while doing something; nobody stops to explain." },
+      { key: "faster", label: "Faster", ask: "Make this scene move faster: every line said while doing something, with no pause between them; nobody stops to explain." },
       SHORTER,
       { key: "obstacle", label: "Harder obstacle", ask: "Put one more thing between them and what they are after in this scene, and let them get past it with what is already there." },
     ],
@@ -559,7 +559,7 @@ export const GENRE_FILMS: readonly GenreFilm[] = [
     name: "Comedy Film",
     defaultScenes: 4,
     minScenes: 2,
-    brief: "a short COMEDY, acted: ONE comic engine — a lie that keeps growing, a mismatch, or a plan going wrong — pushed further three times, each worse than the last. The laugh is in what they DO and how seriously they take it, never a joke about jokes; neither of them knows it is funny, and nobody winks at the camera. Short lines; the last line is the button — it turns the whole scene, and something said earlier set it up",
+    brief: "a short COMEDY, acted: ONE comic engine — a lie that keeps growing, a mismatch, or a plan going wrong — pushed further three times, each worse than the last. The laugh is in what they DO and how seriously they take it, never a joke about jokes; neither of them knows it is funny, and nobody winks at the camera. Plain, dry lines, each still the full length the film asks for; the last line is the button — it turns the whole scene, and something said earlier set it up",
     narrated: "a short NARRATED COMEDY — a storyteller tells, completely deadpan, how one small lie, mismatch or plan got out of hand: it goes wrong three times, each worse than the last, and the last line is the button that turns it all",
     sceneHint: `a photorealistic live-action film scene from a comedy — bright even daylight or warm household lamps, a 28mm lens that keeps both people and the whole room in frame, clean saturated colours (warm yellow, sky blue, a red or two), everything in focus; ${NOTHING_TO_READ}`,
     musicHint: "light, dry comedy underscore — pizzicato strings, a walking bass, a clarinet",
