@@ -796,6 +796,8 @@ export function placeNote(n: number, place: { name: string; look: string }): str
  *  and a WIDE scene drawn from it came back as that model: the bakery's walls cut off part-way up with plain studio
  *  ground above them, the room set on a plain ground with an empty band below it, the sheet's two views stacked — four of
  *  five test draws of "What His Hands Remember"'s bakery scene (full-frame.ts measures the bands it leaves). */
+// (…and a place seen from OUTSIDE, far off, is still drawn whole under it — review of S14: a lighthouse on a headland,
+//  WIDE, 9:16, drawn with its sheet, two goes: the whole tower and its sky both times, nothing cut off at the top)
 export const PLACE_FULL_SIZE = "The sheet shows it as a scale model on a table; here it is the REAL place at full size, seen from where a person would stand — its walls run up to its ceiling or out of the top of the frame, its floor or ground out of the bottom — never a cut-away model with plain background above it, below it or around it.";
 /** INSIDE A PLACE, ITS OUTSIDE IS NOT DRAWN (2026-11-24): the kids' horror story's house had a sheet of its outside
  *  ("pale painted siding, a plain white front door"), and its hallway scene, drawn with it, came back with siding
