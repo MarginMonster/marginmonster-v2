@@ -356,6 +356,8 @@ test("a genre is a promise about what happens and how it ends — and a look tha
   assert.ok(!/\bShort lines\b|\bterse\b/.test(by.comedy.brief + by.action.brief));
   for (const [k, key] of [["comedy", "drier"], ["action", "faster"]]) assert.ok(!notesOf(k).find((n) => n.key === key)!.ask.includes("shorter lines"), `${k}: ${key}`);
   assert.ok(by.romance.brief.includes("It ends on a GESTURE instead of a declaration") && by.romance.brief.includes("Tender, never explicit"));
+  // (2026-11-26: the acted two keep a natural distance, never side by side — so the gesture is made across it)
+  assert.ok(!by.romance.brief.includes("an umbrella shared"));
   assert.ok(by.scifi.brief.includes("ONE speculative idea in an otherwise ordinary near-future world") && by.scifi.brief.includes("No space battles") && by.scifi.brief.includes("any screen in a shot shows nothing that can be read"));
   assert.ok(by.fantasy.brief.includes("ONE piece of magic") && by.fantasy.brief.includes("that magic has a PRICE") && by.fantasy.brief.includes("never as glow, sparks, beams or light"));
   assert.ok(by.mystery.brief.includes("the first line asks the QUESTION") && by.mystery.brief.includes("Every shot holds one clue") && by.mystery.brief.includes("The answer was in plain sight earlier"));

@@ -609,7 +609,7 @@ export const GENRE_FILMS: readonly GenreFilm[] = [
     name: "Romance Film",
     defaultScenes: 4,
     minScenes: 2,
-    brief: "a short ROMANCE, acted: two people, what each wants from the other, and the one thing in the way. They talk about something else — the feeling is in what is not said, in a look held a moment too long, in what their hands do. It ends on a GESTURE instead of a declaration: an umbrella shared, a seat kept, a door left open. Tender, never explicit",
+    brief: "a short ROMANCE, acted: two people, what each wants from the other, and the one thing in the way. They talk about something else — the feeling is in what is not said, in a look held a moment too long while their hands are busy with something. It ends on a GESTURE instead of a declaration, made across the space between them with both faces to us: a coat held out, a cup slid across the table, an umbrella offered, a seat kept, a door held open. Tender, never explicit",
     narrated: "a short NARRATED LOVE STORY — a storyteller's voice, warm and unhurried: two people, what each wants and what is in the way, told through the small things they do for each other; it ends on a gesture, not a declaration",
     sceneHint: `a photorealistic live-action film scene from a romance — soft window light or golden hour, an 85mm lens with the background fallen out of focus, warm amber and rose tones, gentle contrast, a little halation round the lights; ${NOTHING_TO_READ}`,
     musicHint: "tender romance score — solo piano and warm strings",
