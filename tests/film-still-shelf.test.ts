@@ -67,8 +67,14 @@ test("the still posters are NOT heroes of their own: a piece made from one reads
 test("where a server's pictures cannot move, every story is told over stills already: no still shelf repeats the Stories", () => {
   assert.ok(!heroShelves(FILM_HEROES, { still: false }).some((s) => s.key === "still" || s.rung === "still"));
   assert.deepEqual(heroShelves(FILM_HEROES, { still: false }).map((s) => s.key), ["told", "acted", "sung"]);
-  // the Stories stay, and say moving pictures — the builder's own words there are the still ones (S13: lenStill)
-  assert.equal(heroShelves(FILM_HEROES, { still: false })[0].heroes.length, 9);
+  // the Stories stay — and there they are told over stills (the builder's own words there are the still ones, S13:
+  // lenStill), so their heading says so, in the still shelf's own words, never "moving pictures" (review of S13c: the
+  // kill switch STORY_MOTION=off would have left the heading promising motion)
+  const [toldOff] = heroShelves(FILM_HEROES, { still: false });
+  assert.equal(toldOff.heroes.length, 9);
+  assert.deepEqual([toldOff.key, toldOff.name, toldOff.tag, toldOff.line], ["told", "Stories", "Narrated", "A narrator tells it over still pictures that slowly move"]);
+  assert.equal(heroShelves(FILM_HEROES)[0].line, "A narrator tells it over moving pictures", "…and only there");
+  assert.equal(heroShelves(FILM_HEROES, { still: true })[0].line, "A narrator tells it over moving pictures");
   assert.deepEqual(heroShelves(FILM_HEROES, { still: true }).map((s) => s.key), ["told", "still", "acted", "sung"]);
   assert.deepEqual(heroShelves(FILM_HEROES, {}).map((s) => s.key), ["told", "still", "acted", "sung"], "the shelf is there unless asked away");
   // the page asks with the loader's own fact

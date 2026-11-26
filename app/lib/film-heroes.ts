@@ -195,10 +195,16 @@ const SHELVES: ReadonlyArray<Omit<HeroShelf, "heroes"> & { has: (h: FilmHero) =>
 ];
 /** The heroes a page offers, as its shelves — every hero on exactly one WAY shelf, in the heroes' own order, and the
  *  told heroes again on a rung shelf; a shelf with nothing on it is not shown. `still: false` (a server whose
- *  pictures cannot move) leaves out the shelves whose rung is "still". */
+ *  pictures cannot move) leaves out the shelves whose rung is "still" — and the Stories there say what they are
+ *  then told over, the still shelf's own line. (Review of S13c, 2026-11-26: the Stories' line had become "…over moving
+ *  pictures" alone, and STORY_MOTION=off — the kill switch — would have left it promising motion over a story told
+ *  over stills; the line it replaced at least named the stills.) */
 export function heroShelves(heroes: ReadonlyArray<FilmHero>, o: { still?: boolean } = {}): HeroShelf[] {
-  return SHELVES.filter((s) => !(o.still === false && s.rung === "still"))
-    .map(({ has, ...s }) => ({ ...s, heroes: heroes.filter(has) })).filter((s) => s.heroes.length > 0);
+  const still = o.still !== false;
+  const stillLine = SHELVES.find((s) => s.rung === "still")!.line;
+  return SHELVES.filter((s) => still || s.rung !== "still")
+    .map(({ has, ...s }) => ({ ...s, ...(!still && s.rung === "moving" ? { line: stillLine } : {}), heroes: heroes.filter(has) }))
+    .filter((s) => s.heroes.length > 0);
 }
 
 /** A poster's key on the page — the zoom key, so the same hero standing on two shelves pops only where it was
