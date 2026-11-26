@@ -17,7 +17,7 @@
  */
 import { firstJson } from "./first-json.ts";
 // EVERY PICTURE FILLS ITS FRAME (2026-11-26, the bakery with an empty cream band under it): measured, not asked — full-frame.ts
-import { bandFault, bandFix, type FrameBand } from "./full-frame.ts";
+import { bandCuttable, bandFault, bandFix, type FrameBand } from "./full-frame.ts";
 
 /** Words that start a SECOND moment in a picture's description. */
 const NEXT_MOMENT = /[\s,;—–-]+(?:and then|then|until|moments? later|seconds? later|minutes? later|a (?:moment|beat|second) later|soon after|shortly after|afterwards?|later on|later|before (?:finally|eventually))\b/i;
@@ -554,6 +554,50 @@ export function storyFix(c: StoryCheck, names: string[], kinds: ReadonlyArray<st
   const beasts = missing.filter((k) => kinds[k] === "monster" || kinds[k] === "cartoon").map((k) => names[k]).filter(Boolean);
   if (beasts.length) out.push(`${beasts.join(" and ")} must have the reference image's own BODY — the same build, standing the same way, covered in the same fur or skin, in the same clothing in the same state: not an ordinary animal, and not a human being with that head`);
   return out.length ? ` ${out.join(". ")}.` : "";
+}
+
+/* A STORY'S REDRAWS ARE COUNTED (2026-11-26). Read off the live log of a day of told stories — eleven of them, 59 scenes —
+ * they drew 122 scene pictures: 2.07 a scene, at $0.15 a picture and about $0.035 of looks at each. "Circling in the
+ * Dark" drew 10 for its 4 scenes (13 with its two portraits and its rink's sheet); three of its scenes took every go there
+ * was, and kept the SECOND — a check that is wrong does not make the kept picture better, it keeps the best of three. The
+ * still tier's 1 token a second holds the owner's 20% only to about 1.6 draws a scene (film-length.ts). So a story — each
+ * drawing of its scenes: a storyboard, one press of the Movie Maker, a re-roll — may spend at most HALF ITS SCENES, rounded
+ * up, on redraws beyond the first draw each (redrawCap: 4 scenes 2, 5 scenes 3, 13 scenes 7, one re-rolled scene 1): at
+ * most 1.5 draws a scene, 1.6 at five. Past the cap a picture keeps its best try, and its fault is written down for the
+ * storyboard and the operator's record as it always was. (The same day replayed with the checks that listen to the story
+ * and this cap — tests/redraw-economy.test.ts: 79 pictures, 1.34 a scene.)
+ * The WORST faults are drawn again first: a fault that breaks the story or cannot be shown — somebody unclothed, a split
+ * picture, a band no crop puts right, a smaller picture pasted in, somebody missing or drawn twice, a stranger, the looker
+ * stood outside, a night drawn as day, a picture letterboxed or framed on a sheet's ground — may spend the whole cap; a
+ * SOFT one — a stare, a run-down room — only the first half of it (rounded up), so the other half is always there for the
+ * hard ones, whichever scene comes back first. (Four scenes are drawn at a time: there is no waiting to see them all.) */
+export type FaultTier = "hard" | "soft" | "";
+/** How bad the worst thing wrong with a picture is. A band a crop cuts off is no fault to draw again for (coverNow). */
+export function faultTier(c: StoryCheck | null | undefined): FaultTier {
+  if (!c) return "";
+  const { lens: _lens, grimy: _grimy, band, ...rest } = c;
+  if (storyFaults({ ...rest, ...(band && !bandCuttable(band) ? { band } : {}) })) return "hard";
+  return c.lens?.length || c.grimy ? "soft" : "";
+}
+/** A BAND A CROP PUTS RIGHT, AND NOTHING ELSE WRONG, IS COVERED AT ONCE — never drawn again (review of S14: it paid for up to
+ *  two redraws, about $0.15 and four looks each, before it was covered for nothing at the end). */
+export const coverNow = (c: StoryCheck | null | undefined): boolean => !!c?.band && bandCuttable(c.band) && faultTier(c) === "";
+/** The most redraws a drawing of `scenes` scenes may spend. */
+export const redrawCap = (scenes: number): number => Math.ceil(Math.max(0, Math.floor(Number(scenes) || 0)) / 2);
+/** What one drawing of a story has spent, and may: `cap` redraws in all, `soft` of them at most for a soft fault. */
+export type RedrawPurse = { cap: number; soft: number; spent: number; spentSoft: number };
+export function redrawPurse(scenes: number, capped = true): RedrawPurse {
+  // (uncapped — STORY_REDRAW_CAP=off — every scene has its three goes, as before 2026-11-26)
+  const cap = capped ? redrawCap(scenes) : 2 * Math.max(0, Math.floor(Number(scenes) || 0));
+  return { cap, soft: capped ? Math.ceil(cap / 2) : cap, spent: 0, spentSoft: 0 };
+}
+/** May a scene whose last go came back with a fault of this tier be drawn again? Yes spends one from the purse.
+ *  (Called and answered at once — the four scenes drawing side by side never spend the same redraw twice.) */
+export function spendRedraw(p: RedrawPurse, tier: FaultTier): boolean {
+  if (!tier || p.spent >= p.cap || (tier === "soft" && p.spentSoft >= p.soft)) return false;
+  p.spent++;
+  if (tier === "soft") p.spentSoft++;
+  return true;
 }
 
 /* THE PLACES, ASKED FOR ON THEIR OWN. The story's writer is asked for them with everything else, and may

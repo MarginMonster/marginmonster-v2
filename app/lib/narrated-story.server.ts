@@ -53,9 +53,9 @@ import { joinList } from "./acted-staging";
 // NIGHT IS NIGHT (2026-11-25): the acted engine's own night rule and night sentence — story-picture.ts → storyNight
 import { NIGHT_LINE, nightSetting } from "./acted-staging";
 import { NIGHT_STYLE_LIGHT, parseStoryNight, storyNight } from "./story-picture";
-// THE CHECKS LISTEN TO THE STORY (2026-11-26 — story-picture.ts: a worn place its words ask for and a stare its shot asks for
-// are no faults)
-import { stareCounts, wornAsked } from "./story-picture";
+// A STORY'S REDRAWS ARE COUNTED, AND THE CHECKS LISTEN TO THE STORY (2026-11-26 — story-picture.ts: a worn place its words ask
+// for and a stare its shot asks for are no faults; at most half its scenes in redraws, the worst faults first)
+import { coverNow, faultTier, redrawPurse, spendRedraw, stareCounts, wornAsked } from "./story-picture";
 import { streamSeconds } from "./film-join.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
 import { episodeOwnName, type ShowMeta } from "./character-series";
@@ -176,7 +176,7 @@ export async function narratedSceneSeeds(o: {
    *  night wherever a scene's own words name no other time of day — story-picture.ts → storyNight. Unset: a scene is at
    *  night only where its own words, its narration or its place say so. */
   idea?: string | null;
-}): Promise<{ sceneImgs: (string | null)[]; castRef: string | null; /** the story's own characters, each with its portrait — to be shown */ castCards: StoryCastRef[]; /** the places the story comes back to, each with its design sheet — to be shown */ placeCards: StoryPlaceRef[]; /** for each scene drawn: how wrong the picture that was KEPT still is (0 = nothing; null = not drawn here), and what the look read off it */ sceneFaults: (number | null)[]; sceneChecks: (StoryKept | null)[] }> {
+}): Promise<{ sceneImgs: (string | null)[]; castRef: string | null; /** the story's own characters, each with its portrait — to be shown */ castCards: StoryCastRef[]; /** the places the story comes back to, each with its design sheet — to be shown */ placeCards: StoryPlaceRef[]; /** for each scene drawn: how wrong the picture that was KEPT still is (0 = nothing; null = not drawn here), and what the look read off it */ sceneFaults: (number | null)[]; sceneChecks: (StoryKept | null)[]; /** what this drawing spent: scenes drawn, scene pictures drawn, the redraw cap and the redraws spent (story-picture.ts → redrawCap) */ draws: { scenes: number; pictures: number; cap: number; spent: number } }> {
   const tmpl = filmTemplate(o.template);
   const { aspect } = storyFrame(o.aspect);
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
@@ -251,7 +251,13 @@ export async function narratedSceneSeeds(o: {
   // (the job is at work — said whenever a picture comes back: see `beat`, above. A beat that fails is skipped.)
   const alive = async (): Promise<void> => { try { await o.beat?.(); } catch { /* skipped */ } };
   await alive();
-  // (everything the story says of its places — its idea, every scene's picture and narration, its places' own words:
+  // A STORY'S REDRAWS ARE COUNTED (story-picture.ts → redrawCap, 2026-11-26: a day of live told stories drew 2.07 pictures
+  // a scene, three of "Circling in the Dark"'s four scenes every go there was): this drawing of it may spend at most half
+  // its scenes, rounded up, on redraws — a hard fault from all of it, a stare or a run-down room from half. Past it, a
+  // picture keeps its best try and its fault is written down as ever. STORY_REDRAW_CAP=off: three goes a scene, as before.
+  const purse = redrawPurse(todo.length, process.env.STORY_REDRAW_CAP !== "off");
+  let drawnPictures = 0;
+  // (…and everything the story says of its places — its idea, every scene's picture and narration, its places' own words:
   //  "The old roller rink had been closed for hours…" in the first scene's narration is the rink of every scene after it —
   //  story-picture.ts → wornAsked)
   const storyWords = [idea, ...scenes.map((s) => `${s?.visual || ""} ${s?.caption || ""}`), ...placeList].join(" ");
@@ -389,8 +395,11 @@ export async function narratedSceneSeeds(o: {
         //  came out wrong twice used to be the one moved up to it)
         const got = await drawScene(`${first}${promptOf(withPlace)}${fix}`, withPlace ? refs : people, aspect);
         await alive();
-        if (got && (await letterboxed(got))) { barred = got; console.error(`[narrated] scene ${i + 1} came back letterboxed — drawing it again`); continue; }
-        if (got && withPlace && (await framedPanel(got))) { framedGoes++; fix = FRAMED_FIX; console.error(`[narrated] scene ${i + 1} came back as a framed panel on a plain ground (${place?.name}) — drawing it again${framedGoes >= 2 ? " without the place's sheet" : ""}`); continue; }
+        if (got) drawnPictures++;
+        // (a letterboxed picture and a framed panel are hard faults: drawn again from the story's purse while it lasts —
+        //  story-picture.ts → spendRedraw; past it the letterboxed one is kept, its bars cropped in the cut, as when every go was)
+        if (got && (await letterboxed(got))) { barred = got; const more = a < 2 && spendRedraw(purse, "hard"); console.error(`[narrated] scene ${i + 1} came back letterboxed — ${more ? "drawing it again" : "keeping it, its bars cropped in the cut"}`); if (more) continue; break; }
+        if (got && withPlace && (await framedPanel(got))) { framedGoes++; fix = FRAMED_FIX; const more = a < 2 && spendRedraw(purse, "hard"); console.error(`[narrated] scene ${i + 1} came back as a framed panel on a plain ground (${place?.name}) — ${more ? `drawing it again${framedGoes >= 2 ? " without the place's sheet" : ""}` : "not kept"}`); if (more) continue; break; }
         if (!got) { if (a >= 1) break; continue; } // two plain failures: stop asking this way
         // AN EMPTY BAND OR A DOUBLED STRIP (2026-11-26, "What His Hands Remember": the bakery drawn as a landscape across the
         // middle of the tall frame, a strip of it repeated above and an empty cream band below — kept by every look) is
@@ -406,7 +415,15 @@ export async function narratedSceneSeeds(o: {
         if (!best || faults < best.faults) best = { img: got, faults, check: seenAs! };
         fix = storyFix(seenAs!, here.map((c) => c.name), here.map((c) => c.kind || "person"));
         first = storyFirst(seenAs);
-        console.log(`[narrated] scene ${i + 1} try ${a + 1}: ${[seenAs!.unclothed ? `somebody unclothed (${seenAs!.unclothedWho || "somewhere in it"})` : "", seenAs!.panels ? "split into panels" : "", seenAs!.seen.includes(false) ? `cast not in it (${here.filter((_, n) => !seenAs!.seen[n]).map((c) => c.name).join(", ")})` : "", (seenAs!.twice || []).some(Boolean) ? "somebody drawn twice" : "", seenAs!.extra ? "somebody the words do not put there" : "", seenAs!.outside ? "whoever looks out stood outside" : "", seenAs!.lens?.length ? `${seenAs!.lens.join(" and ")} stared into the lens` : "", seenAs!.grimy ? "the place came out run-down" : "", seenAs!.inset ? "a smaller picture pasted into it" : "", seenAs!.notNight ? "a night scene drawn as dusk or day" : "", seenAs!.band ? `an empty band or a doubled strip (${[...seenAs!.band.sides, ...seenAs!.band.doubled.map((s) => `doubled ${s}`)].join(", ")})` : ""].filter(Boolean).join(", ")} — drawing it again`);
+        // IS IT DRAWN AGAIN? A band a crop puts right, and nothing else wrong, is covered at once (story-picture.ts → coverNow:
+        // below, after the goes — review of S14). Anything else from the story's purse while it lasts, the worst first
+        // (story-picture.ts → faultTier, spendRedraw); past it, the best try is kept and its fault written down.
+        const cover = coverNow(seenAs);
+        const tier = faultTier(seenAs);
+        const again = !cover && a < 2 && spendRedraw(purse, tier);
+        const then = again ? "drawing it again" : cover ? "a band a crop puts right, and nothing else — covered, not drawn again" : a < 2 ? `the story's redraws${tier === "soft" ? " for a stare or a worn place" : ""} are spent (${tier === "soft" ? `${purse.spentSoft} of ${purse.soft}` : `${purse.spent} of ${purse.cap}`}) — keeping its best try` : "keeping its best try";
+        console.log(`[narrated] scene ${i + 1} try ${a + 1}: ${[seenAs!.unclothed ? `somebody unclothed (${seenAs!.unclothedWho || "somewhere in it"})` : "", seenAs!.panels ? "split into panels" : "", seenAs!.seen.includes(false) ? `cast not in it (${here.filter((_, n) => !seenAs!.seen[n]).map((c) => c.name).join(", ")})` : "", (seenAs!.twice || []).some(Boolean) ? "somebody drawn twice" : "", seenAs!.extra ? "somebody the words do not put there" : "", seenAs!.outside ? "whoever looks out stood outside" : "", seenAs!.lens?.length ? `${seenAs!.lens.join(" and ")} stared into the lens` : "", seenAs!.grimy ? "the place came out run-down" : "", seenAs!.inset ? "a smaller picture pasted into it" : "", seenAs!.notNight ? "a night scene drawn as dusk or day" : "", seenAs!.band ? `an empty band or a doubled strip (${[...seenAs!.band.sides, ...seenAs!.band.doubled.map((s) => `doubled ${s}`)].join(", ")})` : ""].filter(Boolean).join(", ")} — ${then}`);
+        if (!again) break;
       }
       // THE BEST OF THE GOES STILL HAS SOMEBODY UNCLOTHED (every go had: one without it would have weighed less —
       // story-picture.ts → UNCLOTHED_FAULT): that picture is dressed by ONE edit on the story's best model and looked at
@@ -471,10 +488,12 @@ export async function narratedSceneSeeds(o: {
     }
   };
   await Promise.all(Array.from({ length: Math.min(4, todo.length) }, () => worker()));
+  // (what this drawing of the story spent, in one line — the rate the still tier's price rests on, read off the log)
+  if (todo.length) console.log(`[narrated] the pictures: ${todo.length} scene${todo.length === 1 ? "" : "s"}, ${drawnPictures} drawn (${(drawnPictures / todo.length).toFixed(2)} a scene), ${purse.spent} of ${purse.cap} redraws spent (${purse.spentSoft} of ${purse.soft} for a stare or a worn place)`);
   // (the cast is billed in the story's own order — a character drawn again does not move to the end of the row)
   const billed = (c: StoryCastRef): number => { const k = others.findIndex((e) => sameCharacter(c.name, castEntry(e).name)); return k < 0 ? others.length : k; };
   cards.sort((a, b) => billed(a) - billed(b));
-  return { sceneImgs: out.map((u) => abs(u)), castRef: carried.sheet || castToken(cards, placeCards) || null, castCards: cards, placeCards, sceneFaults: faultsOut, sceneChecks: checksOut };
+  return { sceneImgs: out.map((u) => abs(u)), castRef: carried.sheet || castToken(cards, placeCards) || null, castCards: cards, placeCards, sceneFaults: faultsOut, sceneChecks: checksOut, draws: { scenes: todo.length, pictures: drawnPictures, cap: purse.cap, spent: purse.spent } };
 }
 
 /** DRAW ONE CHARACTER AGAIN. The maker does not like how Walter came out: his portrait is dropped, a new one
@@ -971,6 +990,7 @@ export async function generateNarratedStory(opts: {
   // (…and the story's own cast: what the storyboard drew, or what is drawn here — kept across a restart)
   let storyCastRef = resume.ckCast || opts.castRef || "";
   let pictureFaults: ReturnType<typeof keptFaults> = [];
+  let pictureDraws: { scenes: number; pictures: number; cap: number; spent: number } | null = null;
   if (resume.ckPictureFaults) { try { const p = JSON.parse(resume.ckPictureFaults); if (Array.isArray(p)) pictureFaults = p; } catch { /* none kept */ } }
   let imgs: (string | null)[] = [];
   if (resume.ckImages) { try { imgs = JSON.parse(resume.ckImages) as (string | null)[]; } catch { imgs = []; } }
@@ -988,6 +1008,8 @@ export async function generateNarratedStory(opts: {
       //  this server's log, and a story made in one press has no storyboard to flag it on)
       pictureFaults = keptFaults(drawn.sceneChecks);
       if (pictureFaults.length) await ckpt({ ckPictureFaults: JSON.stringify(pictureFaults) });
+      // (…and how many pictures its scenes took, against the redraws it may spend — story-picture.ts → redrawCap, 2026-11-26)
+      pictureDraws = drawn.draws;
       imgs = treatment.scenes.map((_, i) => approved[i] || drawn.sceneImgs[i] || null);
     }
     await ckpt({ ckImages: JSON.stringify(imgs), ...(storyCastRef ? { ckCast: storyCastRef } : {}) });
@@ -1110,6 +1132,9 @@ export async function generateNarratedStory(opts: {
         timing,
         // …and which of its pictures were KEPT with somebody still not right (the best of three goes)
         ...(pictureFaults.length ? { pictureFaults } : {}),
+        // …and what its scenes' pictures cost to draw: scenes, pictures, the redraw cap and what was spent of it (not kept
+        // across a restart — a story drawn in one go says it)
+        ...(pictureDraws ? { pictureDraws } : {}),
         // THE PICTURES MOVE: how many scenes do, what was asked for now (seconds = what was paid for), and
         // why any scene kept its still
         // (a story its maker asked for over STILL pictures says so — it did not lose its motion, it never
