@@ -315,6 +315,9 @@ test("a genre is a promise about what happens and how it ends — and a look tha
   assert.ok(by.comedy.brief.includes("ONE comic engine") && by.comedy.brief.includes("pushed further three times") && by.comedy.brief.includes("nobody winks at the camera") && by.comedy.brief.includes("the last line is the button"));
   assert.ok(by.thriller.brief.includes("the threat is a PERSON or a situation — never a ghost, a monster or anything supernatural") && by.thriller.brief.includes("a clock or a secret") && by.thriller.brief.includes("a turn the story already planted"));
   assert.ok(by.action.brief.includes("Something HAPPENS in every shot") && by.action.brief.includes("No gunfire, no gore and no explosion near the camera"));
+  // (2026-11-26: an ACTED action film is what the engine can film — two standing, or hurrying toward the camera; a
+  //  run, a climb or a jump was briefed and came out as a walk, or as two orders at once to the clip)
+  assert.ok(!by.action.brief.includes("a run, a climb") && !/\bterse\b/.test(by.action.brief) && by.action.brief.includes("Chases, jumps and falls happen between shots"));
   assert.ok(by.romance.brief.includes("It ends on a GESTURE instead of a declaration") && by.romance.brief.includes("Tender, never explicit"));
   assert.ok(by.scifi.brief.includes("ONE speculative idea in an otherwise ordinary near-future world") && by.scifi.brief.includes("No space battles") && by.scifi.brief.includes("any screen in a shot shows nothing that can be read"));
   assert.ok(by.fantasy.brief.includes("ONE piece of magic") && by.fantasy.brief.includes("that magic has a PRICE") && by.fantasy.brief.includes("never as glow, sparks, beams or light"));
