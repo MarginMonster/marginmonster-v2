@@ -291,3 +291,22 @@ test("the posters stand on WAYS — the ladder (Picture Book · Story · Film), 
   assert.ok(ui.includes("<span className=\"fs-way-name\"><b>{t(w.name)}</b><small className=\"is-short\">{t(w.short)}</small><small className=\"is-long\">{t(w.line)}</small></span>"), "a phone shows the short line, a wider screen the long one");
   for (const k of ["Pick what to make", "Only on EasyMode", "How it's told", "Tap it to start"]) assert.ok(dict.split(`${JSON.stringify(k)}:`).length - 1 >= 5, k);
 });
+
+test("THE ROW OPENS UNDER THE GROUP THAT WAS TAPPED (2026-11-26 — the owner: \"Selected at the top the type then outputs at the bottom - I think that is the confusing part\")", async () => {
+  const fs = await import("node:fs");
+  const ui = fs.readFileSync(new URL("../app/routes/web.film.tsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  // the row is built once, and drawn right after the group holding the chosen way — the ladder's under the ladder, an
+  // original's under "Only on EasyMode"
+  assert.ok(ui.includes('const wayGroup = wayCards.find((w) => w.key === wayOn)?.group || "ladder";'));
+  assert.ok(ui.includes("const wayRow = (\n          <div key=\"row\" className={`fs-shelves${anim === \"in\" ? \" throw\" : \"\"}`}>"));
+  assert.equal(ui.split("wayGroup === g ? wayRow : null,").length - 1, 1);
+  const ways = ui.slice(ui.indexOf("<div className={`fs-ways${anim"), ui.indexOf("</>)}", ui.indexOf("<div className={`fs-ways${anim")));
+  assert.ok(ways.includes("wayGroup === g ? wayRow : null,"), "inside the ways, after each group");
+  assert.equal(ui.split('className={`fs-shelves${anim === "in" ? " throw" : ""}`}').length - 1, 1, "one row in the markup");
+  // the ways fade by their groups, so the tapped poster in the row still pops; a wide screen wraps the row under both
+  assert.ok(ui.includes(".fs-ways.throw > .fs-ways-grp{opacity:0;transform:scale(.97);pointer-events:none;}"));
+  assert.ok(!ui.includes(".fs-ways.throw{opacity:0;"));
+  assert.ok(ui.includes("  .fs-ways{display:flex;flex-wrap:wrap;align-items:flex-end;gap:18px;}") && ui.includes("  .fs-ways > .fs-shelves{order:9;flex:1 1 100%;min-width:0;}"));
+  // Caught on Cam's card: its footage enlarged by the scale property, which the card's drift animation cannot override
+  assert.ok(ui.includes(".fs-way.is-cam .fs-way-pic img,.fs-way.is-cam .fs-way-vid{scale:1.18;transform-origin:50% 96%;}"));
+});
