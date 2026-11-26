@@ -47,6 +47,8 @@ import { bandOf, coverBand } from "./full-frame.server";
 import { bandCuttable, bandFault } from "./full-frame";
 import { DOORS_SHUT, DRESSED, FRAMED_FIX, FRAMED_SIZE, framedIn, INSIDE_STAYS, NO_EXTRAS, NO_LENS, NOTHING_WRITTEN, ONE_PICTURE, SHADOW_SHAPE, shadowNote, STORY_SOUND, TODAY_LOOK, TRUE_SIZE, parseStoryGrime, parseStoryInset, storyGrimePrompt, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_LADDER, castEntry, characterKind, creatureHidden, creatureNote, keptFaults, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryExtras, parseStoryLens, parseStoryOutside, parseStoryPanels, parseStoryTwice, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, insideNote, storyCastPrompt, storyExtrasPrompt, storyPictureInput, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
+// (2026-11-26) an anime style's story is DRAWN: its own narrator, and its style said first in every picture
+import { ANIME_STYLES, drawnLead } from "./anime-styles";
 // (2026-11-25, stories up to five minutes: a long story is cut in parts, and read in parts when it is that long)
 import { STORY_ONE_CUT, cardsDuring, readingParts, sceneIn, storyJoinArgs, storyPartArgs, storyParts, storySoundArgs } from "./story-join";
 import { joinList } from "./acted-staging";
@@ -87,6 +89,11 @@ export const DEFAULT_NARRATOR: Record<string, string> = {
   fantasy: "English_ManWithDeepVoice",
   mystery: "English_ManWithDeepVoice",
 };
+// THE ANIME STYLES (anime-styles.ts, 2026-11-26) are told by their own voice where the style names one — Dream by
+// English_SereneWoman and Retro by English_ConfidentWoman, the voices the Dream and Retro Anime AD recipes were narrated
+// by in production (cartoon-styles.json) — and otherwise by their kin's. LISTEN before trusting either: a voice's name
+// has lied before (the stock "Friendly" is a man's voice).
+for (const s of ANIME_STYLES) DEFAULT_NARRATOR[s.key] = s.narrator || DEFAULT_NARRATOR[s.kin] || "English_ManWithDeepVoice";
 export const narratorFor = (template: string | undefined, picked?: string | null): string => {
   const want = (picked || "").trim();
   if (want && (isCharacterVoice(want) || AVATAR_VOICE_IDS.has(want))) return want;
@@ -178,7 +185,13 @@ export async function narratedSceneSeeds(o: {
   const { aspect } = storyFrame(o.aspect);
   const base = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
   const abs = (u: string | null | undefined): string | null => (u ? (u.startsWith("http") ? u : `${base}${u}`) : null);
-  const safe = tmpl.childSafe ? "Wholesome, child-safe, G-rated, bright and friendly. " : "";
+  // WHAT EVERY PICTURE OF THIS STORY IS TOLD FIRST — its portraits, its place sheets, its scenes and the lenient
+  // fallback alike. For a children's format, its G-rating. For a DRAWN one (an anime style, 2026-11-26), its style too
+  // (anime-styles.ts → drawnLead): said first so that it survives the lenient path's 500-character cut; so that the
+  // place sheet's "like a scale model photographed on a table" is drawn; and so that an invented creature's portrait is
+  // drawn in the style instead of PHOTOGRAPHED — portraitPrompt photographs a creature only when this lead is empty
+  // (story-picture.ts → CREATURE_REAL).
+  const safe = `${tmpl.childSafe ? "Wholesome, child-safe, G-rated, bright and friendly. " : ""}${tmpl.drawn ? drawnLead(tmpl.key) : ""}`;
   // (the idea the story was written from: the maker's — and the starter it was written from when theirs was too short,
   //  which the treatment keeps: film-engine.server.ts → FilmTreatment.nudge)
   const idea = `${o.idea || ""} ${o.treatment.nudge || ""}`.trim();
