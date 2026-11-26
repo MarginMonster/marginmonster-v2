@@ -141,6 +141,13 @@ test("a line too short for its shot goes back once, asked for at three LONGER le
   assert.ok(ask.includes(`2. JONAH: ${words(15)}`));
   assert.ok(ask.includes("write THREE longer versions of it") && ask.includes("about 14, about 16 and about 18 spoken words"));
   assert.ok(ask.includes("Return \"lines\": exactly 2 entries") && ask.includes("The entry for an unmarked line is an EMPTY list."));
+  // (…each line with WHAT WE SEE in its shot, and nothing new added — review of item 3: asked blind, a longer line could
+  //  invent a clue, a person or a fact the picture does not have)
+  const seenAsk = growAsk(lines, [0], ["CLOSE: Mara sets the third cup on the counter.", ""]);
+  assert.ok(seenAsk.includes("1. [TOO SHORT — 2 words] MARA: Told you.\n   (what we see in this shot: CLOSE: Mara sets the third cup on the counter.)"));
+  assert.ok(seenAsk.includes(`2. JONAH: ${words(15)}\n`) && !seenAsk.includes(`2. JONAH: ${words(15)}\n   (what we see`), "a shot with no words of its own adds nothing");
+  assert.ok(seenAsk.includes("Add no new object, person, place or fact: a longer line speaks only of what this story and its shot already have."));
+  assert.ok(read("app", "lib", "film-engine.server.ts").includes("growAsk(written, short, list.map((s) => s.visual || \"\"))"));
   // of the versions: the longest that is still a line of the right length
   assert.equal(pickLonger("MARA: Told you.", [`MARA: ${words(13)}`, `MARA: ${words(17)}`, `MARA: ${words(23)}`]), `MARA: ${words(17)}`);
   // …never another speaker's, never one no longer than written, never one over the limit

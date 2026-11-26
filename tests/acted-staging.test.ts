@@ -638,6 +638,21 @@ test("a scene that is a sound is read off its own words: heard — never one of 
   //  view; read as unseen, the clip was told "the two only HEAR it" and the kick was taken out)
   for (const scene of ["Mara kicks the door; it bangs against the wall", "A bang as Mara kicks the door open; it slams against the wall", "Mara and Jonah shoulder the door; it bangs open", "Mara pounds on the door; it rattles"]) assert.equal(heardIn(scene, ["Mara", "Jonah"])?.unseen, false, scene);
   assert.equal(heardIn("Three knocks from inside the wall as Dagny grips Ylva's shoulder.", SISTERS)?.unseen, true);
+  // (…and ONLY that: a move straight after the name, ON a struck thing, with no other part of the scene heard, out of
+  //  sight or made by "something" — review of item 4, 2026-11-26: every one of these stays a sound from out of sight)
+  for (const scene of [
+    "Three slow knocks come from inside the wall as Ylva forces the window shut.",
+    "Something taps on the window as Ylva rams the bolt home.",
+    "Dagny shoves the dresser against the door as the knocking starts again.",
+    "Dagny forces a smile as three knocks come from inside the wall.",
+    "Ylva, heart pounding, presses her ear to the wall as three knocks answer.",
+    "Three knocks from inside the wall; Ylva yanks Dagny back from it.",
+    "Ylva shoulders her bag while something scratches behind the panel.",
+    "Dagny, hammer in hand, listens as three knocks come from inside the wall.",
+    "Ylva, shoulder to the door, listens as something scratches on the other side.",
+    "Dagny, boots still muddy, stops dead as footsteps cross the ceiling.",
+  ]) assert.equal(heardIn(scene, SISTERS)?.unseen, true, scene);
+  assert.equal(heardIn("Mara hears Victor pound on the front door downstairs.", ["Mara", "Victor"])?.unseen, true, "somebody HEARS it");
   assert.equal(heardIn(heard[0][0], SISTERS)!.sound, "Three slow, heavy knocks come from inside the bedroom wall, a full second apart");
   // something one of them DOES, or no sound at all
   for (const scene of [
@@ -809,11 +824,21 @@ test("nobody smiles at what frightens them — said plainly, unless the script m
   // words have the speaker smiling, where the mood forbids a smile
   const THRILL = "Everybody in it looks watchful or under strain — nobody smiles, grins or laughs.";
   const COMEDY = "Everybody in it is completely serious about what they are doing — nobody mugs, winks or looks at the camera.";
-  assert.equal(faceNote({ tone: "coldly, with quiet menace", speaker: "Mara", other: "Jonah", mood: THRILL }), THRILL);
+  // (…a CLIP is told only what nobody does — the look before the dash ("set and out of breath") went into the voice too:
+  //  review of item 9, 2026-11-26)
+  const THRILL_CLIP = "Nobody smiles, grins or laughs.";
+  const COMEDY_CLIP = "Nobody mugs, winks or looks at the camera.";
+  assert.equal(faceNote({ tone: "coldly, with quiet menace", speaker: "Mara", other: "Jonah", mood: THRILL }), THRILL_CLIP);
   assert.equal(faceNote({ tone: "warmly", speaker: "Mara", other: "Jonah", mood: THRILL }), "");
   assert.equal(faceNote({ tone: "flatly", visual: "Mara smiles as she sets the cake down.", speaker: "Mara", other: "Jonah", mood: THRILL }), "");
-  assert.equal(faceNote({ tone: "warmly, with a laugh", speaker: "Pip", other: "Rosa", mood: COMEDY }), COMEDY, "a comedy's own faces forbid no smile");
-  assert.equal(faceNote({ visual: "Pip lifts the vase.", speaker: "Pip", other: "Rosa", mood: COMEDY }), COMEDY, "a wordless shot too");
+  assert.equal(faceNote({ tone: "warmly, with a laugh", speaker: "Pip", other: "Rosa", mood: COMEDY }), COMEDY_CLIP, "a comedy's own faces forbid no smile");
+  assert.equal(faceNote({ visual: "Pip lifts the vase.", speaker: "Pip", other: "Rosa", mood: COMEDY }), COMEDY_CLIP, "a wordless shot too");
+  // (…never "nobody smiles" over a scene whose words have ANYBODY smiling — the other one too — nor over a smirk)
+  assert.equal(faceNote({ tone: "coldly", visual: "Jonah grins as Mara slides the envelope across the desk.", speaker: "Mara", other: "Jonah", mood: THRILL }), "");
+  assert.equal(faceNote({ tone: "with a cruel smirk", speaker: "Mara", other: "Jonah", mood: THRILL }), "");
+  assert.equal(faceNote({ tone: "evenly", visual: "Mara turns the clue over; Jonah laughs, then stops.", speaker: "Mara", other: "Jonah", mood: "Everybody in it looks curious or guarded — nobody grins or laughs." }), "");
+  // (…and Action's "out of breath" never reaches the clip)
+  assert.equal(faceNote({ tone: "urgently", speaker: "Kai", other: "Rosa", mood: "Everybody in it looks set and out of breath — nobody smiles or poses." }), "Nobody smiles or poses.");
   assert.equal(faceNote({ tone: "scared, voice shaking", speaker: "Pip", other: "Rosa", mood: THRILL }), "Pip does not smile at any moment: the face shows fear.", "a frightened line is still told its fear");
   assert.equal(faceNote({ horror: true, tone: "quietly", speaker: "Ylva", other: "Dagny", mood: THRILL }), faceNote({ horror: true, tone: "quietly", speaker: "Ylva", other: "Dagny" }), "a horror film as it was");
   assert.equal(faceNote({ horror: true, tone: "softly, fond and a little nostalgic", speaker: "Dagny", other: "Ylva", mood: THRILL }), "");

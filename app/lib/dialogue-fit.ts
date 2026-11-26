@@ -115,15 +115,20 @@ export function linesTooShort(captions: ReadonlyArray<string | null | undefined>
   return out;
 }
 
-/** The one request for the short ones: every line in order, the short ones marked, each at three LONGER lengths. */
-export function growAsk(captions: ReadonlyArray<string | null | undefined>, short: ReadonlyArray<number>): string {
+/** The one request for the short ones: every line in order, the short ones marked, each at three LONGER lengths — and
+ *  beside each line, WHAT WE SEE in its shot (`visuals`), so a longer line adds nothing the picture does not have (review
+ *  of item 3, 2026-11-26: "a reason, a detail, a beat of reaction" asked blind could invent a clue, a person or a fact —
+ *  against a Mystery's clues named in its first VISUAL and a Thriller's planted turn; the director's-note rewrite keeps
+ *  "WHAT WE SEE STAYS" for the same reason). */
+export function growAsk(captions: ReadonlyArray<string | null | undefined>, short: ReadonlyArray<number>, visuals: ReadonlyArray<string | null | undefined> = []): string {
   const [a, b, c] = LINE_LONGER;
-  const sheet = captions.map((l, i) => `${i + 1}. ${short.includes(i) ? `[TOO SHORT — ${saidWords(l)} words] ` : ""}${(l || "").replace(/\s+/g, " ").trim()}`).join("\n");
+  const seen = (i: number): string => { const v = (visuals[i] || "").replace(/\s+/g, " ").trim().slice(0, 300); return v ? `\n   (what we see in this shot: ${v})` : ""; };
+  const sheet = captions.map((l, i) => `${i + 1}. ${short.includes(i) ? `[TOO SHORT — ${saidWords(l)} words] ` : ""}${(l || "").replace(/\s+/g, " ").trim()}${seen(i)}`).join("\n");
   return (
     `These are the lines of a short acted scene, in order, one speaker per line, each written as "NAME: what they say". ` +
     `Every line is spoken in ONE shot that is never shorter than five seconds, so a line needs about ${a} to ${c} spoken words (the NAME is not spoken) or the shot is left with dead air. The lines marked [TOO SHORT] have fewer.\n\n` +
     `${sheet}\n\n` +
-    `For EVERY marked line write THREE longer versions of it — the SAME speaker, the same meaning, feeling and punch, in the language the line is written in, at three LENGTHS: about ${a}, about ${b} and about ${c} spoken words, as two short sentences, never a speech. Longer means more is SAID (a reason, a detail, a beat of reaction), never filler and never a word repeated; a line that lands a joke still ends on it.\n` +
+    `For EVERY marked line write THREE longer versions of it — the SAME speaker, the same meaning, feeling and punch, in the language the line is written in, at three LENGTHS: about ${a}, about ${b} and about ${c} spoken words, as two short sentences, never a speech. Longer means more is SAID (a reason, a detail, a beat of reaction), never filler and never a word repeated; a line that lands a joke still ends on it. Add no new object, person, place or fact: a longer line speaks only of what this story and its shot already have.\n` +
     `Return "lines": exactly ${captions.length} entries, one for each line above in the same order. The entry for a marked line is the list of its three versions, shortest first, each as "NAME: what they say" and nothing else (no numbers, no marks). The entry for an unmarked line is an EMPTY list.`
   );
 }

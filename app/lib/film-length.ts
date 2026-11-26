@@ -244,7 +244,7 @@ const sameWords = (a: string, b: string): boolean => a.toLowerCase() === b.toLow
  *  format's own rules are said around it by film-engine.server.ts, in the words every film is written from).
  *  `sizes` = scriptParts(); `ending` = how this format's last part ends, when it has a way of its own ("" = as its
  *  kind of story ends); `placesAsk` (told) = the engine's own words for what a story's places are. */
-export function planBrief(way: FilmWay, o: { sizes: ReadonlyArray<number>; per?: number; ending?: string; placesAsk?: string }): string {
+export function planBrief(way: FilmWay, o: { sizes: ReadonlyArray<number>; per?: number; ending?: string; placesAsk?: string; /** an ACTED film's example place — a new genre's own (film-genres.ts → backdropsOf); unsaid: the night diner every acted film had (review of item 5, 2026-11-26: a long Comedy was still primed with it) */ placeExample?: string }): string {
   const k = o.sizes.length;
   const shots = o.sizes.reduce((a, b) => a + b, 0);
   const clock = clockLabel(secondsFor(way, shots, o.per));
@@ -255,7 +255,7 @@ export function planBrief(way: FilmWay, o: { sizes: ReadonlyArray<number>; per?:
     const P = filmPlaces(k);
     return (
       `\nTHIS IS THE PLAN OF A LONGER FILM — about ${clock}, in ${k} SCENES. A scene is ONE conversation between the two in ONE place, ${Math.min(...o.sizes) === Math.max(...o.sizes) ? `${o.sizes[0]}` : `${Math.min(...o.sizes)} or ${Math.max(...o.sizes)}`} spoken lines long. You do not write the lines now: you say what each scene IS, and the lines are written from it. Return:\n` +
-      `• "places" — the ${P} PLACE${P === 1 ? "" : "S"} this film is set in, each a short vivid label a set could be built from (e.g. "a dim old diner at night, rain on the windows"). They are the IDEA's own: a film the idea sets in one house has its places IN that house — its kitchen, its stairs, its porch — never somewhere the idea does not go.\n` +
+      `• "places" — the ${P} PLACE${P === 1 ? "" : "S"} this film is set in, each a short vivid label a set could be built from (e.g. "${oneLine(o.placeExample) || "a dim old diner at night, rain on the windows"}"). They are the IDEA's own: a film the idea sets in one house has its places IN that house — its kitchen, its stairs, its porch — never somewhere the idea does not go.\n` +
       `• "parts" — EXACTLY ${k} entries, the scenes in order. Each has "where": ONE of the places, copied letter for letter; and "what": two or three plain sentences — what each of the two wants here, the ONE thing that is said, found or done that changes it, and how the scene ends. A scene's last sentence is what the next scene starts from.\n` +
       `HOW A FILM THIS LONG HOLDS: scene 1 opens with the trouble already under way — nobody is introduced, nobody explains what both already know. Every scene changes something: what one of them knows, wants or has. ` +
       (turn ? `Scene ${turn} is THE TURN — what the two believed is shown to be wrong, or what one of them wants changes — so the second half is not more of the first. ` : "") +

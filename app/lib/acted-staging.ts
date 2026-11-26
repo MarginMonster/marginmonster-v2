@@ -594,6 +594,9 @@ const SEEN_MAKER = /^(?:hands?|fingers?|knuckles?|fists?|arms?|claws?|nails?|fig
  *  within two words one of these. Not "drops", "grips" or "throws": in a horror film those are what the two do while
  *  something unseen knocks. */
 const CONTACT = /^(?:kick(?:s|ed|ing)?|slam(?:s|med|ming)?|shoulder(?:s|ed|ing)?|smash(?:es|ed|ing)?|shov(?:e|es|ed|ing)|forc(?:e|es|ed|ing)|wrench(?:es|ed|ing)?|yank(?:s|ed|ing)?|stamp(?:s|ed|ing)?|hammer(?:s|ed|ing)?|pound(?:s|ed|ing)?|bash(?:es|ed|ing)?|ram(?:s|med|ming)?|boot(?:s|ed|ing)?)$/i;
+/** …done TO a thing in view, within three words of the move ("kicks the door", "pounds on the hatch"): a move with no
+ *  struck thing after it — "forces a smile", "hammer in hand", "shoulders her bag" — is no forceful sound of theirs. */
+const STRUCK = /^(?:doors?|gates?|hatch(?:es)?|lids?|windows?|shutters?|walls?|panels?|crates?|trunks?|chests?|locks?|bolts?|tables?|floors?|grates?|drawers?|cabinets?|lockers?|fences?|railings?)$/i;
 /** Where a scene's words break into the things that happen in it. */
 const CLAUSE_BREAK = /\s*(?:;|:\s|\.\s|\s[—–]\s|,\s+and\s|,?\s(?:as|while|when|until|before|then)\s|\sand\s(?=(?:a|an|the|one|two|three|four|five|six|several|some|another|more|something|someone|somebody|it)\b))\s*/i;
 /** A sound from out of sight: inside, behind or under something, upstairs, overhead, at a closed door — or
@@ -624,10 +627,16 @@ export function heardIn(event: string | null | undefined, names: ReadonlyArray<s
   let heard: { sound: string; unseen: boolean } | null = null;
   let doing = false;
   let seen = false;
-  for (const clause of text.split(CLAUSE_BREAK).map((c) => c.trim()).filter(Boolean)) {
+  // ONE OF THE TWO DOES SOMETHING FORCEFUL to a thing in view — the move straight after their name, a struck thing within
+  // three words of it ("Mara kicks the door", "Jonah pounds on the hatch") — and NO OTHER part of the scene is a sound from
+  // out of sight, made by "something", or heard: then whatever sound the scene has is theirs, in view (CONTACT). (Review of
+  // item 4, 2026-11-26: "Three slow knocks come from inside the wall as Ylva forces the window shut", "Dagny, hammer in hand,
+  // listens as …", "Ylva, heart pounding, …" and "Mara hears Victor pound on the door" all stay heard, unseen.)
+  const parts = text.split(CLAUSE_BREAK).map((c) => c.trim()).filter(Boolean).map((c) => ({ c, ws: c.split(/\s+/).map(bare).filter(Boolean) }));
+  const forceAt = parts.findIndex((p) => !p.ws.some((w) => HEARS.test(w)) && p.ws.some((w, j) => known.has(w.toLowerCase()) && CONTACT.test(p.ws[j + 1] || "") && p.ws.slice(j + 2, j + 5).some((v) => STRUCK.test(v))));
+  if (forceAt >= 0 && !parts.some((p, i) => i !== forceAt && (p.ws.some((w) => SOMEONE.test(w) || HEARS.test(w)) || UNSEEN.test(p.c)))) doing = true;
+  for (const clause of parts.map((p) => p.c)) {
     const words = clause.split(/\s+/).map(bare).filter(Boolean);
-    // (one of the two does something forceful here: whatever sound the scene has is theirs, in view — CONTACT)
-    if (words.some((w, j) => known.has(w.toLowerCase()) && words.slice(j + 1, j + 3).some((v) => CONTACT.test(v)))) doing = true;
     // (somebody HEARS it: whatever the clause names after that is heard, not done — "Dagny hears three knocks")
     let found = words.some((w) => HEARS.test(w));
     let unseen = false;
@@ -743,7 +752,7 @@ export function heardTalk(t: {
  * SOUNDS, and the picture's "nobody smiles" (the format's own face mood) was not said to the clip. */
 
 const FEAR = /\b(?:afraid|scared|fear(?:ful|fully)?|frighten(?:ed|ing)?|terrif(?:ied|ying)|horror|horrif(?:ied|ying)|dread|panic(?:ked|king|ky)?|trembl(?:e|es|ing)|shak(?:y|ing|en)|petrified|alarm(?:ed)?|aghast)\b/i;
-const SMILE = /\b(?:smil(?:e|es|ed|ing)|grin(?:s|ned|ning)?|laugh(?:s|ed|ing)?|chuckl(?:e|es|ed|ing)|giggl(?:e|es|ed|ing)|beam(?:s|ed|ing))\b/i;
+const SMILE = /\b(?:smil(?:e|es|ed|ing)|grin(?:s|ned|ning)?|smirk(?:s|ed|ing)?|laugh(?:s|ed|ing)?|chuckl(?:e|es|ed|ing)|giggl(?:e|es|ed|ing)|beam(?:s|ed|ing))\b/i;
 /** A line said warmly — in a horror film, the calm before it (the owner's film opened on a fond line about old
  *  letters): its face is left to the line. */
 const WARM = /\b(?:warm(?:ly|th)?|fond(?:ly|ness)?|cheerful(?:ly)?|happ(?:y|ily)|amused|playful(?:ly)?|teasing(?:ly)?|light-?hearted(?:ly)?|nostalgic(?:ally)?|wistful(?:ly)?|tender(?:ly)?|affectionate(?:ly)?|joking(?:ly)?|relieved|excited(?:ly)?|proud(?:ly)?|reassuring(?:ly)?)\b/i;
@@ -765,10 +774,16 @@ export function faceNote(o: { horror?: boolean; tone?: string | null; visual?: s
   // (A GENRE'S OWN FACES reached the master picture only — said to the clip too, unless the mood forbids a smile and the
   //  line is said warmly or smiling, or the scene's words have the speaker smiling)
   if (!o.horror && !afraid) {
-    const mood = oneLine(o.mood).replace(/["“”«»]/g, "");
-    const who = oneLine(o.speaker);
+    const full = oneLine(o.mood).replace(/["“”«»]/g, "");
+    // (to a CLIP, only what nobody does — "Nobody smiles or poses." The look said before it, "set and out of breath", went
+    //  into the clip's VOICE too: a panting line with dead air, what the line-length check exists to stop — review of
+    //  item 9, 2026-11-26. The master picture is still told the whole mood.)
+    const rest = full.includes(" — ") ? full.split(" — ").slice(1).join(" — ").trim() : full;
+    const mood = rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : "";
     const noSmile = /\b(?:smil|grin|laugh)/i.test(mood);
-    return !mood || (noSmile && (WARM.test(tone) || SMILE.test(tone) || (!!who && smiles(who)))) ? "" : mood;
+    // (…and never "nobody smiles" over a scene whose words have ANYBODY smiling — "Jonah grins as Mara slides the envelope
+    //  across the desk" is the clip's own event)
+    return !mood || (noSmile && (WARM.test(tone) || SMILE.test(tone) || SMILE.test(visual))) ? "" : mood;
   }
   if (o.horror && WARM.test(tone) && !afraid) return "";
   const speaker = oneLine(o.speaker);

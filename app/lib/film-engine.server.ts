@@ -989,7 +989,7 @@ export async function previewFilmTreatment(opts: {
       markBrief +
       `\n${AGES_FIT_RELATION}` +
       genderLine +
-      planBrief(way, { sizes: partSizes, ending, placesAsk: narrated ? PLACES_ARE : undefined }) +
+      planBrief(way, { sizes: partSizes, ending, placesAsk: narrated ? PLACES_ARE : undefined, ...(lookWords ? { placeExample: whereEx } : {}) }) +
       (lookWords ? `Every place in "places" says this film's light and time of day in its own words — ${lookWords}.\n` : "") +
       freshLine +
       (tmpl.key === "horror" ? `${WHAT_FRIGHTENS}\n` : "") +
@@ -1298,7 +1298,7 @@ export async function previewFilmTreatment(opts: {
     const short = linesTooShort(written);
     if (short.length) {
       try {
-        const raw = await anthropicText(growAsk(written, short), {
+        const raw = await anthropicText(growAsk(written, short, list.map((s) => s.visual || "")), {
           model: "claude-sonnet-5", maxTokens: 1500,
           jsonSchema: { name: "dialogue_grow", schema: { type: "object", properties: { lines: { type: "array", items: { type: "array", items: { type: "string" } } } }, required: ["lines"], additionalProperties: false } },
         });

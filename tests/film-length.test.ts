@@ -547,3 +547,10 @@ test("THE WRITER IN PARTS: a long film is planned, then written a part at a time
   // and the answer says how it was planned
   assert.ok(eng.includes("acts?: Array<{ what: string; where?: string; scenes: number }>;"));
 });
+
+test("a long acted film's plan is shown the genre's own place as its example, else the night diner as before (review of item 5, 2026-11-26)", async () => {
+  const { planBrief } = await import("../app/lib/film-length.ts");
+  const own = planBrief("acted", { sizes: [4, 4, 4], placeExample: "a bright laundromat on a Saturday morning" });
+  assert.ok(own.includes('(e.g. "a bright laundromat on a Saturday morning")') && !own.includes("dim old diner"));
+  assert.ok(planBrief("acted", { sizes: [4, 4, 4] }).includes('(e.g. "a dim old diner at night, rain on the windows")'), "Drama, Horror, Moral and Kids as they were");
+});
