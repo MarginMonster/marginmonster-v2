@@ -17,6 +17,7 @@ import { estimateFilmTokens } from "./plan-config";
 import { CONTENT_LANG_NATIVE, normalizeContentLang } from "./content-lang";
 import { castCardsOf, castToken, placesOf } from "./story-picture";
 import { canTellIn, isNarratedStory, storyLangOf, storyPicturesFrom, storyWordsToTranslate, toldFrom, translateAsk, translatedTreatment } from "./story-translate";
+import { storyIsStill } from "./story-motion";
 
 /** Why nothing was started. The caller owns the sentence (and the member's language). */
 export type TellAgainFail = "gone" | "not-a-story" | "language" | "telling" | "no-pictures" | "write-failed" | "tokens" | "queue-failed";
@@ -152,8 +153,9 @@ export async function tellStoryAgain(opts: { shopId: string; assetId: string; la
       // …and the story's OWN cast (story-picture.ts): the telling in another language has the same people in
       // it — it says so in the Archive, and a scene redrawn from it later is drawn from the same portraits
       ...(castToken(castCardsOf(meta), placesOf(meta)) ? { filmCastRef: castToken(castCardsOf(meta), placesOf(meta)) } : {}),
-      // (a story made over still pictures is told again over still pictures — story-motion.ts)
-      ...(meta.pictures === "still" ? { filmPictures: "still" } : {}),
+      // (a story made over still pictures is told again over still pictures — story-motion.ts; `rung` since the
+      //  review of S13, `pictures: "still"` on a story made before it)
+      ...(storyIsStill(meta) ? { filmPictures: "still" } : {}),
       filmLang: lang,
       filmTranslatedFrom: asset.id,
       productTitle: (told.title || asset.title || "A story").slice(0, 60),

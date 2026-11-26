@@ -2679,6 +2679,9 @@ export default function FilmStudio() {
       if (isNarr && s.narrator && (CHARACTER_VOICES.some((v) => v.id === s.narrator) || d.voices.some((v) => v.id === s.narrator) || d.myVoices.some((v) => v.voiceId === s.narrator))) { setNarrPick(s.narrator); done.voice = true; }
       if (!isNarr && s.engine) { setDialogueEngine(s.engine); done.voice = true; }
       if (!isNarr) setLockVoices(s.lockVoices);
+      // (a story made over STILL pictures goes on over still pictures — the cheap tier its maker picked; it used to
+      //  open on Moving, and the next episode was told over paid motion — review of S13)
+      if (isNarr && s.still) setPictures("still");
       setStoryDone(done);
       setTopic(""); setIdeaChanged(false);
       setSeries({ from: c.from, title: c.title, episode: c.episode });
@@ -2726,6 +2729,8 @@ export default function FilmStudio() {
       setScenes(Math.max(d.narratedScenes.min, Math.min(d.narratedScenes.max, st.treatment.scenes.length)));
       setFilmAspect(st.aspect);
       setCapPick(st.captions);
+      // (a story told over STILL pictures is edited as one — it used to open on Moving: review of S13)
+      if (st.still) setPictures("still");
       if (st.narrator && (CHARACTER_VOICES.some((v) => v.id === st.narrator) || d.voices.some((v) => v.id === st.narrator) || d.myVoices.some((v) => v.voiceId === st.narrator))) { setNarrPick(st.narrator); done.voice = true; }
       setStoryDone(done);
       setTopic(st.topic); setIdeaChanged(false);

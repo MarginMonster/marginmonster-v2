@@ -1039,8 +1039,10 @@ export async function generateNarratedStory(opts: {
         // THE PICTURES MOVE: how many scenes do, what was asked for now (seconds = what was paid for), and
         // why any scene kept its still
         // (a story its maker asked for over STILL pictures says so — it did not lose its motion, it never
-        //  asked for any; one told again from it stays still)
-        ...(storyPicturesOf(opts.pictures) === "still" ? { pictures: "still" } : {}),
+        //  asked for any; one told again from it stays still. Under its OWN key, `rung`: it was written as
+        //  `pictures: "still"`, over the picture list just above — so a still story lost its pictures, and
+        //  Another language, Edit story and its Archive cover had none to reuse. Found in review of S13.)
+        ...(storyPicturesOf(opts.pictures) === "still" ? { rung: "still" } : {}),
         ...(motion ? { motion: { engine: STORY_MOTION_ENGINE, scenes: motion.clips.filter(Boolean).length, of: stills.length, made: motion.made, reused: motion.reused, seconds: motion.seconds, ...(motion.faults.length ? { faults: motion.faults.slice(0, 8) } : {}), ...(motion.looks.length ? { looks: motion.looks.slice(0, 12) } : {}) } } : {}),
       }),
     },

@@ -17,6 +17,7 @@ import { heroOf } from "./film-heroes.ts";
 import { trimTitle } from "./text-trim.ts";
 import { isNarratedStory, storyLangOf, toldFrom } from "./story-translate.ts";
 import { castCardsOf, castStillIn, castToken, placesOf, placesStillIn, type StoryCastRef } from "./story-picture.ts";
+import { storyIsStill } from "./story-motion.ts";
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => !!v && typeof v === "object" && !Array.isArray(v);
@@ -57,6 +58,9 @@ export type StoryToEdit = {
    *  drawn from — so a scene added or redrawn here shows the same people — and the token that carries them. */
   ownCast: StoryCastRef[];
   castRef: string;
+  /** TOLD OVER STILL PICTURES (story-motion.ts → storyIsStill): opened to edit, it stays the cheap still tier — it
+   *  used to open as Moving and be told again over paid motion (review of S13, 2026-11-26) */
+  still: boolean;
 };
 
 /**
@@ -122,6 +126,7 @@ export function storyToEditFrom(
     picturesKept: kept,
     ownCast,
     castRef: castToken(ownCast, ownPlaces),
+    still: storyIsStill(meta),
   };
 }
 

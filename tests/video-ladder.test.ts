@@ -42,11 +42,43 @@ test("the simple rung spends nothing on motion; the server's own switch still ru
 test("the choice travels: form → job → engine → the piece → a retelling of it", () => {
   const engine = read("app", "lib", "narrated-story.server.ts");
   assert.ok(engine.includes("if (storyMotionOn(opts.pictures)) {"), "the engine asks about THIS story");
-  assert.ok(engine.includes('...(storyPicturesOf(opts.pictures) === "still" ? { pictures: "still" } : {}),'), "a still story says so on the piece");
+  // (…under its OWN key — it was written as `pictures: "still"`, over the story's picture list, so a still story lost
+  //  its pictures for Another language, Edit story and its Archive cover: review of S13, 2026-11-26)
+  assert.ok(engine.includes('...(storyPicturesOf(opts.pictures) === "still" ? { rung: "still" } : {}),'), "a still story says so on the piece");
+  assert.ok(!engine.includes('? { pictures: "still" } : {}'), "never over the picture list");
+  assert.ok(engine.includes("pictures: stills.map((f) => `/renders/${path.basename(f)}`),"), "the picture list is kept");
   assert.ok(read("app", "lib", "story-motion.server.ts").includes("export const storyMotionOn = (pictures?: unknown): boolean => motionOn(process.env, falEnabled(), pictures);"));
   assert.ok(read("app", "lib", "job-queue.server.ts").includes('pictures: typeof payload.filmPictures === "string" ? payload.filmPictures : undefined,'));
-  // told again in another language, a still story stays a still story (it would otherwise start costing motion)
-  assert.ok(read("app", "lib", "story-translate.server.ts").includes('...(meta.pictures === "still" ? { filmPictures: "still" } : {}),'));
+  // told again in another language, a still story stays a still story (it would otherwise start costing motion) — read
+  // by storyIsStill: the new key, and the old one on a story made before
+  assert.ok(read("app", "lib", "story-translate.server.ts").includes("...(storyIsStill(meta) ? { filmPictures: \"still\" } : {}),"));
+});
+
+test("a still story stays still: Edit story and Next episode open on Still (review of S13, 2026-11-26)", async () => {
+  const { storyIsStill } = await import("../app/lib/story-motion.ts");
+  assert.equal(storyIsStill({ rung: "still", pictures: ["/renders/a.jpg"] }), true, "the new key");
+  assert.equal(storyIsStill({ pictures: "still" }), true, "a story made before the key moved");
+  assert.equal(storyIsStill({ pictures: ["/renders/a.jpg"] }), false);
+  assert.equal(storyIsStill(null), false);
+  // EDIT STORY — the record it opens from says so, and the page sets it
+  const { storyToEditFrom } = await import("../app/lib/story-edit.ts");
+  const meta = (extra: Record<string, unknown>) => JSON.stringify({ kind: "narrated", template: "testmovie", aspect: "9:16", captions: "bold", narrator: "", ...extra });
+  const body = JSON.stringify({ prompt: "TEST idea", treatment: { title: "TEST Story", musicMood: "", cast: [], scenes: [1, 2, 3].map((n) => ({ visual: `TEST scene ${n}`, caption: `TEST line ${n}.` })) } });
+  const still = storyToEditFrom({ id: "a_TEST", metaJson: meta({ rung: "still" }), bodyJson: body }, null);
+  const older = storyToEditFrom({ id: "c_TEST", metaJson: meta({ pictures: "still" }), bodyJson: body }, null);
+  const moving = storyToEditFrom({ id: "b_TEST", metaJson: meta({}), bodyJson: body }, null);
+  assert.ok(still && older && moving, "a TEST story opens to edit");
+  assert.equal(still!.still, true);
+  assert.equal(older!.still, true, "a still story made before the key moved");
+  assert.equal(moving!.still, false);
+  const film = read("app", "routes", "web.film.tsx");
+  assert.ok(film.includes("if (st.still) setPictures(\"still\");"), "Edit story opens on Still");
+  // NEXT EPISODE — the card's setup says so, and the page sets it
+  const series = read("app", "lib", "film-series.ts");
+  assert.ok(series.includes("...(str(meta.kind) === \"narrated\" && storyIsStill(meta) ? { still: true } : {}),"));
+  assert.ok(film.includes("if (isNarr && s.still) setPictures(\"still\");"), "Next episode opens on Still");
+  // (both after switchHero, which sets Moving — so they win)
+  assert.ok(film.indexOf("if (isNarr && s.still) setPictures(\"still\");") > film.indexOf("const startEpisode = (c: NextEpisodeCard) => {"));
 });
 
 /* STILL OR MOVING, WHERE THE LENGTH AND THE PRICE ARE (2026-11-25). The choice was a sixth card ("The pictures ·

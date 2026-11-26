@@ -456,7 +456,11 @@ export const FILM_MAX_SCENES = 40;
 
 /** Metered film price in tokens. The SAME pure function is used to DISPLAY the
  *  estimate before Generate and to CHARGE on Generate, so the quote and the
- *  debit can never drift. scenes is clamped to the engine's bounds. */
+ *  debit can never drift. scenes is clamped to the engine's bounds.
+ *  ⚠ THE DAY A FILM PRICE IS SET (FILM_BASE/FILM_PER_SCENE > 0): this knows nothing of the RUNG — a told story over
+ *  STILL pictures (the cheap base tier, 2026-11-26) would be quoted and charged the moving price, and the builder's
+ *  two tiles (web.film.tsx → lenTokens / picTokens switch to this when cost > 0) would show the same number. Price by
+ *  the rung then — film-length.ts → tokensFor(priceWay(way, still)) is the estimate the page shows today. */
 export function estimateFilmTokens(scenes: number): number {
   const n = Math.max(FILM_MIN_SCENES, Math.min(FILM_MAX_SCENES, Math.round(scenes || 0)));
   return FILM_BASE + FILM_PER_SCENE * n;

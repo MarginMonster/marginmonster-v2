@@ -61,6 +61,11 @@ export const MOTION_REUSE_SHARE = 0.6;
  *  (what a story is unless it says otherwise). The third rung is another way of telling: an acted film. */
 export type StoryPictures = "still" | "moving";
 export const storyPicturesOf = (v: unknown): StoryPictures => (String(v ?? "").trim().toLowerCase() === "still" ? "still" : "moving");
+/** WAS THIS FINISHED STORY TOLD OVER STILL PICTURES? Its record says so under `rung` (since the review of S13,
+ *  2026-11-26); a story made before then said `pictures: "still"` — written over its own picture list, which is why it
+ *  moved to a key of its own. Read by Another language, Edit story and Next episode, so each keeps the maker's rung. */
+export const storyIsStill = (meta: Record<string, unknown> | null | undefined): boolean =>
+  !!meta && (meta.rung === "still" || meta.pictures === "still");
 /** The three rungs, by what a piece is. */
 export type VideoRung = "simple" | "moving" | "acted";
 export const videoRung = (o: { narrated: boolean; pictures?: unknown }): VideoRung =>
