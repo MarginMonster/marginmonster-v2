@@ -8,7 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import {
-  BOLD_LINE, MIN_SCENE_S, barBox, barsIn, boldCards, captionFilters, captionStyleOf, drawable, entryName, evenParts, frameWords, kenBurns, namedIn, presentIn, nameWords, wrapEven,
+  BOLD_LINE, MIN_SCENE_S, barBox, barsIn, boldCards, captionFilters, captionStyleOf, drawable, entryName, evenParts, frameWords, kenBurns, namedIn, partOnlyIn, presentIn, nameWords, wrapEven,
   keepToldScenes, saidUnits, sceneCast, sceneWindows, trimToSound, scriptWordTimes, storyFrame, subtitleCards, subtitleChars, wrapLines, type WordT,
 } from "../app/lib/narrated-core.ts";
 
@@ -210,6 +210,18 @@ test("who is in a scene's picture is whoever its VISUAL names — and nobody els
   assert.equal(presentIn("the claw machine ghost", "the ghost's long pale fingers spread on the glass"), true, "its hand is it");
   assert.equal(namedIn("the woman in grey", "a grey coat hangs on the hook"), false);
   assert.equal(namedIn("the woman in grey", "the woman turns from the window"), true);
+  // …and the SMALL WORDS of a name are never a name on their own; the capital is read in the head phrase only (a day of
+  // live told stories, 2026-11-26: "The woman in the lake" was in every scene with an "in", "the figure in Room 14" too)
+  assert.deepEqual(nameWords("the figure in Room 14"), ["figure"]);
+  assert.deepEqual(nameWords("The woman in the lake"), ["woman"]);
+  assert.deepEqual(nameWords("Maria de la Cruz"), ["Maria", "Cruz"]);
+  assert.deepEqual(nameWords("Tom of the Hollow"), ["Tom", "Hollow"]);
+  const hallway = "At the hallway: CLOSE: Ottilie's face lit from below by her phone screen in a dim corridor, eyes fixed on a glowing call light above a closed door, her jaw tight with dread.";
+  assert.equal(presentIn("the figure in Room 14", hallway), false, "\"in a dim corridor\" is not the figure");
+  assert.equal(presentIn("Ottilie", hallway), true);
+  assert.equal(presentIn("the figure in Room 14", "OVER THE SHOULDER: over Ottilie's shoulder, inside Room 14, the narrow bathroom door stands ajar, its call button panel glowing red in the dark beyond, nobody visible in the gap."), false, "the room it is in is not the figure");
+  assert.equal(presentIn("The woman in the lake", "CLOSE: Jacinta's face fills the frame, eyes wide open in the dark tent, startled awake, listening hard as a soft voice seems to drift in from outside through the thin nylon wall."), false);
+  assert.equal(presentIn("The woman in the lake", "CLOSE: the woman's face, waist-deep in the lake, pale skin wet in the flashlight beam."), true);
   assert.equal(entryName("Marla, a tired night clerk in her forties"), "Marla");
   // the scene decides
   const others = ["Marla, a tired night clerk in her forties", "Denny, a lanky teenage stock boy"];
@@ -392,6 +404,17 @@ test("named as the owner of something is not being there", () => {
   const heard = "At the kitchen: CLOSE: Teodor's face, flour dusting his cheek, eyes down on his kneading hands, concentration and quiet delight as Philomena's voice drifts over him near the counter.";
   assert.equal(presentIn("Philomena", heard), false, "her voice is not her");
   assert.equal(presentIn("Teodor", heard), true);
+  // IN IT ONLY BY A PART THAT SHOWS NO FACE — present (drawn from the portrait), but not asked "is this them?" (2026-11-26)
+  const feet = "CLOSE: Delphine's face, frozen mid-breath, flashlight beam trembling, her eyes locked on something just past the camera's edge — the skater's bare feet, not skates, skimming silent above the floor.";
+  assert.equal(presentIn("the skater", feet), true);
+  assert.equal(partOnlyIn("the skater", feet), true, "her feet show no face");
+  assert.equal(partOnlyIn("Delphine", feet), false, "her face does");
+  assert.equal(partOnlyIn("Edda", "Edda's hand rests on the cold iron rail"), true);
+  assert.equal(partOnlyIn("Maren", "Maren's long dark wet hair drips onto the planks"), false, "hair is compared");
+  assert.equal(partOnlyIn("Pip", "the kite lands on Pip's nose"), false);
+  assert.equal(partOnlyIn("Ottilie", "At Room 14: CLOSE: Ottilie's hand presses flat into the pillow's fresh dent, her face lit by phone light, eyes widening."), false, "a face named after the hand makes her whole");
+  assert.equal(partOnlyIn("Edda", "Edda stands at the door"), false);
+  assert.equal(partOnlyIn("Edda", "The empty square at dawn"), false, "not in it at all");
   assert.equal(presentIn("Ode", "morning light golden on Ode's mossy shell"), true);
   // named as somebody once is enough, whatever else of theirs is mentioned
   assert.equal(presentIn("Edda", "Edda stands at the door of Edda's cottage"), true);

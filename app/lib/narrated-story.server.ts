@@ -24,7 +24,7 @@ import os from "node:os";
 import { db } from "../db.server";
 import { checkpointJob, downloadBuffer, ffprobeDuration, repCreate, repPoll, resolveCaptionFont, resolveTextFont, runFfmpeg } from "./ugc-ad-pipeline.server";
 import { captionGraph } from "./caption-burn.server";
-import { listenAgain, listenQuality, listenedWords, sureWords, timingRecord, type Span } from "./narrated-core";
+import { listenAgain, listenQuality, listenedWords, partOnlyIn, sureWords, timingRecord, type Span } from "./narrated-core";
 import { persistRemote, renderCreativeSeed, repRun } from "./image-generation.server";
 import { createWhisperx } from "./faceless-video.server";
 import { musicBedToDisk } from "./music-generation.server";
@@ -355,6 +355,9 @@ export async function narratedSceneSeeds(o: {
       //  her EXACTLY as in her reference image — a face in a picture planned to have none. The S14b review's measured day
       //  had three such calls, all on DETAILs of hands. The other looks are asked as ever.)
       const castPics = cam === "detail" ? [] : here.map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);
+      // (…and whoever is in it only by a part that shows no face — "the skater's bare feet" — is not asked about: narrated-core.ts
+      //  → partOnlyIn, 2026-11-26. They are drawn from their portrait as ever; their answer counts as seen.)
+      const partOnly = here.map((c) => partOnlyIn(c.name, written));
       // (who is who, by their looks — so the look can tell the girl at the window from the ghost on the porch)
       const whoIsWho = here.map((c) => (c.look ? `${c.name}: ${c.look.slice(0, 120)}` : c.name));
       const lookAt = async (got: string): Promise<StoryCheck | null> => {
@@ -390,7 +393,7 @@ export async function narratedSceneSeeds(o: {
           // (…and a night scene's sky read as dusk or day — only a clear "dusk" or "day" is the fault: story-picture.ts → parseStoryNight)
           const dark = night ? parseStoryNight(String(grimeRaw || "")) : null;
           if (seen == null && panels == null && extra == null && outside == null && lens == null && grimy == null && inset == null && bare == null && dark == null) return null;
-          return { seen: seen || castPics.map(() => true), panels: panels === true, ...(twice ? { twice } : {}), ...(extra ? { extra: true } : {}), ...(outside ? { outside: true } : {}), ...(lens?.length && stareHere ? { lens } : {}), ...(grimy ? { grimy: true } : {}), ...(inset ? { inset: true } : {}), ...(dark === false ? { notNight: true } : {}), ...(bare?.unclothed ? { unclothed: true, unclothedWho: bare.who } : {}) };
+          return { seen: (seen || castPics.map(() => true)).map((v, n) => v || !!partOnly[n]), panels: panels === true, ...(twice ? { twice } : {}), ...(extra ? { extra: true } : {}), ...(outside ? { outside: true } : {}), ...(lens?.length && stareHere ? { lens } : {}), ...(grimy ? { grimy: true } : {}), ...(inset ? { inset: true } : {}), ...(dark === false ? { notNight: true } : {}), ...(bare?.unclothed ? { unclothed: true, unclothedWho: bare.who } : {}) };
         } catch (e) {
           console.error(`[narrated] scene ${i + 1}: the picture could not be looked at, keeping it: ${e instanceof Error ? e.message.slice(0, 120) : e}`);
           return null;

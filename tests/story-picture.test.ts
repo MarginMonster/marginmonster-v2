@@ -126,6 +126,9 @@ test("the pipeline: words tidied, picture drawn, picture looked at, drawn again 
   // (…not in a DETAIL, which shows no face — its answer could only be "not in it", and its fix asked for a face: 2026-11-26)
   assert.ok(s.includes("const castPics = cam === \"detail\" ? [] : here.map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);"));
   assert.ok(s.indexOf("const cam = sceneShot(scene);") < s.indexOf("const castPics = cam === \"detail\""), "the shot is read before");
+  // (…and whoever is in it only by a part that shows no face counts as seen: narrated-core.ts → partOnlyIn, 2026-11-26)
+  assert.ok(s.includes("const partOnly = here.map((c) => partOnlyIn(c.name, written));"));
+  assert.ok(s.includes("return { seen: (seen || castPics.map(() => true)).map((v, n) => v || !!partOnly[n]), panels: panels === true,"));
   assert.ok(s.includes("anthropicVision(storyCastPrompt(castPics.length), [pic, ...castPics], { maxTokens: 500, model: \"claude-sonnet-4-6\" })"));
   // panels are looked for only where the words described two moments
   assert.ok(s.includes("const twoMoments = oneMoment(written) !== written;") && s.includes("twoMoments ? anthropicVision(storyPanelsPrompt(), [pic], { maxTokens: 320, model: \"claude-sonnet-4-6\" })"));

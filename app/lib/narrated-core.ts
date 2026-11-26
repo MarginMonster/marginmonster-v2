@@ -1206,14 +1206,21 @@ const NAME_SKIP = /^(the|a|an|mr|mrs|ms|miss|dr|sir|lady|lord|old|little|big|you
  * "the keeper's daughter" — is called by its HEAD word only: the ghost, the woman, the daughter. (A script with no
  * capitals at all — Urdu, Chinese — keeps every word, as before.) */
 const ABOUT_HEAD = /\s+(?:in|with|of|from|who|that|on|at|under|behind|beside|by|near|wearing|holding|inside)\s+/i;
-const describes = (words: string[]): boolean => words.length > 1 && !words.some((w) => /^\p{Lu}/u.test(w)) && words.some((w) => /\p{Ll}/u.test(w));
+/* …AND THE SMALL WORDS OF A NAME ARE NEVER A NAME ON THEIR OWN (2026-11-26, read off a day of live told stories): "The
+ * woman in the lake" was called by "in", so EVERY scene with an "in" in it — "eyes wide open in the dark tent" — put her
+ * in its picture, and "the figure in Room 14" was "in a dim corridor" with the nurse: three redraws in a row, each told
+ * to draw the figure EXACTLY as in its portrait, beside the woman in the hallway. And "Room" — the place it is IN — made
+ * that name look like a proper one, so the head word did not hold: the capital is read in the name's HEAD phrase only,
+ * the words before "in / with / of / who…". */
+const NAME_GLUE = /^(?:in|on|at|of|by|to|and|or|with|from|for|into|onto|over|under|near|behind|beside|inside|outside|who|that|de|del|della|di|da|du|des|la|le|les|van|von|der|den|el|al)$/i;
+const nameSplit = (s: string): string[] => (s || "").split(/[^\p{L}\p{N}'’-]+/u).filter((w) => w.length >= 2 && !NAME_SKIP.test(w) && !NAME_GLUE.test(w));
 /** The words of a name a scene might call the character by: "Mourning Mary" → Mourning, Mary; "The Ganve" → Ganve;
- *  "the claw machine ghost" → ghost. */
+ *  "the claw machine ghost" → ghost; "the figure in Room 14" → figure. */
 export function nameWords(name: string): string[] {
-  const words = (name || "").split(/[^\p{L}\p{N}'’-]+/u).filter((w) => w.length >= 2 && !NAME_SKIP.test(w));
-  if (!describes(words)) return words;
-  const head = (name || "").split(ABOUT_HEAD)[0].split(/[^\p{L}\p{N}'’-]+/u).filter((w) => w.length >= 2 && !NAME_SKIP.test(w));
-  return [head[head.length - 1] || words[words.length - 1]];
+  const words = nameSplit(name);
+  const head = nameSplit((name || "").split(ABOUT_HEAD)[0]);
+  const describing = head.length > 0 && !head.some((w) => /^\p{Lu}/u.test(w)) && head.some((w) => /\p{Ll}/u.test(w)) && (head.length > 1 || head.length < words.length);
+  return describing ? [head[head.length - 1]] : words;
 }
 /** Is this character named in the text? The whole name in any case, or one of its own words exactly as
  *  written — as a word of its own, so "Dot" is not in "dotted", and "Howl" is not "a distant howl". */
@@ -1244,9 +1251,27 @@ const GONE_BEFORE = /\b(?:no sign of|no trace of|without|instead of|(?:search(?:
  *  owner of something ("Edda's cottage"), unless what is theirs is part of them ("Edda's hand", "her" coat
  *  is not asked — only what follows the name, four words on). */
 export function presentIn(name: string, text: string): boolean {
+  return presence(name, text) !== null;
+}
+/* SEEN ONLY BY A PART THAT SHOWS NO FACE (2026-11-26): "her eyes locked on something just past the camera's edge — the
+ * skater's bare feet, not skates, skimming silent above the floor" puts the skater in the picture by her FEET. Asked "is
+ * the skater in it?" against her portrait, the look could not tell — a hard fault, and a redraw told to draw her EXACTLY
+ * as in her portrait. A hand, fingers, feet, a lap, a grip, claws, paws, a shadow, a silhouette or a breath shows no face
+ * to compare: the character is drawn from their portrait as ever, and not asked about. A face named after them in the
+ * same sentence ("…her face lit by phone light") makes them whole again. */
+const NO_FACE_PART = /^(?:hands?|fingers?|feet|foot|knees?|lap|grip|grasp|claws|paws?|shadow|silhouette|breath)$/i;
+const FACE_AFTER = /^[^.!?;]*\b(?:her|his|their|its)\s+(?:own\s+)?(?:face|eyes|gaze|expression|smile|mouth|lips|head)\b/i;
+/** Is this character in these words only by a part that shows no face — "the skater's bare feet", "Edda's hand on the
+ *  rail"? (Then the look does not ask whether they are in the picture.) */
+export function partOnlyIn(name: string, text: string): boolean {
+  return presence(name, text) === "part";
+}
+/** How a character is in these words: as somebody ("whole"), only by a part that shows no face ("part"), or not (null). */
+function presence(name: string, text: string): "whole" | "part" | null {
   const t = text || "";
   const full = (name || "").trim();
-  if (!full || !namedIn(full, t)) return false;
+  if (!full || !namedIn(full, t)) return null;
+  let part = false;
   const asWritten = nameWords(full).map((w) => new RegExp(`(^|[^\\p{L}\\p{N}])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "gu"));
   // (a name of several words is unmistakable in any case — as in namedIn)
   const whole = /\s/.test(full) ? [new RegExp(full.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "giu")] : [];
@@ -1261,12 +1286,16 @@ export function presentIn(name: string, text: string): boolean {
       // (…unless the words go straight on to what they are doing: "waits for Finn, who walks toward her")
       const goesOn = /^\s*,?\s*(?:who|as (?:he|she|they|it))\b/i.test(after);
       if (!owns && (GONE_AFTER.test(after) || (GONE_BEFORE.test(lead) && !goesOn) || (/\bwhere\s+$/i.test(lead) && /^\s*(?:was|stood|sat|lay|had been|had stood|used to)\b/i.test(after)))) continue;
-      if (!owns) return true; // named as somebody
+      if (!owns) return "whole"; // named as somebody
       const next = after.slice(owns[0].length).split(/[^\p{L}\p{N}'’-]+/u).filter(Boolean).slice(0, 4);
-      if (next.some((w) => OF_THEIR_OWN.test(w))) return true; // their hand, their coat: they are there
+      const theirs = next.filter((w) => OF_THEIR_OWN.test(w));
+      if (!theirs.length) continue;
+      // their hand, their coat: they are there — whole, unless all of them that is named shows no face
+      if (theirs.some((w) => !NO_FACE_PART.test(w)) || FACE_AFTER.test(after.slice(owns[0].length))) return "whole";
+      part = true;
     }
   }
-  return false;
+  return part ? "part" : null;
 }
 /** Who is in this scene's picture: which of the PICKED cast (by index) and which of the story's other
  *  cast-list entries. */
