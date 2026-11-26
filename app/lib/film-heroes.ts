@@ -251,7 +251,17 @@ export const CAUGHT_ON_CAM = {
   short: "Phone, house & body cams",
   group: "only" as const,
   art: { still: "/landing/ff-cam-house.jpg", clip: FOUND_FOOTAGE_DOOR.clip, at: "28% 50%" } as WayArt,
-  cameras: (["house", "bodycam", "phone", "camcorder"] as CameraLook[]).map((k) => ({ key: k, name: CAMERA_LOOKS.find((c) => c.key === k)?.name || k })),
+  // (each camera's card has its own footage — 2026-11-26, the owner: "Phone needs to be the smiling woman video with iPhone
+  //  overlay, camcorder needs to have the camcorder overlay (different video hero)". The phone's and the camcorder's are cut
+  //  as a window centered on its own blurred copy, so a phone's 4:5 card and a wide 16:9 one both keep the whole overlay:
+  //  the phone's from a real take of "She's smiling" with its recording screen, the camcorder's from the real camcorder film
+  //  "What Circled the Tent" with its tape overlay drawn inside the window)
+  cameras: (["house", "bodycam", "phone", "camcorder"] as CameraLook[]).map((k) => ({
+    key: k,
+    name: CAMERA_LOOKS.find((c) => c.key === k)?.name || k,
+    still: k === "phone" || k === "camcorder" ? `/landing/ff-way-${k}.jpg` : `/landing/ff-cam-${k}.jpg`,
+    clip: k === "phone" || k === "camcorder" ? `/landing/ff-way-${k}.mp4` : `/landing/ff-cam-${k}.mp4`,
+  })),
 };
 const SHELVES: ReadonlyArray<Omit<HeroShelf, "heroes"> & { has: (h: FilmHero) => boolean }> = [
   // (NAMES, 2026-11-26 — the owner, of the phone view: "Picture book sounds like a physical book / story / film come across as

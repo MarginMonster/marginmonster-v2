@@ -705,8 +705,17 @@ test("the Movie Maker's door to Found Footage: the Caught on Cam card — operat
   assert.ok(ui.includes("foundFootage: isAdminEmail(account.email),"), "the same operator check as every admin-only format");
   assert.ok(ui.includes("...(d.foundFootage ? [CAUGHT_ON_CAM] : []),") && ui.includes('{wayOn === "cam" && d.foundFootage && ('), "the card and its row: an operator's");
   assert.ok(ui.includes("href={`${FOUND_FOOTAGE_DOOR.href}?camera=${c.key}`}"), "each camera opens the builder on it");
-  assert.ok(ui.includes("<LoopCover k={`ff-${c.key}`} still={`/landing/ff-cam-${c.key}.jpg`} clip={`/landing/ff-cam-${c.key}.mp4`} />"));
-  for (const c of ["house", "bodycam", "phone", "camcorder"]) for (const f of [`ff-cam-${c}.jpg`, `ff-cam-${c}.mp4`]) assert.ok(fs.existsSync(path.join(root, "public", "landing", f)), f);
+  assert.ok(ui.includes("<LoopCover k={`ff-${c.key}`} still={c.still} clip={c.clip} />"));
+  // (each camera's card has its own footage: the phone's is the smiling woman with the iPhone screen, the camcorder's the
+  //  tent film with its tape overlay — the owner, 2026-11-26 — and every file is there)
+  const { CAUGHT_ON_CAM } = await import("../app/lib/film-heroes.ts");
+  assert.deepEqual(CAUGHT_ON_CAM.cameras.map((c) => [c.key, c.still, c.clip]), [
+    ["house", "/landing/ff-cam-house.jpg", "/landing/ff-cam-house.mp4"],
+    ["bodycam", "/landing/ff-cam-bodycam.jpg", "/landing/ff-cam-bodycam.mp4"],
+    ["phone", "/landing/ff-way-phone.jpg", "/landing/ff-way-phone.mp4"],
+    ["camcorder", "/landing/ff-way-camcorder.jpg", "/landing/ff-way-camcorder.mp4"],
+  ]);
+  for (const c of CAUGHT_ON_CAM.cameras) for (const f of [c.still, c.clip]) assert.ok(fs.existsSync(path.join(root, "public", f)), f);
   assert.ok(!ui.includes('{sh.key === "acted" && d.foundFootage && ('), "no longer the Film row's last poster");
   // the builder it opens turns everyone else away too
   assert.ok(read("app", "routes", "web.found-footage.tsx").includes('if (!isAdminEmail(account.email)) throw new Response("Not found", { status: 404 });'));

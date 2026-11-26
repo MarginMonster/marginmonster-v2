@@ -4448,7 +4448,7 @@ export default function FilmStudio() {
               <a role="tab" aria-selected={false} key={c.key} data-cam={c.key} className={`fs-fmt fs-door${guessKey === `cam:${c.key}` ? " is-guess" : ""}`} href={`${FOUND_FOOTAGE_DOOR.href}?camera=${c.key}`} aria-label={[t(c.name), t(FOUND_FOOTAGE_DOOR.name)].join(" · ")}
                 onClick={() => { if (idea) { try { window.sessionStorage.setItem(IDEA_HANDOFF_KEY, packHandoff(idea, Date.now())); } catch { /* the camera is still the one asked for */ } } }}>
                 <span className="fs-fmt-cover">
-                  <LoopCover k={`ff-${c.key}`} still={`/landing/ff-cam-${c.key}.jpg`} clip={`/landing/ff-cam-${c.key}.mp4`} />
+                  <LoopCover k={`ff-${c.key}`} still={c.still} clip={c.clip} />
                   <span className={`fs-fmt-ico ${FOUND_FOOTAGE_DOOR.tint}`} aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="14" height="12" rx="2" /><path d="M16 10l6-3v10l-6-3" /><circle cx="6" cy="9.5" r="1" /></svg></span>
                   <span className="fs-fmt-label"><b>{t(c.name)}</b></span>
                 </span>
