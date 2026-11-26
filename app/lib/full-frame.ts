@@ -115,6 +115,11 @@ export function edgeMeasure(gray: Uint8Array, side: BandSide, S = BAND_SIZE): { 
     if (spreadOf(l) > BAND_FLAT || Math.abs(meanOf(l) - colour) > BAND_DRIFT) break;
     depth = k + 1;
   }
+  // (…its LAST line may be half band, half picture — still flat and near the colour when what the band meets is dark or
+  //  plain — and then it is the edge, not the band: review of S14, a letterboxed night picture whose black band over a
+  //  dark road ended in a line 2.3 off black, so the band never "held" and the cover kept a third of the frame black)
+  const off = (k: number): number => Math.abs(meanOf(line(k)) - colour);
+  if (depth > 3 && off(depth - 1) > BAND_HOLD && [2, 3, 4].every((j) => off(depth - j) <= BAND_HOLD)) depth--;
   let hold = 0;
   for (let k = Math.max(0, depth - 3); k < depth; k++) hold = Math.max(hold, Math.abs(meanOf(line(k)) - colour));
   let jump = false;

@@ -59,6 +59,14 @@ test("a flat band of ANY colour at ANY edge is found — cream, white, grey, bla
       }
     }
   }
+  // …and a band whose LAST line of the small read is half band, half picture — still flat and near the band's colour
+  //  because what it meets is dark (review of S14: a letterboxed night picture, its black bottom bar over a dark road,
+  //  was read as banded at the top only, and the cover kept the bottom bar — a third of the frame black)
+  const road = (x: number, y: number) => 14 + 30 * ((x + y) % 9 === 0 ? 1 : 0) + noise(x, y);
+  const half = pic((x, y) => (y < 28 ? 0 : y >= S - 28 ? 0 : y === S - 29 ? 3 : y < 40 ? scene(x, y) : road(x, y)));
+  const hb = frameBand(half, TALL.w, TALL.h);
+  assert.deepEqual(hb?.sides, ["top", "bottom"], "both bars, the half line taken as the edge");
+  assert.ok(hb && hb.box.y + hb.box.h <= (S - 29) / S + 1e-9, "the cover leaves the half line out too");
   // …two lines (2%) is not a band yet; three is
   assert.equal(frameBand(banded("bottom", 2, 228), TALL.w, TALL.h), null);
   assert.ok(frameBand(banded("bottom", 3, 228), TALL.w, TALL.h));
