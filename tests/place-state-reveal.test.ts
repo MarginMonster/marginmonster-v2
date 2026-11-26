@@ -147,6 +147,8 @@ test("the writer: what is done to a place stays done — said after, kept in so 
   // the writer's own words for it are read back as the change they say (place-state.ts)
   assert.equal(placeChangeIn("Mireille drags the zipper round until the tent door is zipped completely shut, no gap.", "", { where: TENT })?.now, "shut");
   assert.equal(placeChangeIn("Moments later, inside the zipped-shut tent, Costin grips the lantern.", "", { where: TENT }), null);
-  // …and the last shot's forms have the shut tent's two
-  assert.ok(SEEN_AT_THE_END.includes("at a TENT (always when its door was shut), it is OUTSIDE — its FACE pressing the thin canvas in from outside, the wet fabric stretched over its features, or the zipper of the shut door sliding up a hand's width from outside and, in that gap, its face — never inside with them, never in an opening that is shut;"));
+  // …and the last shot's forms have the shut tent's: its SHADOW on the moonlit canvas — never its face in the cloth
+  // (the owner, of the face moulded in the canvas: "looks like wizard of oz trash / not realistic", 2026-11-25)
+  assert.ok(!/FACE pressing the thin canvas|stretched over its features/.test(SEEN_AT_THE_END), "the writer is never asked for the face in the cloth");
+  assert.ok(SEEN_AT_THE_END.includes("at a TENT (always when its door was shut), it is OUTSIDE and only its SHADOW is seen — the lantern dims and its tall silhouette falls on the moonlit canvas, its palms pressed flat against the cloth from outside, or its shadow lying on the sagging roof — never its face in the cloth, never inside with them, never in an opening that is shut;"));
 });
