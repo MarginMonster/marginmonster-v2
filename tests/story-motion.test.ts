@@ -23,6 +23,7 @@ import {
   STORY_MOTION_MODEL, fitMotion, isMotionClip, motionChain, motionCost, motionName, motionOn, motionPrompt, motionReusable, motionSeconds, seedName, servable, storyTypicalSeconds,
 } from "../app/lib/story-motion.ts";
 import { falVideoBody } from "../app/lib/fal-video-body.ts";
+import { stillHeld } from "../app/lib/narrated-core.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (...p: string[]) => fs.readFileSync(path.join(root, ...p), "utf8").replace(/\r\n/g, "\n");
@@ -63,7 +64,10 @@ test("a clip shorter than its scene is slowed a little, then its last frame hold
   // the still beside it is the same kind of picture (two different pixel formats cannot be joined)
   const nar = read("app", "lib", "narrated-story.server.ts");
   assert.ok(nar.includes("? `[${i}:v]${motionChain(m.fit, frames[i], o.W, o.H)}[c${i}]`"));
-  assert.ok(nar.includes("? `[${i}:v]${kenBurns(i, frames[i], o.W, o.H)},format=yuv420p[c${i}]`"));
+  // (since 2026-11-25 a still is HELD in its own chain and moved over the joined picture — narrated-core.ts → A STILL
+  //  PICTURE'S SLOW MOVE; the held picture is yuv420p as the clip is)
+  assert.ok(nar.includes("? `[${i}:v]${stillHeld(frames[i], o.W, o.H)}[c${i}]`"));
+  assert.ok(stillHeld(251, 1280, 720).endsWith(",format=yuv420p"));
 });
 
 test("the same picture told again moves without being paid for twice — a re-drawn one does not", () => {
