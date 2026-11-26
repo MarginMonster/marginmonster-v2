@@ -151,3 +151,10 @@ test("THE IDEA, READ (2026-11-26 — \"not routing things properly now\"): the s
 test("the keywords alone: a train-derailment victim is a Thriller now (it was a Drama)", () => {
   assert.equal(routeIdea("I saw my own name as the sole victim of a fatal derailment at the next station", { heroes: FILM_HEROES.filter((h) => !h.shelf), ways: ["still", "told", "acted"], current: "told" }).heroId, "thriller");
 });
+
+test("the reading is told a family secret coming out is a DRAMA (2026-11-26: the tester's Thanksgiving loan was read as a comedy)", async () => {
+  const { ideaReadAsk } = await import("../app/lib/idea-route.ts");
+  const ask = ideaReadAsk("At the Thanksgiving table, Aunt Clara thanked my brother for paying back the secret loan.");
+  assert.ok(ask.includes('an idea played MAINLY for laughs — is "comedy"'));
+  assert.ok(ask.includes('a family argument, a secret coming out, a betrayal or a hard choice is "drama", even with a witty line in it.'));
+});

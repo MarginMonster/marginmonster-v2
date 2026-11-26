@@ -132,7 +132,7 @@ export function ideaReadAsk(idea: string): string {
   return (
     `A member typed this idea for a short film into a movie maker:\n"""${String(idea || "").replace(/"""/g, "\"").slice(0, 1200)}"""\n` +
     `Say what KIND of film it is. Answer with ONE line of JSON and nothing else: {"genre": …, "kids": …, "song": …, "camera": …, "anime": …}\n` +
-    `- genre: the ONE that fits best — ${IDEA_READ_GENRES.map((g) => `"${g}"`).join(", ")}. A farce, a prank, a mix-up or anything played for laughs is "comedy"; danger against a clock, a trap, a stalker or a deadly secret is "thriller"; a ghost, a monster or dread is "horror"; a crime to solve is "mystery"; a story told to teach a lesson is "moral"; fights and chases are "action"; a family argument or a hard choice is "drama".\n` +
+    `- genre: the ONE that fits best — ${IDEA_READ_GENRES.map((g) => `"${g}"`).join(", ")}. A farce, a prank, a slapstick mix-up — an idea played MAINLY for laughs — is "comedy"; danger against a clock, a trap, a stalker or a deadly secret is "thriller"; a ghost, a monster or dread is "horror"; a crime to solve is "mystery"; a story told to teach a lesson is "moral"; fights and chases are "action"; a family argument, a secret coming out, a betrayal or a hard choice is "drama", even with a witty line in it.\n` +
     `- kids: true only if it is made FOR young children (a cartoon, a sing-along, a gentle story for little ones) — a story ABOUT a child is not.\n` +
     `- song: true only if it is a song or a music video.\n` +
     `- camera: "house", "bodycam", "phone" or "camcorder" only if the idea says it is footage caught on that kind of camera (a doorbell or security camera is "house"; a police body camera "bodycam"); otherwise null.\n` +

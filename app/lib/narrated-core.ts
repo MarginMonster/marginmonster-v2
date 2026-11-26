@@ -1244,7 +1244,10 @@ export const entryName = (entry: string): string => ((entry || "").split(/[,:—
 /* (…and a VOICE is heard, never drawn — 2026-11-26, live: "CLOSE: Teodor's face … as Philomena's voice drifts over him"
  *  put the grandmother in her grandson's close-up; the look said "not in it" three times, two redraws paid to push her
  *  face into a shot planned to show only his. The acted films' rule already: "A woman's voice calls…" is never drawn.) */
-const OF_THEIR_OWN = /^(?:hands?|face|eyes?|arms?|shoulders?|hair|back|fingers?|feet|foot|head|coat|cloak|dress|gown|scarf|hat|cap|side|lap|knees?|cheeks?|mouth|lips|chest|neck|sleeves?|apron|jacket|boots|shoes|grip|grasp|gaze|smile|expression|shell|tail|paws?|fur|wings?|beak|ears?|nose|whiskers|claws|breath|shadow|body|figure|silhouette|reflection)$/i;
+// (…and a GLARE, a stare, a frown is their FACE — 2026-11-26, live: "OVER THE SHOULDER: behind Dragan's dark shoulder, Signe's
+//  glare fixed on him" left Signe out of her own scene: no portrait was sent, a dark-haired stranger was drawn glaring, and
+//  the look never asked about her. A fist, a wrist, a leg is them too, by a part that shows no face — NO_FACE_PART.)
+const OF_THEIR_OWN = /^(?:hands?|face|eyes?|arms?|shoulders?|hair|back|fingers?|feet|foot|head|coat|cloak|dress|gown|scarf|hat|cap|side|lap|knees?|cheeks?|mouth|lips|chest|neck|sleeves?|apron|jacket|boots|shoes|grip|grasp|gaze|smile|expression|shell|tail|paws?|fur|wings?|beak|ears?|nose|whiskers|claws|breath|shadow|body|figure|silhouette|reflection|glare|stares?|glances?|look|frown|scowl|grin|tears|brow|jaw|chin|profile|posture|stance|fists?|wrists?|elbows?|legs?|toes|knuckles|palms?)$/i;
 const GONE_AFTER = /^\s*(?:is|was|has|had)?\s*(?:no longer\b|not (?:there|here)\b|nowhere\b|gone\b(?!\s+(?:still|quiet|silent|pale|white|cold|rigid|grey|gray|slack))|vanished\b|disappeared\b|missing\b)/i;
 const GONE_BEFORE = /\b(?:no sign of|no trace of|without|instead of|(?:search(?:es|ing|ed)?|look(?:s|ing|ed)?|call(?:s|ing|ed)?|wait(?:s|ing|ed)?) for)\s+$/i;
 /** Is this character IN the picture these words describe? Named, and at least once as somebody: not as the
@@ -1259,7 +1262,7 @@ export function presentIn(name: string, text: string): boolean {
  * as in her portrait. A hand, fingers, feet, a lap, a grip, claws, paws, a shadow, a silhouette or a breath shows no face
  * to compare: the character is drawn from their portrait as ever, and not asked about. A face named after them in the
  * same sentence ("…her face lit by phone light") makes them whole again. */
-const NO_FACE_PART = /^(?:hands?|fingers?|feet|foot|knees?|lap|grip|grasp|claws|paws?|shadow|silhouette|breath)$/i;
+const NO_FACE_PART = /^(?:hands?|fingers?|feet|foot|knees?|lap|grip|grasp|claws|paws?|shadow|silhouette|breath|fists?|wrists?|elbows?|legs?|toes|knuckles|palms?)$/i;
 const FACE_AFTER = /^[^.!?;]*\b(?:her|his|their|its)\s+(?:own\s+)?(?:face|eyes|gaze|expression|smile|mouth|lips|head)\b/i;
 /** Is this character in these words only by a part that shows no face — "the skater's bare feet", "Edda's hand on the
  *  rail"? (Then the look does not ask whether they are in the picture.) */

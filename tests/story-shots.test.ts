@@ -232,3 +232,11 @@ test("THE WRITER IS TOLD who a caption is about is SEEN doing it, a gathering st
   // (the tester's bedtime horror: the daughter in every scene and in no cast entry — no portrait, a different age each time)
   assert.ok(eng.includes("Anyone else who is SEEN in more than one scene (a child, a partner, a friend, a parent, a victim) IS added to \\\"cast\\\""));
 });
+
+test("THE CHOSEN CAST PLAY THE IDEA'S ROLES (2026-11-26: three men chosen for BARNABY, PIPPIN and the Duchess — \"Pippin\" stayed a stranger nobody chose)", () => {
+  const eng = fs.readFileSync(path.join(root, "app", "lib", "film-engine.server.ts"), "utf8");
+  const picked = eng.slice(eng.indexOf("const pickedLine = castChosen.length"), eng.indexOf("const castLine = pickedLine"));
+  assert.ok(picked.includes("THE CHOSEN CAST PLAY THE IDEA'S ROLES: when the idea names its own characters or roles"));
+  assert.ok(picked.includes("a Duchess played by a man is a Duke") && picked.includes("The idea's own names for those roles are never used."));
+  assert.ok(picked.indexOf("THE CHOSEN CAST PLAY THE IDEA'S ROLES") > picked.indexOf("never rename them."), "after the names are fixed");
+});

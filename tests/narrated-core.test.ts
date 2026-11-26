@@ -435,3 +435,14 @@ test("named as the owner of something is not being there", () => {
   const engine = fs.readFileSync(new URL("../app/lib/film-engine.server.ts", import.meta.url), "utf8");
   assert.ok(engine.includes("Whoever a VISUAL names is DRAWN in it — so a place or thing that belongs to somebody who is NOT in the picture is called by what it is"));
 });
+
+test("a GLARE is a face (2026-11-26, live: \"Signe's glare fixed on him\" left Signe out of her own scene — a stranger was drawn)", () => {
+  const v = "OVER THE SHOULDER: behind Dragan's dark shoulder, Signe's glare fixed on him across the candlelit table, dishes between them, his face turned toward her, caught.";
+  assert.equal(presentIn("Signe", v), true);
+  assert.equal(partOnlyIn("Signe", v), false, "her face is in it: she is asked about");
+  for (const w of ["stare", "glance", "look", "frown", "scowl", "grin", "tears", "brow", "jaw", "chin", "profile"]) assert.equal(partOnlyIn("Mira", `CLOSE: Mira's ${w} hardens as the door opens`) === false && presentIn("Mira", `CLOSE: Mira's ${w} hardens as the door opens`), true, w);
+  // a fist, a wrist, a leg: there by a part that shows no face — drawn from the portrait, not asked about
+  for (const w of ["fist", "wrist", "elbow", "leg", "toes", "knuckles", "palm"]) assert.equal(partOnlyIn("Kai", `A DETAIL: Kai's ${w} on the table edge`), true, w);
+  // …and whose a place or a thing is still is not being there
+  assert.equal(presentIn("Edda", "the wooden bench beside Edda's round green door"), false);
+});
