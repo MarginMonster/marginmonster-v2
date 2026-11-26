@@ -112,8 +112,9 @@ test("Generate says the film was sent, and stays sent until something in the fil
 });
 
 test("back to the posters and into the same format again keeps what was being made", () => {
-  // (judged on the HERO since 2026-11-22: two heroes can share a template — tests/film-heroes.test.ts)
-  assert.ok(ui.includes("window.setTimeout(() => { if (key !== heroId) switchHero(key); setEntered(true); setAnim(\"\"); setZoomKey(null); }, reduce ? 0 : 400);"));
+  // (judged on the HERO since 2026-11-22: two heroes can share a template — tests/film-heroes.test.ts; since
+  //  2026-11-26 the same hero opened from its other shelf — Stories, Still Stories — changes only its rung)
+  assert.ok(ui.includes("window.setTimeout(() => { if (key !== heroId) switchHero(key); if (rung) setPictures(rung); setEntered(true); setAnim(\"\"); setZoomKey(null); }, reduce ? 0 : 400);"));
 });
 
 test("phone: the story editor's small controls have a full-size place to tap", () => {

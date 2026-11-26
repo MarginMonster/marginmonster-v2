@@ -404,12 +404,13 @@ test("the words read: 4.5:1 or better on the dark — the page, under its light,
   //  the card's cream at its deepest there)
   const HEAD = over(CARD_FOOT, CARD_TOP, 0.25);
   const accents: [string, string, number][] = [];
-  for (const key of ["told", "acted", "sung"]) {
+  // (2026-11-26: the STILL shelf's — a cool steel blue, apart from the other three — is held to the same sums)
+  for (const key of ["told", "still", "acted", "sung"]) {
     const m = new RegExp(`\\.fs-shelf\\.is-${key}\\{--shelf:(#[0-9A-F]{6});--shelf-soft:rgba\\(([\\d,]+),(\\.\\d+)\\);\\}`).exec(before);
     assert.ok(m && hexOf(m[2]) === m[1], `${key}: the plate is the accent's own colour`);
     accents.push([key, m[1], Number(m[3])]);
   }
-  assert.deepEqual(accents, [["told", "#A8741B", 0.1], ["acted", "#0C7A46", 0.09], ["sung", "#6B4BC8", 0.09]]);
+  assert.deepEqual(accents, [["told", "#A8741B", 0.1], ["still", "#3E6A8E", 0.09], ["acted", "#0C7A46", 0.09], ["sung", "#6B4BC8", 0.09]]);
   // THE TAG'S PLATE is solid now — the card's top cream under the accent's own tint — so the ticket's
   // engraving never runs behind its letters, and it reads exactly as it did
   assert.ok(ticket.includes(".fs-shelf-tag{background:linear-gradient(var(--shelf-soft),var(--shelf-soft)),#FFFEFA;}"));
@@ -632,16 +633,18 @@ test("each shelf is ONE row, swiped sideways, in both themes: 2.3 posters on a p
   // the tab order — and the element that was the grid is the row (no markup changed)
   // (2026-11-25: a poster says its movie CATEGORY — `card`, "Comedy" — and a screen reader is told its whole
   //  name, "Comedy Film", with its line: two shelves now carry the same word)
+  // (2026-11-26: the STILL shelf is in the same list — the told heroes again, each poster opening its hero on its
+  //  shelf's rung, its zoom key its shelf's (posterKey), chosen only while that rung is, "Still pictures" its note)
   for (const k of [
-    "{heroShelves(heroes).map((sh) => (",
+    "{heroShelves(heroes, { still: d.storyMotion }).map((sh) => (",
     "<section key={sh.key} className={`fs-shelf is-${sh.key}`} aria-labelledby={`fs-shelf-${sh.key}`}>",
     "<div className={`fs-fmtgrid${anim === \"in\" ? \" throw\" : \"\"}`} role=\"tablist\" aria-label={t(sh.name)}>",
     "{sh.heroes.map((h) => (",
-    "<button type=\"button\" role=\"tab\" key={h.id} className={`fs-fmt${zoomKey === h.id ? \" zoom\" : \"\"}${h.told === \"narrated\" ? \" is-told\" : \"\"}`}\n                aria-selected={heroId === h.id} aria-label={[t(h.name), h.kick ? t(h.kick) : \"\", h.meta ? t(h.meta) : \"\"].filter(Boolean).join(\" · \")} onClick={() => enterFormat(h.id)}>",
+    "<button type=\"button\" role=\"tab\" key={h.id} className={`fs-fmt${zoomKey === posterKey(h.id, sh.rung) ? \" zoom\" : \"\"}${h.told === \"narrated\" ? \" is-told\" : \"\"}`}\n                aria-selected={heroId === h.id && (!sh.rung || pictures === sh.rung)} aria-label={[t(h.name), h.kick ? t(h.kick) : \"\", sh.rung === \"still\" ? t(\"Still pictures\") : h.meta ? t(h.meta) : \"\"].filter(Boolean).join(\" · \")} onClick={() => enterFormat(h.id, sh.rung)}>",
     "<span className=\"fs-fmt-label\"><b>{t(h.card)}</b></span>",
-    "{h.kick ? <span className=\"fs-fmt-sub\">{t(h.kick)}{h.meta ? <em> · {t(h.meta)}</em> : null}</span> : null}",
+    "{h.kick ? <span className=\"fs-fmt-sub\">{t(h.kick)}{sh.rung === \"still\" ? <em> · {t(\"Still pictures\")}</em> : h.meta ? <em> · {t(h.meta)}</em> : null}</span> : null}",
   ]) assert.equal(count(ui, k), 1, k);
-  const shelvesJsx = ui.slice(ui.indexOf("{heroShelves(heroes).map((sh) => ("), ui.indexOf("{entered && ("));
+  const shelvesJsx = ui.slice(ui.indexOf("{heroShelves(heroes, { still: d.storyMotion }).map((sh) => ("), ui.indexOf("{entered && ("));
   // (2026-11-25: a wide screen's ARROWS sit beside a row that runs on — FS_SHELF_GO. They are for a mouse only:
   //  plain marks, hidden from a screen reader and out of the Tab order, and what moves a row is a CLICK on one —
   //  a function outside this markup. Nothing here moves a row by itself, and no poster leaves the Tab order.)
@@ -724,9 +727,11 @@ test("each shelf is ONE row, swiped sideways, in both themes: 2.3 posters on a p
   //  comedy, etch)": the shelves were [3, 4, 2] and nothing scrolled on a wide screen, "a fifth poster on a shelf
   //  would". Stories now holds nine and Films eleven, so those two rows scroll sideways on EVERY screen — four
   //  across on a wide one, as the row was built to; only Music videos still stands whole.)
+  // (2026-11-26: the still shelf re-lists the nine Stories — "Maybe just make it an additional tier on the actual movie
+  //  maker (would look like more options)" — so it scrolls as they do)
   const shelves = heroShelves(FILM_HEROES).map((s) => s.heroes.length);
-  assert.deepEqual(shelves, [9, 11, 2]);
-  assert.ok(shelves[0] > 4 && shelves[1] > 4 && shelves[2] <= 4, "Stories and Films scroll on a wide screen too; Music videos' two do not");
+  assert.deepEqual(shelves, [9, 9, 11, 2]);
+  assert.ok(shelves[0] > 4 && shelves[1] > 4 && shelves[2] > 4 && shelves[3] <= 4, "Stories, Still Stories and Films scroll on a wide screen too; Music videos' two do not");
 
   // THE PAGE NEVER SCROLLS SIDEWAYS. The tray runs to the screen's edge by taking back the page's own gutter
   // — the shell's .wb-main padding, width for width — and not a pixel more.
@@ -761,7 +766,9 @@ test("each shelf is ONE row, swiped sideways, in both themes: 2.3 posters on a p
 
 test("a tapped poster still pops where it stands — inside a row that keeps room for it", () => {
   // the walk into a format is the page's own, untouched: the tapped poster grows, the others fall away
-  assert.ok(ui.includes("setZoomKey(key); setAnim(\"in\");") && ui.includes("window.setTimeout(() => { if (key !== heroId) switchHero(key); setEntered(true); setAnim(\"\"); setZoomKey(null); }, reduce ? 0 : 400);"));
+  // (2026-11-26: the poster that grows is the one tapped — a told hero stands on Stories and on Still Stories, and its
+  //  zoom key says which — and a shelf's rung is set as it opens)
+  assert.ok(ui.includes("setZoomKey(posterKey(key, rung)); setAnim(\"in\");") && ui.includes("window.setTimeout(() => { if (key !== heroId) switchHero(key); if (rung) setPictures(rung); setEntered(true); setAnim(\"\"); setZoomKey(null); }, reduce ? 0 : 400);"));
   const pop = /\.fs-fmtgrid\.throw \.fs-fmt\.zoom\{opacity:1;z-index:6;will-change:transform;transform:scale\(([\d.]+)\);/.exec(before);
   assert.ok(pop && before.includes(".fs-fmtgrid.throw .fs-fmt{opacity:0;transform:scale(.72) translateY(26px);"));
   const grow = (Number(pop[1]) - 1) / 2; // it grows from its middle: this much of its size on every side
@@ -872,9 +879,10 @@ test("in the dark the Next-episode cards are tickets under a sign in gold — an
   const pseudo = T.filter((r) => /\.fs-(shelf|fmt)[^,]*::(before|after)/.test(r.sel));
   assert.deepEqual(pseudo.map((r) => r.sel), [".fs-theater .fs-shelf-h::before,.fs-theater .fs-shelf-h::after"]);
   assert.deepEqual(props(pseudo[0].body), ["background", "border-color"]);
-  // the shelves' words are not a theme's to change: three shelves, their names, lines and tags
+  // the shelves' words are not a theme's to change: four shelves (the still one since 2026-11-26), their names, lines and tags
   assert.deepEqual(heroShelves(FILM_HEROES).map((s) => [s.name, s.tag, s.line]), [
-    ["Stories", "Narrated", "A narrator tells it over moving pictures or cheaper stills"],
+    ["Stories", "Narrated", "A narrator tells it over moving pictures"],
+    ["Still Stories", "Cheapest", "A narrator tells it over still pictures that slowly move"],
     ["Films", "Acted", "Actors speak the lines on camera"],
     ["Music videos", "Sung", "Your artist sings on camera"],
   ]);
@@ -939,7 +947,7 @@ test("a shelf is a TICKET in both themes: the rosette engraved in its paper, a p
   //     reading direction, so the lip is always the right-hand one)
   assert.equal(body(".fs-shelf-wm::after", MASKED), "z-index:-1;margin:1px -1px 0 0;background:#fff;opacity:.9;");
   assert.equal(body("[dir=rtl] .fs-shelf-wm::after", MASKED), "margin:1px 0 0 1px;");
-  for (const k of [".fs-shelf.is-told{--shelf:#A8741B;", ".fs-shelf.is-acted{--shelf:#0C7A46;", ".fs-shelf.is-sung{--shelf:#6B4BC8;"]) assert.ok(before.includes(k), k);
+  for (const k of [".fs-shelf.is-told{--shelf:#A8741B;", ".fs-shelf.is-still{--shelf:#3E6A8E;", ".fs-shelf.is-acted{--shelf:#0C7A46;", ".fs-shelf.is-sung{--shelf:#6B4BC8;"]) assert.ok(before.includes(k), k);
   //     LARGE — taller than the card it is in (140% of the card's height; 160% on a wide screen, where a card
   //     is four posters long) — and BLEEDING OFF A CORNER: its box is put AT the card's top far corner and
   //     moved half its own size out and up, so its hub is the corner itself and three quarters of it lie

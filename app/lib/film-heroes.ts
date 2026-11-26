@@ -40,6 +40,8 @@
  * but for Action, told. What a genre offers inside the builder — its places, starter ideas and director's
  * notes — is film-genres.ts, by template key.
  */
+import type { StoryPictures } from "./story-motion.ts";
+
 export type Told = "acted" | "narrated";
 export type FilmHero = {
   /** what the page calls it (and the grid's key) */
@@ -155,20 +157,56 @@ export function heroesFor(templateKeys: string[], narratableKeys: string[]): Fil
  * it's a bit confusing without clicking through". So the grid is three shelves, and each says in a line what
  * every poster on it has in common — before anything is clicked. The stories first: they are ready in
  * minutes. (Which shelf leads is his to change — the order of `SHELVES` is the order on the page.)
- * THE STORIES' LINE SAYS BOTH RUNGS (2026-11-25). It said "A narrator tells it over moving pictures · ready in
- * minutes" — and a story can be told over its STILL pictures too, the cheapest thing the Movie Maker makes
- * (film-length.ts → 1 token a second against 2.5). The owner, with a photo of this heading: "Stories narrated moving
- * pictures - we also need the timeless pictures with narration as an extremely cheap base tier". So it names both,
- * and which costs least; each poster under it still says "narrated in minutes", and the builder's Length step is
- * where the two are chosen, each with its own estimate. */
-export type HeroShelf = { key: "told" | "acted" | "sung"; name: string; tag: string; line: string; heroes: FilmHero[] };
+ *
+ * A TOLD STORY'S CHEAPEST RUNG IS A SHELF OF ITS OWN (2026-11-26). A story can be told over its STILL pictures, each
+ * with a slow camera move — the cheapest thing the Movie Maker makes (film-length.ts → 1 token a second against 2.5
+ * moving). The owner asked for it on 2026-11-25, with a photo of the Stories heading: "Stories narrated moving
+ * pictures - we also need the timeless pictures with narration as an extremely cheap base tier" — and it went INTO
+ * the builder's Length step (Still / Moving, each with its estimate), the Stories line saying "…or cheaper stills".
+ * The next day, of that: "Maybe just make it an additional tier on the actual movie maker (would look like more
+ * options)". So the still rung stands on the home too, as a shelf right after the Stories (the order is his):
+ * "Still Stories" — the same told heroes, in their own order, each opening its builder on the still rung. The Stories
+ * shelf says moving pictures again: two headings in a row both saying "or cheaper stills" was noise.
+ *
+ * THE RULE. Every hero stands on exactly one WAY shelf — told, acted, sung — which is how it is made. A RUNG shelf
+ * (`rung`) re-lists the told heroes and opens each one on that rung (web.film.tsx → enterFormat(id, rung)); it adds
+ * no hero. That is why the still posters are not FilmHero entries: a template told one way is ONE hero (heroOf and
+ * film-series.ts → storyHeroOf read the first match), and a piece made from a still poster is that Story with
+ * `meta.rung = "still"` (story-motion.ts → storyIsStill), which Edit story, Next episode and Another language carry.
+ * The Stories shelf carries the "moving" rung, so a poster on it opens on moving pictures whatever was picked before.
+ * Where a server's pictures cannot move at all (no motion engine), every story is told over stills and the still
+ * shelf would only repeat the Stories: heroShelves(…, { still: false }) leaves it out.
+ *
+ * The still shelf's name, tag and line are a first proposal, each one line to change; so is its place. */
+export type HeroShelf = {
+  key: "told" | "still" | "acted" | "sung";
+  name: string;
+  tag: string;
+  line: string;
+  /** a RUNG shelf: the told story's rung its posters open on (the told shelf's is "moving") */
+  rung?: StoryPictures;
+  heroes: FilmHero[];
+};
 const SHELVES: ReadonlyArray<Omit<HeroShelf, "heroes"> & { has: (h: FilmHero) => boolean }> = [
-  { key: "told", name: "Stories", tag: "Narrated", line: "A narrator tells it over moving pictures or cheaper stills", has: (h) => h.told === "narrated" },
+  { key: "told", name: "Stories", tag: "Narrated", line: "A narrator tells it over moving pictures", rung: "moving", has: (h) => h.told === "narrated" },
+  { key: "still", name: "Still Stories", tag: "Cheapest", line: "A narrator tells it over still pictures that slowly move", rung: "still", has: (h) => h.told === "narrated" },
   { key: "acted", name: "Films", tag: "Acted", line: "Actors speak the lines on camera", has: (h) => h.told === "acted" },
   { key: "sung", name: "Music videos", tag: "Sung", line: "Your artist sings on camera", has: (h) => h.told === null },
 ];
-/** The heroes a page offers, as its shelves — every hero on exactly one, in the heroes' own order; a shelf
- *  with nothing on it is not shown. */
-export function heroShelves(heroes: ReadonlyArray<FilmHero>): HeroShelf[] {
-  return SHELVES.map(({ has, ...s }) => ({ ...s, heroes: heroes.filter(has) })).filter((s) => s.heroes.length > 0);
+/** The heroes a page offers, as its shelves — every hero on exactly one WAY shelf, in the heroes' own order, and the
+ *  told heroes again on a rung shelf; a shelf with nothing on it is not shown. `still: false` (a server whose
+ *  pictures cannot move) leaves out the shelves whose rung is "still" — and the Stories there say what they are
+ *  then told over, the still shelf's own line. (Review of S13c, 2026-11-26: the Stories' line had become "…over moving
+ *  pictures" alone, and STORY_MOTION=off — the kill switch — would have left it promising motion over a story told
+ *  over stills; the line it replaced at least named the stills.) */
+export function heroShelves(heroes: ReadonlyArray<FilmHero>, o: { still?: boolean } = {}): HeroShelf[] {
+  const still = o.still !== false;
+  const stillLine = SHELVES.find((s) => s.rung === "still")!.line;
+  return SHELVES.filter((s) => still || s.rung !== "still")
+    .map(({ has, ...s }) => ({ ...s, ...(!still && s.rung === "moving" ? { line: stillLine } : {}), heroes: heroes.filter(has) }))
+    .filter((s) => s.heroes.length > 0);
 }
+
+/** A poster's key on the page — the zoom key, so the same hero standing on two shelves pops only where it was
+ *  tapped: `still:<id>` on the still shelf, the plain id everywhere else. */
+export const posterKey = (id: string, rung?: StoryPictures): string => (rung === "still" ? `still:${id}` : id);

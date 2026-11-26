@@ -9,6 +9,9 @@
 import type { UiLang } from "./ui-i18n";
 
 const es: Record<string, string> = {
+  "Still Stories": "Historias en imágenes fijas",
+  "A narrator tells it over still pictures that slowly move": "Narrada sobre imágenes fijas que se mueven despacio",
+  "A narrator tells it over moving pictures": "Un narrador la cuenta sobre imágenes en movimiento",
   "Gentle": "Suave",
   "Pan": "Paneo",
   "Shake": "Temblor",
@@ -3588,6 +3591,9 @@ const es: Record<string, string> = {
 };
 
 const fr: Record<string, string> = {
+  "Still Stories": "Histoires en images fixes",
+  "A narrator tells it over still pictures that slowly move": "Un narrateur la raconte sur des images fixes qui bougent lentement",
+  "A narrator tells it over moving pictures": "Un narrateur la raconte sur des images animées",
   "Gentle": "Douce",
   "Pan": "Pano­ramique",
   "Shake": "Secousses",
@@ -7148,6 +7154,9 @@ const fr: Record<string, string> = {
 };
 
 const de: Record<string, string> = {
+  "Still Stories": "Standbild-Geschichten",
+  "A narrator tells it over still pictures that slowly move": "Ein Erzähler erzählt sie zu Standbildern, die sich langsam bewegen",
+  "A narrator tells it over moving pictures": "Ein Erzähler erzählt sie zu bewegten Bildern",
   "Gentle": "Sanft",
   "Pan": "Schwenk",
   "Shake": "Wackeln",
@@ -10718,6 +10727,9 @@ const de: Record<string, string> = {
 };
 
 const zh: Record<string, string> = {
+  "Still Stories": "静态画面故事",
+  "A narrator tells it over still pictures that slowly move": "旁白配着缓缓移动的静态画面讲述",
+  "A narrator tells it over moving pictures": "旁白配着动态画面讲述",
   "Gentle": "轻柔",
   "Pan": "平移",
   "Shake": "抖动",
@@ -14340,6 +14352,9 @@ const zh: Record<string, string> = {
 };
 
 const ur: Record<string, string> = {
+  "Still Stories": "ساکن تصویروں کی کہانیاں",
+  "A narrator tells it over still pictures that slowly move": "ایک راوی اسے آہستہ آہستہ حرکت کرتی ساکن تصویروں پر سناتا ہے",
+  "A narrator tells it over moving pictures": "ایک راوی اسے متحرک تصویروں پر سناتا ہے",
   "Gentle": "ہلکی",
   "Pan": "پین",
   "Shake": "لرزش",
