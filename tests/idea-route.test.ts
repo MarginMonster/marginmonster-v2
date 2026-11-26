@@ -90,7 +90,10 @@ test("THE PAGE: the box is the builder's own idea; Start goes the poster's way; 
   assert.ok(start.includes("window.sessionStorage.setItem(IDEA_HANDOFF_KEY, packHandoff(idea, Date.now()));") && start.includes("navigate(`/web/found-footage?camera=${guess.camera || \"house\"}`);"));
   const hero = ui.slice(ui.indexOf("{/* THE GUIDE BOX: the builder's own idea, raised to the top"), ui.indexOf("{/* what is playing — and a way straight into making one */}"));
   const guide = ui.slice(ui.indexOf("/* THE GUIDE BOX (2026-11-26"), ui.indexOf("// THE IDEA LANDS:"));
-  for (const part of [hero, guide]) {
+  // (…the one request the box sends is its READING of the idea — readIdea, free, nothing written, drawn or charged)
+  const readAsk = 'readFetcher.submit({ intent: "readIdea", idea }, { method: "post" });';
+  assert.equal(guide.split(readAsk).length - 1, 1);
+  for (const part of [hero, guide.split(readAsk).join("")]) {
     assert.ok(part.length > 400);
     for (const spend of ["Fetcher.submit", "submit(", "<Form", "writeTreatment", "makeStoryboard", "previewScenes", "spendTokens"]) assert.ok(!part.includes(spend), spend);
   }
@@ -104,4 +107,47 @@ test("THE PAGE: the box is the builder's own idea; Start goes the poster's way; 
   for (const k of ["Got an idea? Type it here", "We'd make this:", "We'll take you to the right place with your idea in it. Nothing is made yet.", ...[...HERO_STARTERS.story, ...HERO_STARTERS.film, ...HERO_STARTERS.only].map((x) => x.text)]) {
     assert.equal(dict.split(`\n  ${JSON.stringify(k)}: `).length - 1, 5, k);
   }
+});
+
+test("THE IDEA, READ (2026-11-26 — \"not routing things properly now\"): the small model's answer is checked, then routed by the same rules", async () => {
+  const { ideaReadAsk, parseIdeaRead, routeFromRead, IDEA_READ_GENRES } = await import("../app/lib/idea-route.ts");
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const { fileURLToPath } = await import("node:url");
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  // the ask: the idea fenced, one line of JSON, every genre named, "about a child" is not "for kids"
+  const ask = ideaReadAsk("BARNABY: Quick, hide the crown jewels before the Duchess walks in!");
+  assert.ok(ask.includes('"""BARNABY: Quick, hide the crown jewels before the Duchess walks in!"""'));
+  assert.ok(ask.includes("Answer with ONE line of JSON and nothing else"));
+  for (const g of IDEA_READ_GENRES) assert.ok(ask.includes(`"${g}"`), g);
+  assert.ok(ask.includes("a story ABOUT a child is not"));
+  // the answer, checked: a drama is the Drama template; anything not one of its own values is nothing
+  assert.deepEqual(parseIdeaRead('{"genre":"comedy","kids":false,"song":false,"camera":null,"anime":false}'), { genre: "comedy", kids: false, song: false, camera: null, anime: false });
+  assert.equal(parseIdeaRead('Sure! {"genre":"drama","kids":false,"song":false,"camera":null,"anime":false}')?.genre, "testmovie");
+  assert.equal(parseIdeaRead('{"genre":"Sci-Fi","kids":false}')?.genre, "scifi");
+  assert.equal(parseIdeaRead('{"genre":"western"}'), null);
+  assert.equal(parseIdeaRead("no idea"), null);
+  assert.equal(parseIdeaRead('{"genre":"horror","camera":"drone"}')?.camera, null);
+  assert.equal(parseIdeaRead('{"genre":"horror","camera":"house","kids":"yes"}')?.kids, false, "only a real true is true");
+  // routed by the same rules as the keywords: the farce to a Comedy Story, the puppy's to Kids, the doorbell to a camera
+  const o = { heroes: FILM_HEROES.filter((h) => !h.shelf), ways: ["still", "told", "acted", "cam", "anime", "kids", "sung"] as const, current: "told" as const, held: false };
+  assert.deepEqual(routeFromRead({ genre: "comedy", kids: false, song: false, camera: null, anime: false }, "hide the crown jewels", o), { way: "told", heroId: "comedy", rung: "moving" });
+  assert.deepEqual(routeFromRead({ genre: "testmovie", kids: true, song: false, camera: null, anime: false }, "a puppy shares his ball", o), { way: "kids", heroId: "kidstv" });
+  assert.deepEqual(routeFromRead({ genre: "horror", kids: false, song: false, camera: "house", anime: false }, "something at the door at 3am", o), { way: "cam", heroId: null, camera: "house" });
+  // …and a way the member TAPPED still holds: only the pick inside it follows the reading
+  assert.deepEqual(routeFromRead({ genre: "thriller", kids: false, song: false, camera: null, anime: false }, "a train, a newspaper", { ...o, current: "acted", held: true }), { way: "acted", heroId: "thrillerfilm" });
+  // the page: read once the member stops typing, never reloading the page, and used only while the box says what was read
+  const ui = fs.readFileSync(path.join(root, "app", "routes", "web.film.tsx"), "utf8");
+  assert.ok(ui.includes('const BOARD_INTENTS = new Set(["sketchFilmScenes", "rewriteFilmScene", "readIdea"]);'));
+  assert.ok(ui.includes('readFetcher.submit({ intent: "readIdea", idea }, { method: "post" }); }, 900);'));
+  assert.ok(ui.includes("const ideaRead = readFetcher.data && readFetcher.data.text === idea ? readFetcher.data.read || null : null;"));
+  assert.ok(ui.includes("ideaRead ? routeFromRead(ideaRead, topic, routeOpts) : routeIdea(topic, routeOpts);"));
+  // the server: after the plan checks, free, the text sent back as it came, nothing on a failure
+  const act = ui.slice(ui.indexOf("export const action"));
+  assert.ok(act.indexOf('if (intent === "readIdea")') > act.indexOf('capabilitiesFor(shop.activePlan).has("creatorvideo")'));
+  assert.ok(act.includes("return json({ text, read: parseIdeaRead(await anthropicText(ideaReadAsk(text), { maxTokens: 80 })) });"));
+});
+
+test("the keywords alone: a train-derailment victim is a Thriller now (it was a Drama)", () => {
+  assert.equal(routeIdea("I saw my own name as the sole victim of a fatal derailment at the next station", { heroes: FILM_HEROES.filter((h) => !h.shelf), ways: ["still", "told", "acted"], current: "told" }).heroId, "thriller");
 });

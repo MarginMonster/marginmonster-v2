@@ -62,7 +62,7 @@ import { FOUND_FOOTAGE_DOOR } from "../lib/film-heroes";
 // (2026-11-26) THE WAYS: the home's big cards — the ladder, then "Only on EasyMode" (Caught on Cam's cameras among them)
 import { CAUGHT_ON_CAM, wayParamOf, type WayArt, type WayKey } from "../lib/film-heroes";
 // (2026-11-26) THE GUIDE BOX's answer — where an idea would be made — and its starters and Found Footage handoff
-import { IDEA_HANDOFF_KEY, dealHeroStarters, packHandoff, routeIdea, type HeroStarter, type IdeaRoute } from "../lib/idea-route";
+import { IDEA_HANDOFF_KEY, dealHeroStarters, packHandoff, routeFromRead, routeIdea, type HeroStarter, type IdeaRoute, type IdeaSignals } from "../lib/idea-route";
 import { LYRIC_LOOKS, RIGHTS_ASK, RIGHTS_LINE, RIGHTS_NOTE, lyricEtaMinutes, songTitleOf, type LyricLook, type LyricShape } from "../lib/lyric-video";
 import { castFromJobPayloads, episodeCardFor, latestEpisode, nextEpisodeCards, sameThing, seriesBriefOf, seriesKeyOf, type NextEpisodeCard, type SeriesBrief } from "../lib/film-series";
 import type { StoryToEdit } from "../lib/story-edit";
@@ -118,7 +118,8 @@ export const meta: MetaFunction = ({ matches }) => {
 // product moves. But every answer to a fetcher re-ran this whole loader (the catalogue, the gallery, the cast,
 // the voices, the Archive's stories and their jobs) — and the sketches are asked for BY THEMSELVES, a second
 // after every script and every renamed place. Those two do not reload the page's data; everything else does.
-const BOARD_INTENTS = new Set(["sketchFilmScenes", "rewriteFilmScene"]);
+// (…and the guide box's reading of an idea — asked each time the member stops typing — never reloads the page)
+const BOARD_INTENTS = new Set(["sketchFilmScenes", "rewriteFilmScene", "readIdea"]);
 export const shouldRevalidate: ShouldRevalidateFunction = ({ formData, defaultShouldRevalidate }) =>
   BOARD_INTENTS.has(String(formData?.get("intent") || "")) ? false : defaultShouldRevalidate;
 
@@ -508,6 +509,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   if (!shop.activePlan?.active) return json({ error: tr(lang, "Pick a plan on the Dashboard first — film runs on tokens.") });
   if (!capabilitiesFor(shop.activePlan).has("creatorvideo")) {
     return json({ error: tr(lang, "Your plan doesn't include video yet — upgrade to make films.") });
+  }
+
+  // THE GUIDE BOX'S READING (idea-route.ts → ideaReadAsk, 2026-11-26 — the owner: "not routing things properly now"): what
+  // KIND of film an idea typed at the top is, read by the small model once the member stops typing. Free to the member —
+  // nothing is written, drawn or charged; the answer is only the guess under the box. `text` comes back as it was sent, so
+  // the page uses a reading only while the box still says that.
+  if (intent === "readIdea") {
+    const text = String(form.get("idea") || "").trim().slice(0, IDEA_MAX);
+    if (text.length < 12) return json({ text, read: null });
+    const { ideaReadAsk, parseIdeaRead } = await import("../lib/idea-route");
+    try {
+      const { anthropicText } = await import("../lib/anthropic.server");
+      return json({ text, read: parseIdeaRead(await anthropicText(ideaReadAsk(text), { maxTokens: 80 })) });
+    } catch {
+      return json({ text, read: null });
+    }
   }
 
   // A FORMAT THAT IS NAMED MUST EXIST. filmTemplate() answers a key it does not know with the Music Video —
@@ -2960,7 +2977,20 @@ export default function FilmStudio() {
   const [starterRoute, setStarterRoute] = useState<{ text: string; route: IdeaRoute } | null>(null);
   const [askUrge, setAskUrge] = useState(false);
   const idea = topic.trim();
-  const guess: IdeaRoute = starterRoute && starterRoute.text === topic ? starterRoute.route : routeIdea(topic, { heroes, ways: wayCards.map((w) => w.key), current: wayOn, held: wayHeld });
+  // THE IDEA, READ (idea-route.ts → ideaReadAsk, 2026-11-26 — the owner: "not routing things properly now"): the keywords
+  // sent a crown-jewels farce, a train thriller and a puppy's bedtime story to a Drama. Once the member stops typing (0.9 s)
+  // the small model reads what KIND of film it is; that reading is the guess while the box still says what was read, and
+  // the keywords answer until it comes back. A starter's own route still wins for a starter's own words.
+  const readFetcher = useFetcher<{ text?: string; read?: IdeaSignals | null; error?: string }>();
+  const readSent = useRef("");
+  useEffect(() => {
+    if (entered || idea.length < 12 || idea === readSent.current || (starterRoute && starterRoute.text === topic)) return;
+    const id = window.setTimeout(() => { readSent.current = idea; readFetcher.submit({ intent: "readIdea", idea }, { method: "post" }); }, 900);
+    return () => window.clearTimeout(id);
+  }, [idea, entered]); // eslint-disable-line react-hooks/exhaustive-deps
+  const ideaRead = readFetcher.data && readFetcher.data.text === idea ? readFetcher.data.read || null : null;
+  const routeOpts = { heroes, ways: wayCards.map((w) => w.key), current: wayOn, held: wayHeld };
+  const guess: IdeaRoute = starterRoute && starterRoute.text === topic ? starterRoute.route : ideaRead ? routeFromRead(ideaRead, topic, routeOpts) : routeIdea(topic, routeOpts);
   const guessKey = !idea ? null : guess.way === "cam" ? `cam:${guess.camera || "house"}` : guess.heroId ? posterKey(guess.heroId, guess.rung) : null;
   const guessWay = wayCards.find((w) => w.key === guess.way);
   const guessPick = !idea ? null : guess.way === "cam" ? CAUGHT_ON_CAM.cameras.find((c) => c.key === (guess.camera || "house"))?.name || null

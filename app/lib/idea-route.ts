@@ -43,12 +43,12 @@ const SONG = ["song", "sing", "singing", "music video", "lyrics", "chorus", "rap
 /** The genres, in the order they are tried; the template key of each (a Story's and a Film's). Drama is the rest. */
 const GENRE_WORDS: ReadonlyArray<[string, readonly string[]]> = [
   ["horror", ["ghost", "haunt*", "monster", "creature", "demon", "horror", "scary", "zombie", "vampire", "werewolf", "possessed", "nightmare", "creepy", "eerie", "reaper", "curse*", "fantasma", "fantôme", "gespenst", "鬼", "بھوت"]],
-  ["comedy", ["funny", "comedy", "prank", "hilarious", "goes wrong", "mix-up", "silly", "loses the ring*", "chaos"]],
+  ["comedy", ["funny", "comedy", "prank", "hilarious", "goes wrong", "mix-up", "silly", "loses the ring*", "chaos", "joke*", "laugh*", "slapstick", "sitcom", "ridiculous", "awkward"]],
   ["romance", ["love", "romance", "first date", "wedding", "crush", "kiss", "proposal", "valentine", "falls for", "boyfriend", "girlfriend", "amor", "amour", "liebe", "爱情", "محبت"]],
   ["scifi", ["robot", "space", "alien", "future", "android", "planet", "time travel", "spaceship", "cyborg", "artificial intelligence", "mars", "galaxy"]],
   ["fantasy", ["dragon", "magic", "wizard", "spell", "fairy", "kingdom", "elf", "elves", "unicorn", "enchanted", "quest", "witch"]],
   ["mystery", ["detective", "clue", "missing", "murder", "mystery", "who did", "investigat*", "disappear*", "suspect", "1952 letter", "old letter"]],
-  ["thriller", ["heist", "kidnap*", "hostage", "thriller", "conspiracy", "spy", "hitman", "getaway", "on the run", "stalk*"]],
+  ["thriller", ["heist", "kidnap*", "hostage", "thriller", "conspiracy", "spy", "hitman", "getaway", "on the run", "stalk*", "victim", "derail*", "ransom", "blackmail*", "assassin*", "bomb", "countdown"]],
   ["action", ["fight", "explosion", "car chase", "martial art*", "battle", "action", "chase"]],
   ["moral", ["lesson", "kindness", "honest*", "greed", "never judge", "moral", "learns that", "forgive*"]],
 ];
@@ -57,20 +57,44 @@ const GENRE_OF = (text: string): string => GENRE_WORDS.find(([, terms]) => any(t
 const storyOf = (heroes: readonly FilmHero[], tmpl: string): FilmHero | undefined => heroes.find((h) => h.tmpl === tmpl && h.told === "narrated" && !h.shelf);
 const filmOf = (heroes: readonly FilmHero[], tmpl: string): FilmHero | undefined => heroes.find((h) => h.tmpl === tmpl && h.told === "acted");
 
+/** What an idea IS, as far as where it is made goes: its genre (a template key — Drama is "testmovie"), whether it is for
+ *  little ones, a song, footage caught on a camera (which one), or an anime. The keywords give one at once (signalsOf);
+ *  the small model's reading gives a better one a moment later (readIdea → parseIdeaRead). */
+export type IdeaSignals = { genre: string; kids: boolean; song: boolean; camera: CameraLook | null; anime: boolean };
+function signalsOf(text: string): IdeaSignals {
+  return {
+    genre: GENRE_OF(text),
+    kids: any(text, KIDS),
+    song: any(text, SONG),
+    camera: any(text, CAM) ? (any(text, CAM_BODY) ? "bodycam" : any(text, CAM_TAPE) ? "camcorder" : any(text, CAM_PHONE) ? "phone" : "house") : null,
+    anime: any(text, ANIME),
+  };
+}
+
 /** Where this idea would be made. `ways`: the ways this viewer is offered (an operator's include "cam" and "anime");
  *  `current`: the way lit on the page; `held`: the member TAPPED that way — then only the pick inside it is guessed, so
  *  their own tap is never overruled by a keyword. */
 export function routeIdea(idea: string, o: { heroes: readonly FilmHero[]; ways: readonly WayKey[]; current: WayKey; held?: boolean }): IdeaRoute {
   const text = String(idea || "").toLowerCase();
+  return routeOf(signalsOf(text), text, o);
+}
+
+/** …and where it would be made from what the small model READ in it (readIdea): the same rules, its signals instead of
+ *  the keywords' — an anime's style is still read off its words (the model is not asked for one). */
+export function routeFromRead(read: IdeaSignals, idea: string, o: { heroes: readonly FilmHero[]; ways: readonly WayKey[]; current: WayKey; held?: boolean }): IdeaRoute {
+  return routeOf(read, String(idea || "").toLowerCase(), o);
+}
+
+function routeOf(sig: IdeaSignals, text: string, o: { heroes: readonly FilmHero[]; ways: readonly WayKey[]; current: WayKey; held?: boolean }): IdeaRoute {
   const has = (w: WayKey) => o.ways.includes(w);
-  const camOf = (): CameraLook => (any(text, CAM_BODY) ? "bodycam" : any(text, CAM_TAPE) ? "camcorder" : any(text, CAM_PHONE) ? "phone" : "house");
+  const camOf = (): CameraLook => sig.camera || (any(text, CAM_BODY) ? "bodycam" : any(text, CAM_TAPE) ? "camcorder" : any(text, CAM_PHONE) ? "phone" : "house");
   const animeOf = (): string | null => {
     const k = ANIME_STYLE.find(([, terms]) => any(text, terms))?.[0] || "animedream";
     return o.heroes.some((h) => h.id === k) ? k : o.heroes.find((h) => h.shelf === "anime")?.id || null;
   };
-  const kidsOf = (): string => (any(text, SONG) && o.heroes.some((h) => h.id === "kidsmusicvideo") ? "kidsmusicvideo" : "kidstv");
+  const kidsOf = (): string => (sig.song && o.heroes.some((h) => h.id === "kidsmusicvideo") ? "kidsmusicvideo" : "kidstv");
   const genreIn = (way: WayKey): IdeaRoute => {
-    let g = GENRE_OF(text);
+    let g = sig.genre;
     if (way === "acted") {
       const f = filmOf(o.heroes, g) || filmOf(o.heroes, "testmovie");
       return { way, heroId: f?.id || null };
@@ -87,13 +111,51 @@ export function routeIdea(idea: string, o: { heroes: readonly FilmHero[]; ways: 
     if (o.current === "sung") return { way: "sung", heroId: "musicvideo" };
     return genreIn(o.current);
   }
-  if (has("cam") && any(text, CAM)) return { way: "cam", heroId: null, camera: camOf() };
-  if (has("anime") && any(text, ANIME)) { const a = animeOf(); if (a) return { way: "anime", heroId: a }; }
-  if (has("kids") && any(text, KIDS)) return { way: "kids", heroId: kidsOf() };
-  if (has("sung") && any(text, SONG)) return { way: "sung", heroId: "musicvideo" };
+  if (has("cam") && sig.camera) return { way: "cam", heroId: null, camera: camOf() };
+  if (has("anime") && sig.anime) { const a = animeOf(); if (a) return { way: "anime", heroId: a }; }
+  if (has("kids") && sig.kids) return { way: "kids", heroId: kidsOf() };
+  if (has("sung") && sig.song) return { way: "sung", heroId: "musicvideo" };
   // a story: in the way lit on the page when it is a story's (Picture Book, Story or Film), else as a Story
   const way: WayKey = o.current === "still" || o.current === "told" || o.current === "acted" ? o.current : "told";
   return genreIn(has(way) ? way : "told");
+}
+
+/* THE IDEA, READ (2026-11-26 — the owner: "This layout looks good, but not routing things properly now"). The keywords sent
+ * four of a tester's six real ideas to a Drama: a crown-jewels farce (no "funny" in it), a train-derailment thriller (no
+ * "heist"), a puppy's bedtime story (no "for kids"). So once the member stops typing, a small model reads the idea and
+ * says what KIND of film it is; that reading is the guess, and the keywords answer only until it comes back. It is still
+ * only a guess — the chips change it, and nothing is made or spent from the box. */
+export const IDEA_READ_GENRES = ["drama", "comedy", "horror", "thriller", "romance", "scifi", "fantasy", "mystery", "moral", "action"] as const;
+const READ_CAMERAS: ReadonlyArray<CameraLook> = ["house", "bodycam", "phone", "camcorder"];
+/** The ask: one short JSON answer. */
+export function ideaReadAsk(idea: string): string {
+  return (
+    `A member typed this idea for a short film into a movie maker:\n"""${String(idea || "").replace(/"""/g, "\"").slice(0, 1200)}"""\n` +
+    `Say what KIND of film it is. Answer with ONE line of JSON and nothing else: {"genre": …, "kids": …, "song": …, "camera": …, "anime": …}\n` +
+    `- genre: the ONE that fits best — ${IDEA_READ_GENRES.map((g) => `"${g}"`).join(", ")}. A farce, a prank, a mix-up or anything played for laughs is "comedy"; danger against a clock, a trap, a stalker or a deadly secret is "thriller"; a ghost, a monster or dread is "horror"; a crime to solve is "mystery"; a story told to teach a lesson is "moral"; fights and chases are "action"; a family argument or a hard choice is "drama".\n` +
+    `- kids: true only if it is made FOR young children (a cartoon, a sing-along, a gentle story for little ones) — a story ABOUT a child is not.\n` +
+    `- song: true only if it is a song or a music video.\n` +
+    `- camera: "house", "bodycam", "phone" or "camcorder" only if the idea says it is footage caught on that kind of camera (a doorbell or security camera is "house"; a police body camera "bodycam"); otherwise null.\n` +
+    `- anime: true only if it asks for anime or manga.`
+  );
+}
+/** The reading, checked: every field one of its own values, or null for an answer that is not one. */
+export function parseIdeaRead(raw: string): IdeaSignals | null {
+  const m = /\{[\s\S]*\}/.exec(String(raw || ""));
+  if (!m) return null;
+  let v: Record<string, unknown>;
+  try { v = JSON.parse(m[0]) as Record<string, unknown>; } catch { return null; }
+  const g = String(v.genre ?? "").trim().toLowerCase().replace(/[^a-z]/g, "");
+  const genre = g === "scifi" || g === "sciencefiction" ? "scifi" : (IDEA_READ_GENRES as readonly string[]).includes(g) ? g : "";
+  if (!genre) return null;
+  const cam = String(v.camera ?? "").trim().toLowerCase();
+  return {
+    genre: genre === "drama" ? "testmovie" : genre,
+    kids: v.kids === true,
+    song: v.song === true,
+    camera: (READ_CAMERAS as readonly string[]).includes(cam) ? (cam as CameraLook) : null,
+    anime: v.anime === true,
+  };
 }
 
 /** THE STARTERS under the box: one Story, one Film and one original the viewer can make — dealt by the day, so the
