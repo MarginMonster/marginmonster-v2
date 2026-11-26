@@ -70,7 +70,19 @@ function part(v: unknown, max: number): string {
   //  crimson scarf]": said in every scene's line beside "No watermark, no signature.", a picture model may write a
   //  signature on the scarf. Review of S16a, 2026-11-26.)
   const s = oneLine(v.replace(/[[\]|]/g, " ").replace(BRAG, (_m, art: string | undefined, next: string) => (art ? `${/^[aeiou]/i.test(next) ? (art[0] === "A" ? "An" : "an") : art[0] === "A" ? "A" : "a"} ` : ""))).replace(/^["“”'‘]+|["“”]+$/g, "").replace(/[\s.,;:—–-]+$/, "").trim();
-  return s.length > max ? headWords(s, max) : s;
+  return s.length > max ? headPhrase(s, max) : s;
+}
+/* …AND A PART CUT AT ITS MAX ENDS ON A WHOLE CLAUSE (2026-11-26, live — an anime story's lead: "[move: the kite-step, a
+ * running leap off a ledge onto a taut cord, arms flung wide to catch the]"). Cut on a word, it may still end mid-phrase:
+ * back to its last whole clause (a comma, a dash, a semicolon) when that keeps at least half of it, else the small words
+ * left hanging at its end go ("…to catch the" → "…to catch"). Only a mark's parts: a look is cut as it always was. */
+const DANGLING = /\s+(?:the|a|an|to|of|and|or|with|onto|into|at|in|on|for|by|from|his|her|their|its|as|that|which|who|while|then|so)$/i;
+function headPhrase(s: string, max: number): string {
+  let out = headWords(s, max);
+  const clause = Math.max(out.lastIndexOf(", "), out.lastIndexOf(" — "), out.lastIndexOf("; "));
+  if (clause >= max * 0.5) out = out.slice(0, clause);
+  else for (let k = 0; k < 4 && DANGLING.test(out); k++) out = out.replace(DANGLING, "");
+  return out.replace(/[\s,;:—–\-(/]+$/, "");
 }
 
 /** A mark, read checked: an object or a JSON string `{has, move}`. Each part one line, tidied and cut at its max on a

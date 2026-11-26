@@ -688,20 +688,26 @@ test("the page: a Lyric Video poster on the Music videos shelf for operators, an
 
 /* The owner, 2026-11-24: "Put found footage routes into the app and body cam". Found footage has its own builder
  * (web.found-footage.tsx, operators only); the Movie Maker gets ONE way in — a door at the end of the Films shelf. */
-test("the Movie Maker's door to Found Footage: on the Films shelf, operators only, its own poster and clip", async () => {
+test("the Movie Maker's door to Found Footage: the Caught on Cam card — operators only, its cameras each a door", async () => {
   const { FOUND_FOOTAGE_DOOR, FILM_HEROES, heroShelves } = await import("../app/lib/film-heroes.ts");
   assert.equal(FOUND_FOOTAGE_DOOR.href, "/web/found-footage");
   assert.ok(!FILM_HEROES.some((h) => h.id === FOUND_FOOTAGE_DOOR.id), "a door, not a hero this page builds");
   // (nine Stories and eleven Films since the genres became movie categories, 2026-11-25 — it was [3, 4, 2]; the
   //  door is still not one of them. Since 2026-11-26 the nine Stories stand again on the Still Stories shelf, and the six
   //  anime styles on the Anime shelf after it.)
-  assert.deepEqual(heroShelves(FILM_HEROES).map((s) => s.heroes.length), [9, 9, 6, 11, 2], "the shelves' own heroes are as they were");
+  // (2026-11-26, THE WAYS — the owner's "A", then "Those need to be on display": Found Footage is the CAUGHT ON CAM card of
+  //  "Only on EasyMode", its row the builder's four cameras. The ways: Picture Book 9, Story 9, Film 10, Anime 6, Kids 2,
+  //  Music Video 1 — the door is still none of them.)
+  assert.deepEqual(heroShelves(FILM_HEROES).map((s) => s.heroes.length), [9, 9, 10, 6, 2, 1], "the ways' own heroes");
   assert.ok(`${FOUND_FOOTAGE_DOOR.kick} · ${FOUND_FOOTAGE_DOOR.meta}`.length <= 45, "its two lines fit a phone card");
   for (const f of [FOUND_FOOTAGE_DOOR.still, FOUND_FOOTAGE_DOOR.clip]) assert.ok(fs.existsSync(path.join(root, "public", f)), f);
   const ui = read("app", "routes", "web.film.tsx");
   assert.ok(ui.includes("foundFootage: isAdminEmail(account.email),"), "the same operator check as every admin-only format");
-  assert.ok(ui.includes('{sh.key === "acted" && d.foundFootage && (') && ui.includes("href={FOUND_FOOTAGE_DOOR.href}"));
-  assert.ok(ui.includes("<LoopCover k={FOUND_FOOTAGE_DOOR.id} still={FOUND_FOOTAGE_DOOR.still} clip={FOUND_FOOTAGE_DOOR.clip} />"));
+  assert.ok(ui.includes("...(d.foundFootage ? [CAUGHT_ON_CAM] : []),") && ui.includes('{wayOn === "cam" && d.foundFootage && ('), "the card and its row: an operator's");
+  assert.ok(ui.includes("href={`${FOUND_FOOTAGE_DOOR.href}?camera=${c.key}`}"), "each camera opens the builder on it");
+  assert.ok(ui.includes("<LoopCover k={`ff-${c.key}`} still={`/landing/ff-cam-${c.key}.jpg`} clip={`/landing/ff-cam-${c.key}.mp4`} />"));
+  for (const c of ["house", "bodycam", "phone", "camcorder"]) for (const f of [`ff-cam-${c}.jpg`, `ff-cam-${c}.mp4`]) assert.ok(fs.existsSync(path.join(root, "public", "landing", f)), f);
+  assert.ok(!ui.includes('{sh.key === "acted" && d.foundFootage && ('), "no longer the Film row's last poster");
   // the builder it opens turns everyone else away too
   assert.ok(read("app", "routes", "web.found-footage.tsx").includes('if (!isAdminEmail(account.email)) throw new Response("Not found", { status: 404 });'));
   const dict = read("app", "lib", "ui-i18n-dict.ts");

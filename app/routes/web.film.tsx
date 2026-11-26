@@ -2970,7 +2970,8 @@ export default function FilmStudio() {
     let live = true;
     document.fonts?.ready.then(() => { if (live) place(); }).catch(() => undefined);
     return () => { live = false; rows.forEach((row) => row.removeEventListener("scroll", onScroll)); window.removeEventListener("resize", place); };
-  }, [entered, heroes.length, d.lyricVideo, d.foundFootage]); // eslint-disable-line react-hooks/exhaustive-deps
+  // (…and with the chosen way: one row is shown at a time now, a new element each time a way is picked — 2026-11-26)
+  }, [entered, wayOn, heroes.length, d.lyricVideo, d.foundFootage]); // eslint-disable-line react-hooks/exhaustive-deps
   const pickCatalog = (idx: number) => {
     const p = d.products[idx];
     if (!p) return;
