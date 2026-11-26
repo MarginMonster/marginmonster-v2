@@ -122,7 +122,8 @@ test("where the pictures are drawn: a portrait each, the reference in every scen
   assert.ok(fn.includes("here.forEach((c, n) => notes.push(`${c.name} is the character in reference image ${n + 1}${c.look ? ` (${c.look.slice(0, 160)})` : \"\"}.`));"));
   // …a character with no portrait is still drawn, from its words
   assert.ok(fn.includes("const unpictured = sheet ? [] : who[k].others.filter((e) => !own.some((c) => c === cardFor(e)));"));
-  assert.ok(fn.includes("if (unpictured.length) notes.push(`In this picture: ${unpictured.map((e) => e.slice(0, 200)).join(\"; and \")}.`);"));
+  // (…with what it always has, and never its move or its tag, since 2026-11-26 — character-mark.ts → pictureText)
+  assert.ok(fn.includes("if (unpictured.length) notes.push(`In this picture: ${unpictured.map((e) => pictureText(e).slice(0, 200)).join(\"; and \")}.`);"));
   // THE LOOK now asks about them too — the question and the fix are the ones the picked cast always had
   assert.ok(fn.includes("const castPics = here.map((c) => abs(c.faceUrl)).filter((u): u is string => !!u);"));
   assert.ok(fn.includes("castPics.length ? anthropicVision(storyCastPrompt(castPics.length), [pic, ...castPics], { maxTokens: 500, model: \"claude-sonnet-4-6\" }) : Promise.resolve(\"\"),"));
