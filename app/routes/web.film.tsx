@@ -2162,7 +2162,7 @@ export default function FilmStudio() {
   // ladder, then Caught on Cam (an operator's, as its builder is), then the rest of "Only on EasyMode" — and the ONE way
   // whose row is shown under them. Story is lit first; a link may open another (?way=).
   const shelves = heroShelves(heroes, { still: d.storyMotion });
-  const wayCards: Array<{ key: WayKey; name: string; tag: string; line: string; pick: string; group: "ladder" | "only"; art: WayArt }> = [
+  const wayCards: Array<{ key: WayKey; name: string; tag: string; line: string; short: string; pick: string; group: "ladder" | "only"; art: WayArt }> = [
     ...shelves.filter((sh) => sh.group === "ladder"),
     ...(d.foundFootage ? [CAUGHT_ON_CAM] : []),
     ...shelves.filter((sh) => sh.group === "only"),
@@ -4372,7 +4372,8 @@ export default function FilmStudio() {
                         <span className="fs-way-art" aria-hidden="true"><WayCover art={w.art} on={wayOn === w.key} /></span>
                         <span className="fs-way-tag">{t(w.tag)}</span>
                         {WAY_STEP[w.key] ? <span className="fs-way-step" aria-hidden="true">{[1, 2, 3].map((k) => <i key={k} className={k <= (WAY_STEP[w.key] || 0) ? "on" : undefined} />)}</span> : null}
-                        <span className="fs-way-name"><b>{t(w.name)}</b><small>{t(w.line)}</small></span>
+                        {/* (a phone shows the SHORT line — "need better descriptions here", the owner — a wider screen the long one) */}
+                        <span className="fs-way-name"><b>{t(w.name)}</b><small className="is-short">{t(w.short)}</small><small className="is-long">{t(w.line)}</small></span>
                       </button>
                     ))}
                   </div>
@@ -5763,8 +5764,10 @@ ${CAST_ID_CSS}
    band. Nothing stands round it: no margin, no corners, no ring, no shadow of its own. At every width — on a
    phone too, where it lay under the words from edge to edge. (Read right to left, the words start from
    the right, so the clip keeps the left.) */
-.fs-head-vid{position:absolute;top:0;right:0;bottom:0;left:auto;width:56%;height:100%;object-fit:cover;object-position:center;z-index:1;-webkit-mask-image:linear-gradient(90deg,transparent,#000 46%);mask-image:linear-gradient(90deg,transparent,#000 46%);}
-[dir=rtl] .fs-head-vid{right:auto;left:0;-webkit-mask-image:linear-gradient(270deg,transparent,#000 46%);mask-image:linear-gradient(270deg,transparent,#000 46%);}
+/* …AND THE FILM FILLS THE WHOLE BAND (2026-11-26 — the owner, with a phone photo of the new home: "the main hero needs the
+   full movies playing in the hero like you drew up"). With the guide box the band is tall enough for a clip across all of
+   it; the shade below is a FADE now, so the film plays behind the words too, and whole where they end. */
+.fs-head-vid{position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%;object-fit:cover;object-position:center 32%;z-index:1;}
 /* The reel: two stacked players that cross-fade. Each carries a blurred copy of its own poster across the
    whole band, behind the clip — so what the clip dissolves into is its own colours, under the band's shade. */
 .fs-reel{position:absolute;inset:0;z-index:1;opacity:0;transition:opacity .9s ease;}
@@ -5793,13 +5796,13 @@ ${CAST_ID_CSS}
    laid over the picture at 92%; it is now that lighter green itself, whole where the words are (they keep to
    the band's first 58%, 60% on a phone) and masked away before the clip is whole — so no word stands on a
    busy picture, and nothing dulls the clip itself. */
-.fs-head-scrim{position:absolute;inset:0;z-index:2;background:radial-gradient(135% 130% at 8% -25%,#38815C 0%,#265F45 46%,#1C4E33 100%);-webkit-mask-image:linear-gradient(90deg,#000 54%,transparent 74%);mask-image:linear-gradient(90deg,#000 54%,transparent 74%);}
-[dir=rtl] .fs-head-scrim{background:radial-gradient(135% 130% at 92% -25%,#38815C 0%,#265F45 46%,#1C4E33 100%);-webkit-mask-image:linear-gradient(270deg,#000 54%,transparent 74%);mask-image:linear-gradient(270deg,#000 54%,transparent 74%);}
+.fs-head-scrim{position:absolute;inset:0;z-index:2;background:radial-gradient(135% 130% at 8% -25%,#38815C 0%,#265F45 46%,#1C4E33 100%);-webkit-mask-image:linear-gradient(90deg,rgba(0,0,0,.92) 0%,rgba(0,0,0,.84) 44%,rgba(0,0,0,.3) 68%,transparent 88%);mask-image:linear-gradient(90deg,rgba(0,0,0,.92) 0%,rgba(0,0,0,.84) 44%,rgba(0,0,0,.3) 68%,transparent 88%);}
+[dir=rtl] .fs-head-scrim{background:radial-gradient(135% 130% at 92% -25%,#38815C 0%,#265F45 46%,#1C4E33 100%);-webkit-mask-image:linear-gradient(270deg,rgba(0,0,0,.92) 0%,rgba(0,0,0,.84) 44%,rgba(0,0,0,.3) 68%,transparent 88%);mask-image:linear-gradient(270deg,rgba(0,0,0,.92) 0%,rgba(0,0,0,.84) 44%,rgba(0,0,0,.3) 68%,transparent 88%);}
 /* (a phone: the words run to 60% of the band and the hero's rosette lies under all of them, so the shade is
    whole a little further — no letter stands on a line of the rosette AND on the clip's near edge at once) */
 @media(max-width:640px){
-  .fs-head-scrim{-webkit-mask-image:linear-gradient(90deg,#000 60%,transparent 78%);mask-image:linear-gradient(90deg,#000 60%,transparent 78%);}
-  [dir=rtl] .fs-head-scrim{-webkit-mask-image:linear-gradient(270deg,#000 60%,transparent 78%);mask-image:linear-gradient(270deg,#000 60%,transparent 78%);}
+  .fs-head-scrim{-webkit-mask-image:linear-gradient(180deg,rgba(0,0,0,.55) 0%,rgba(0,0,0,.68) 28%,rgba(0,0,0,.92) 50%,#000 68%);mask-image:linear-gradient(180deg,rgba(0,0,0,.55) 0%,rgba(0,0,0,.68) 28%,rgba(0,0,0,.92) 50%,#000 68%);}
+  [dir=rtl] .fs-head-scrim{-webkit-mask-image:linear-gradient(180deg,rgba(0,0,0,.55) 0%,rgba(0,0,0,.68) 28%,rgba(0,0,0,.92) 50%,#000 68%);mask-image:linear-gradient(180deg,rgba(0,0,0,.55) 0%,rgba(0,0,0,.68) 28%,rgba(0,0,0,.92) 50%,#000 68%);}
 }
 
 .fs-head-bg{position:absolute;inset:0;z-index:0;border-radius:18px;overflow:hidden;background:radial-gradient(135% 130% at 8% -25%,#38815C 0%,#265F45 46%,#1C4E33 100%);box-shadow:0 8px 22px rgba(11,20,15,.16),inset 0 0 0 1px rgba(255,255,255,.1);}
@@ -5816,7 +5819,7 @@ ${CAST_ID_CSS}
    block, where the Ad Maker's is gold and 11px. */
 .fs-head-copy>.fs-head-eyebrow{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:800;color:#E7C879;text-transform:uppercase;letter-spacing:.08em;margin:0;max-width:none;line-height:1.3;text-shadow:none;}
 @media(min-width:960px){.fs-head-copy>.fs-head-eyebrow{font-size:12.5px;}}
-.fs-head-copy b{display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:33px;letter-spacing:-.02em;color:#fff;margin-top:11px;line-height:1.04;text-shadow:0 2px 18px rgba(0,0,0,.4);text-wrap:balance;}
+.fs-head-copy b{display:block;font-family:Poppins,sans-serif;font-weight:800;font-size:33px;letter-spacing:-.02em;color:#fff;margin-top:11px;line-height:1.04;text-shadow:0 1px 3px rgba(0,0,0,.35),0 2px 18px rgba(0,0,0,.5);text-wrap:balance;}
 .fs-head-copy b em{font-style:normal;color:#8FE9BC;}
 @keyframes fsFadeUp{from{opacity:0;transform:translateY(7px);}to{opacity:1;transform:translateY(0);}}
 .fs-head-copy>span{display:block;font-size:13.5px;color:rgba(255,255,255,.85);margin-top:10px;max-width:400px;line-height:1.5;text-shadow:0 1px 10px rgba(0,0,0,.4);}
@@ -6224,7 +6227,7 @@ ${CAST_ID_CSS}
   .mm-story a.mm-pace-auto{min-height:44px;}
 }
 @media(prefers-reduced-motion:reduce){.fs-go::after{display:none;}.fs-tmpl,.fs-shot-make,.fs-write,.fs-go,.fs-actor-cast{transition:none;}.fs-head-img,.fs-head-copy b,.fs-head-rose{animation:none;}}
-@media(max-width:640px){.fs-head{padding:18px;min-height:114px;}.fs-head-copy{max-width:60%;padding:0;}.fs-head-vid{width:52%;}.fs-head-copy b{font-size:21px;}.fs-head-media{width:52%;}.fs-tmpl{flex:1 1 100%;}.fs-shot{flex-direction:column;}.fs-shot-frame{width:100%;max-width:160px;align-self:center;}}
+@media(max-width:640px){.fs-head{padding:18px;min-height:114px;}.fs-head-copy{max-width:60%;padding:0;}.fs-head-copy b{font-size:21px;}.fs-head-media{width:52%;}.fs-tmpl{flex:1 1 100%;}.fs-shot{flex-direction:column;}.fs-shot-frame{width:100%;max-width:160px;align-self:center;}}
 /* ---- Story flow (location + camera-angle storyboard) ---- */
 .fs-flegend{display:flex;flex-wrap:wrap;gap:14px;margin:2px 0 12px;font-size:11.5px;color:var(--ink2,#4A554E);}
 .fs-flegend span{display:inline-flex;align-items:center;gap:6px;}
@@ -7181,7 +7184,8 @@ a.mm-pace-auto{text-decoration:none;}
 .fs-way-name{position:absolute;z-index:1;inset-inline:10px;inset-block-end:9px;display:block;}
 .fs-way-name b{display:block;font:800 15px/1.1 Poppins,system-ui,sans-serif;color:#fff;text-shadow:0 1px 8px rgba(0,0,0,.35);}
 .fs-way-name small{display:none;margin-top:3px;font:500 11.5px/1.3 Poppins,system-ui,sans-serif;color:rgba(255,255,255,.86);}
-@media(min-width:640px){.fs-way-name small{display:block;}.fs-way-step{display:flex;}}
+.fs-way-name small.is-short{display:block;font-size:10.5px;line-height:1.25;}
+@media(min-width:640px){.fs-way-name small{display:block;}.fs-way-name small.is-short{display:none;}.fs-way-step{display:flex;}}
 @media(max-width:639px){
   .fs-ways-grp.is-only .fs-ways-row{grid-auto-flow:row;grid-template-columns:repeat(2,minmax(0,1fr));}
   .fs-ways-grp.is-only .fs-way-art{aspect-ratio:16/10;}

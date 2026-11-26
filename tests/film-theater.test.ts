@@ -888,9 +888,9 @@ test("in the dark the Next-episode cards are tickets under a sign in gold — an
   assert.deepEqual(props(pseudo[0].body), ["background", "border-color"]);
   // the ways' words are not a theme's to change (2026-11-26, THE WAYS: the ladder, then Only on EasyMode)
   assert.deepEqual(heroShelves(FILM_HEROES).map((s) => [s.name, s.tag, s.line]), [
-    ["Picture Book", "Cheapest", "A narrator tells it over still pictures that slowly move"],
-    ["Story", "Most popular", "A narrator tells it over moving pictures"],
-    ["Film", "Premium", "Actors speak the lines on camera"],
+    ["Narrated Pictures", "Cheapest", "A narrator tells it over still pictures that slowly move"],
+    ["Narrated Video", "Most popular", "A narrator tells it over moving pictures"],
+    ["Acted Film", "Premium", "Actors speak the lines on camera"],
     ["Anime", "New", "A narrator tells it over hand-drawn anime pictures"],
     ["Kids", "For little ones", "Cartoons and sing-alongs"],
     ["Music Video", "Sung", "Your artist sings on camera"],
@@ -1067,10 +1067,10 @@ test("the hero's clip is FLUSH: the band's far side from top to foot, nothing ro
   // Archive's headers give their picture.
   const HB = rules(before);
   const clip = HB.filter((r) => /\.fs-head-vid$/.test(r.sel));
+  // (2026-11-26 — the owner: "the main hero needs the full movies playing in the hero like you drew up": the clip fills the
+  //  WHOLE band now, edge to edge and top to foot, still flush — the band's corners cut it — at every width)
   assert.deepEqual(clip.map((r) => [named(r), r.body]), [
-    [".fs-head-vid", "position:absolute;top:0;right:0;bottom:0;left:auto;width:56%;height:100%;object-fit:cover;object-position:center;z-index:1;-webkit-mask-image:linear-gradient(90deg,transparent,#000 46%);mask-image:linear-gradient(90deg,transparent,#000 46%);"],
-    ["[dir=rtl] .fs-head-vid", "right:auto;left:0;-webkit-mask-image:linear-gradient(270deg,transparent,#000 46%);mask-image:linear-gradient(270deg,transparent,#000 46%);"],
-    ["@media(max-width:640px) .fs-head-vid", "width:52%;"],
+    [".fs-head-vid", "position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%;object-fit:cover;object-position:center 32%;z-index:1;"],
   ]);
   assert.ok(before.includes(".fs-head{position:relative;overflow:hidden;border-radius:20px;"), "the band cuts it");
   // NO BOX: nothing gives the clip a margin, corners, a ring, a shadow or a shape of its own — the screen
@@ -1085,7 +1085,7 @@ test("the hero's clip is FLUSH: the band's far side from top to foot, nothing ro
   // the padding the words' own box had there on top of the band's, 26 and 30, is gone: it made a narrow
   // column of them and a band a screen tall)
   assert.ok(before.includes(".fs-head-copy{position:relative;z-index:3;flex:1 1 auto;min-width:0;padding:26px 30px;max-width:min(560px,58%);}"));
-  assert.ok(before.includes("@media(max-width:640px){.fs-head{padding:18px;min-height:114px;}.fs-head-copy{max-width:60%;padding:0;}.fs-head-vid{width:52%;}"));
+  assert.ok(before.includes("@media(max-width:640px){.fs-head{padding:18px;min-height:114px;}.fs-head-copy{max-width:60%;padding:0;}"));
   assert.ok(before.indexOf("@media(max-width:640px){.fs-head{padding:18px;") > before.indexOf(".fs-head-copy{position:relative;z-index:3;") && before.indexOf("@media(max-width:640px){.fs-head{padding:18px;") > before.indexOf(".fs-head-vid{position:absolute;top:0;"), "said after the rules it narrows");
   // THE SHADE THEY STAND ON IS THE AD MAKER'S GREEN (the owner, 2026-11-24, the two heroes side by side:
   // "Lighten movie maker hero to ad maker green so it matches"): the very gradient the Ad Maker's hero is
@@ -1095,23 +1095,33 @@ test("the hero's clip is FLUSH: the band's far side from top to foot, nothing ro
   assert.equal(AD_GREEN, "radial-gradient(135% 130% at 8% -25%,#38815C 0%,#265F45 46%,#1C4E33 100%)");
   const shade = HB.filter((r) => /\.fs-head-scrim$/.test(r.sel));
   assert.deepEqual(shade.map(named), [".fs-head-scrim", "[dir=rtl] .fs-head-scrim", "@media(max-width:640px) .fs-head-scrim", "@media(max-width:640px) [dir=rtl] .fs-head-scrim"]);
-  const masked = (deg: number, a: number, b: number) => `-webkit-mask-image:linear-gradient(${deg}deg,#000 ${a}%,transparent ${b}%);mask-image:linear-gradient(${deg}deg,#000 ${a}%,transparent ${b}%);`;
-  assert.equal(shade[0].body, `position:absolute;inset:0;z-index:2;background:${AD_GREEN};${masked(90, 54, 74)}`);
+  // (since 2026-11-26 the shade is a FADE over the film, not a block beside it — "the full movies playing in the hero":
+  //  strong where the words stand, clear where they end; on a phone, lighter at the top and whole under the box)
+  const mask = (g: string) => `-webkit-mask-image:${g};mask-image:${g};`;
+  const WIDE_FADE = "linear-gradient(90deg,rgba(0,0,0,.92) 0%,rgba(0,0,0,.84) 44%,rgba(0,0,0,.3) 68%,transparent 88%)";
+  const PHONE_FADE = "linear-gradient(180deg,rgba(0,0,0,.55) 0%,rgba(0,0,0,.68) 28%,rgba(0,0,0,.92) 50%,#000 68%)";
+  assert.equal(shade[0].body, `position:absolute;inset:0;z-index:2;background:${AD_GREEN};${mask(WIDE_FADE)}`);
   // read right to left: the light comes from the other top corner, and the shade dissolves the other way
-  assert.equal(shade[1].body, `background:${AD_GREEN.replace("at 8% -25%", "at 92% -25%")};${masked(270, 54, 74)}`);
-  // (a phone's is whole a little further — to 60% of the band, where its words end — and gone by 78%)
-  assert.equal(shade[2].body, masked(90, 60, 78));
-  assert.equal(shade[3].body, masked(270, 60, 78));
+  assert.equal(shade[1].body, `background:${AD_GREEN.replace("at 8% -25%", "at 92% -25%")};${mask(WIDE_FADE.replace("90deg", "270deg"))}`);
+  assert.equal(shade[2].body, mask(PHONE_FADE));
+  assert.equal(shade[3].body, mask(PHONE_FADE));
   // …and the band under it is that same green, so nothing darker shows at its edges
   assert.ok(before.includes(`.fs-head{position:relative;overflow:hidden;border-radius:20px;margin-bottom:16px;min-height:200px;display:flex;align-items:center;box-shadow:0 20px 48px -24px rgba(8,62,39,.55);background:${AD_GREEN};}`));
   assert.ok(!/rgba\(7,42,27,\.9/.test(before.replace(/\/\*[\s\S]*?\*\//g, "").split(".fs-head-tag")[0]), "(the near-black shade is gone from the hero)");
-  /** How much of the shade is left at `x` of the band. */
-  const shadeAt = (p1: number, p2: number) => (x: number) => (x <= p1 ? 1 : x >= p2 ? 0 : (p2 - x) / (p2 - p1));
-  const WIDE = { P1: 0.54, P2: 0.74, at: shadeAt(0.54, 0.74) }, PHONE = { P1: 0.6, P2: 0.78, at: shadeAt(0.6, 0.78) };
+  /** How much of the shade is left at `x` (0–1) along a fade of [position, alpha] stops. */
+  const fade = (stops: Array<[number, number]>) => (x: number) => { for (let i = 1; i < stops.length; i++) { const [p0, a0] = stops[i - 1], [p1, a1] = stops[i]; if (x <= p1) return a0 + (a1 - a0) * ((x - p0) / (p1 - p0)); } return stops[stops.length - 1][1]; };
+  const WIDE = fade([[0, 0.92], [0.44, 0.84], [0.68, 0.3], [0.88, 0], [1, 0]]), PHONE = fade([[0, 0.55], [0.28, 0.68], [0.5, 0.92], [0.68, 1], [1, 1]]);
+  /** A colour laid at `a` over `under`. */
+  const lay = (c: string, under: string, a: number) => "#" + [1, 3, 5].map((i) => Math.round(a * parseInt(c.slice(i, i + 2), 16) + (1 - a) * parseInt(under.slice(i, i + 2), 16)).toString(16).padStart(2, "0")).join("");
   // THE WORDS STILL READ ON THE LIGHTER GREEN. The title is white, large and bold; the line under it white at
   // 85%. On the lightest green the gradient has anywhere, the title keeps 4.5:1; where the words actually
   // stand (the gradient's middle and darker) both keep it with room to spare.
-  assert.ok(before.includes("color:#fff;margin-top:11px;line-height:1.04;text-shadow:0 2px 18px rgba(0,0,0,.4);text-wrap:balance;}") && before.includes(".fs-head-copy>span{display:block;font-size:13.5px;color:rgba(255,255,255,.85);"));
+  assert.ok(before.includes("color:#fff;margin-top:11px;line-height:1.04;text-shadow:0 1px 3px rgba(0,0,0,.35),0 2px 18px rgba(0,0,0,.5);text-wrap:balance;}") && before.includes(".fs-head-copy>span{display:block;font-size:13.5px;color:rgba(255,255,255,.85);"));
+  // THE TITLE STILL READS OVER THE FILM (large, bold, white): where the words end on a wide screen (48% of the band, the
+  // box's far edge) and at the very top of a phone's band, the green laid over a BRIGHT frame (#B0B0B0) keeps 3:1, the
+  // floor for large type — the title's soft shadow on top of that
+  assert.ok(WIDE(0.48) >= 0.75 && contrast("#FFFFFF", lay("#265F45", "#FFFFFF", WIDE(0.48))) >= 3, `wide: ${WIDE(0.48).toFixed(2)}`);
+  assert.ok(contrast("#FFFFFF", lay("#265F45", "#B0B0B0", PHONE(0))) >= 3, `phone top: ${contrast("#FFFFFF", lay("#265F45", "#B0B0B0", PHONE(0))).toFixed(2)}`);
   assert.ok(contrast("#FFFFFF", "#38815C") >= 4.5, `a white title on the lightest green: ${contrast("#FFFFFF", "#38815C").toFixed(2)}:1`);
   assert.ok(contrast("#FFFFFF", "#265F45") >= 7 && contrast(over("#FFFFFF", "#265F45", 0.85), "#265F45") >= 4.5);
   // A LINE OF THE ROSETTE UNDER A LETTER (its own gold, at 30% of a stroke that is 92% there, blended as
@@ -1123,9 +1133,9 @@ test("the hero's clip is FLUSH: the band's far side from top to foot, nothing ro
   /** `src` blended over `under` as light ("screen") at `a` — how the hero's rosette lies on what is under it. */
   const screenOver = (src: string, under: string, a: number) => "#" + [1, 3, 5].map((i) => { const b = parseInt(under.slice(i, i + 2), 16) / 255, s = parseInt(src.slice(i, i + 2), 16) / 255; return Math.round(255 * ((1 - a) * b + a * (b + s - b * s))).toString(16).padStart(2, "0"); }).join("");
   for (const green of ["#38815C", "#265F45", "#1C4E33"]) assert.ok(contrast("#FFFFFF", screenOver("#FFD24A", green, 0.3 * 0.92)) >= 3, green);
-  // …AND NOTHING DULLS THE CLIP: where it is whole about a fifth of the shade is left for the first few pixels
-  // (a third on a phone's), and a little further it is gone
-  assert.ok(WIDE.at(1 - 0.56 + 0.46 * 0.56) <= 0.25 && PHONE.at(1 - 0.52 + 0.46 * 0.52) <= 0.35 && WIDE.at(WIDE.P2) === 0 && PHONE.at(PHONE.P2) === 0);
+  // …AND THE FILM PLAYS CLEAR where the words end: no shade at all over the band's last eighth on a wide screen, and on a
+  // phone the top of the band — where the eye lands first — keeps under three fifths of it
+  assert.ok(WIDE(0.88) === 0 && WIDE(0.75) <= 0.25 && PHONE(0) <= 0.6);
 
   // WHAT IS ON THE CLIP: the tag that says what is playing — the band's far bottom corner (its top corner
   // on a phone, where the page's gold rosette has the bottom one); mirrored when the page is
@@ -1133,10 +1143,7 @@ test("the hero's clip is FLUSH: the band's far side from top to foot, nothing ro
   assert.ok(before.includes("@media(min-width:960px){\n  .fs-head{min-height:clamp(320px,24vw,420px);}\n  .fs-head-tag{right:22px;bottom:20px;}\n}"));
   assert.ok(before.includes("@media(max-width:640px){.fs-head-tag{top:12px;bottom:auto;right:12px;"));
   assert.ok(before.includes("[dir=rtl] .fs-head-tag{right:auto;left:16px;}\n@media(min-width:960px){[dir=rtl] .fs-head-tag{left:22px;}}\n@media(max-width:640px){[dir=rtl] .fs-head-tag{left:12px;}}"));
-  // (MEASURED on the TEST page — 390px: the band 358 x 192, the clip 186 wide from the band's top to its foot,
-  //  the words ending at 59% of the band; 1280px: the band 1203 x 320, the clip 674 wide, the words ending
-  //  where it begins. Its corners 0, its shadow none.)
-  assert.ok(Math.abs(0.52 * 358 - 186.2) < 0.1 && Math.abs(0.56 * 1203.2 - 673.8) < 0.1);
+  // (until 2026-11-26 the clip was the far 56% of a wide band and 52% of a phone's; it is the whole band now)
 
   // A FORMAT'S OWN BANNER was flush already — its picture covers it from edge to edge at every width (the
   // "contain" a wide screen was once given is said BEFORE the rule it meant to change, so it never applied)

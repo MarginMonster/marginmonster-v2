@@ -39,7 +39,7 @@ test("the still shelf stands right after the Stories and re-lists exactly the to
   //  cinematic, Picture Book · Story · Film — then Only on EasyMode. One way's row shows at a time, so it never repeats)
   assert.deepEqual(shelves.map((s) => s.key), ["still", "told", "acted", "anime", "kids", "sung"]);
   const [still, told] = shelves;
-  assert.deepEqual([still.name, still.tag, still.line, still.rung], ["Picture Book", "Cheapest", "A narrator tells it over still pictures that slowly move", "still"]);
+  assert.deepEqual([still.name, still.tag, still.line, still.rung], ["Narrated Pictures", "Cheapest", "A narrator tells it over still pictures that slowly move", "still"]);
   assert.deepEqual(still.heroes, told.heroes, "the Story's heroes, on the still rung");
   // the Stories open on moving pictures: that is what their line says now
   assert.equal(told.rung, "moving");
@@ -79,7 +79,7 @@ test("where a server's pictures cannot move, every story is told over stills alr
   assert.equal(toldOff.heroes.length, 9);
   // (2026-11-26, THE WAYS: the Story card's name and tag are "Story" / "Most popular" — and there it shows no motion:
   //  Picture Book's art)
-  assert.deepEqual([toldOff.key, toldOff.name, toldOff.tag, toldOff.line], ["told", "Story", "Most popular", "A narrator tells it over still pictures that slowly move"]);
+  assert.deepEqual([toldOff.key, toldOff.name, toldOff.tag, toldOff.line], ["told", "Narrated Video", "Most popular", "A narrator tells it over still pictures that slowly move"]);
   const toldOn = heroShelves(FILM_HEROES).find((sh) => sh.key === "told")!;
   assert.equal(toldOn.line, "A narrator tells it over moving pictures", "…and only there");
   assert.equal(heroShelves(FILM_HEROES, { still: true }).find((sh) => sh.key === "told")!.line, "A narrator tells it over moving pictures");

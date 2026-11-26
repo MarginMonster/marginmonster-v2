@@ -59,7 +59,7 @@ test("the Anime shelf stands right after the Still Stories and lists exactly the
   // poster opens on moving pictures, as a Story's does. (Had they drifted toward 3D or a photograph, it would open on Still.)
   assert.equal(sh.rung, undefined);
   const heroesSrc = read("app", "lib", "film-heroes.ts");
-  assert.ok(heroesSrc.includes("{ key: \"anime\", name: \"Anime\", tag: \"New\", line: \"A narrator tells it over hand-drawn anime pictures\", pick: \"Pick a style\", group: \"only\",") && heroesSrc.includes("has: (h) => h.shelf === \"anime\" },"));
+  assert.ok(heroesSrc.includes("{ key: \"anime\", name: \"Anime\", tag: \"New\", line: \"A narrator tells it over hand-drawn anime pictures\", short: \"Hand-drawn, six styles\", pick: \"Pick a style\", group: \"only\",") && heroesSrc.includes("has: (h) => h.shelf === \"anime\" },"));
   // (where pictures cannot move at all the shelf stays: its stories are told over stills there, like every story)
   assert.ok(heroShelves(FILM_HEROES, { still: false }).some((s) => s.key === "anime"));
   // each poster its own zoom key; a page that is not offered the anime templates has no Anime shelf, never an empty one

@@ -205,7 +205,13 @@ test("the posters stand on WAYS — the ladder (Picture Book · Story · Film), 
   //  Then: "I don't want to lose our distinctive categories like caught on cam, found footage, and our other uniques" —
   //  "Those need to be on display": Caught on Cam (a page's, CAUGHT_ON_CAM) and Kids are cards of their own.)
   const shelves = heroShelves(FILM_HEROES);
-  assert.deepEqual(shelves.map((s) => [s.key, s.name, s.tag]), [["still", "Picture Book", "Cheapest"], ["told", "Story", "Most popular"], ["acted", "Film", "Premium"], ["anime", "Anime", "New"], ["kids", "Kids", "For little ones"], ["sung", "Music Video", "Sung"]]);
+  // (the ladder's NAMES are his hierarchy in his words — "narrated with stills / … stills to video … / acted" — after his
+  //  phone photo: "Picture book sounds like a physical book / story / film come across as confusing", 2026-11-26)
+  assert.deepEqual(shelves.map((s) => [s.key, s.name, s.tag]), [["still", "Narrated Pictures", "Cheapest"], ["told", "Narrated Video", "Most popular"], ["acted", "Acted Film", "Premium"], ["anime", "Anime", "New"], ["kids", "Kids", "For little ones"], ["sung", "Music Video", "Sung"]]);
+  // …and every card says what it is on a phone too: a SHORT line, a few words
+  assert.deepEqual(shelves.map((s) => s.short), ["Still images, read aloud", "Every scene moves", "Characters talk on camera", "Hand-drawn, six styles", "Cartoons & sing-alongs", "Your artist sings"]);
+  assert.equal(CAUGHT_ON_CAM.short, "Phone, house & body cams");
+  for (const sh of [...shelves, CAUGHT_ON_CAM]) assert.ok(sh.short.length <= 26, sh.short);
   assert.deepEqual(shelves.map((s) => s.group), ["ladder", "ladder", "ladder", "only", "only", "only"]);
   assert.deepEqual(shelves.map((s) => s.pick), ["Pick a genre", "Pick a genre", "Pick a genre", "Pick a style", "Pick one", "Pick one"]);
   // THE GENRES ARE MOVIE CATEGORIES (the owner, 2026-11-25): the WORD on a poster is its category; the Archive's name says
@@ -281,6 +287,7 @@ test("the posters stand on WAYS — the ladder (Picture Book · Story · Film), 
   assert.ok(ui.includes("@media(min-width:980px){.fs-shelf .fs-fmtgrid{grid-template-columns:repeat(4,minmax(0,1fr));}}"));
   // every word on the cards and rows is in all five languages
   const dict = fs.readFileSync(new URL("../app/lib/ui-i18n-dict.ts", import.meta.url), "utf8");
-  for (const sh of [...shelves, CAUGHT_ON_CAM]) for (const k of [sh.name, sh.tag, sh.line, sh.pick]) assert.ok(dict.split(`${JSON.stringify(k)}:`).length - 1 >= 5, k);
+  for (const sh of [...shelves, CAUGHT_ON_CAM]) for (const k of [sh.name, sh.tag, sh.line, sh.pick, sh.short]) assert.ok(dict.split(`${JSON.stringify(k)}:`).length - 1 >= 5, k);
+  assert.ok(ui.includes("<span className=\"fs-way-name\"><b>{t(w.name)}</b><small className=\"is-short\">{t(w.short)}</small><small className=\"is-long\">{t(w.line)}</small></span>"), "a phone shows the short line, a wider screen the long one");
   for (const k of ["Pick what to make", "Only on EasyMode", "How it's told", "Tap it to start"]) assert.ok(dict.split(`${JSON.stringify(k)}:`).length - 1 >= 5, k);
 });

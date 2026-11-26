@@ -9,6 +9,17 @@
 import type { UiLang } from "./ui-i18n";
 
 const es: Record<string, string> = {
+  // (2026-11-26) THE WAYS' NAMES IN HIS WORDS, and the short line a phone shows under each
+  "Narrated Pictures": "Imágenes narradas",
+  "Narrated Video": "Video narrado",
+  "Acted Film": "Película actuada",
+  "Still images, read aloud": "Imágenes fijas, leídas en voz alta",
+  "Every scene moves": "Cada escena se mueve",
+  "Characters talk on camera": "Los personajes hablan a cámara",
+  "Phone, house & body cams": "Móvil, cámara de casa y corporal",
+  "Hand-drawn, six styles": "Dibujado a mano, seis estilos",
+  "Cartoons & sing-alongs": "Dibujos y canciones",
+  "Your artist sings": "Tu artista canta",
   // (2026-11-26) THE GUIDE BOX at the top of the Movie Maker, and its starters
   "Got an idea? Type it here": "¿Tienes una idea? Escríbela aquí",
   "We'd make this:": "Lo haríamos así:",
@@ -3637,6 +3648,17 @@ const es: Record<string, string> = {
 };
 
 const fr: Record<string, string> = {
+  // (2026-11-26) THE WAYS' NAMES IN HIS WORDS, and the short line a phone shows under each
+  "Narrated Pictures": "Images racontées",
+  "Narrated Video": "Vidéo racontée",
+  "Acted Film": "Film joué",
+  "Still images, read aloud": "Images fixes, lues à voix haute",
+  "Every scene moves": "Chaque scène bouge",
+  "Characters talk on camera": "Les personnages parlent à la caméra",
+  "Phone, house & body cams": "Téléphone, caméra maison et corporelle",
+  "Hand-drawn, six styles": "Dessiné à la main, six styles",
+  "Cartoons & sing-alongs": "Dessins animés et chansons",
+  "Your artist sings": "Ton artiste chante",
   // (2026-11-26) THE GUIDE BOX at the top of the Movie Maker, and its starters
   "Got an idea? Type it here": "Une idée ? Écris-la ici",
   "We'd make this:": "On en ferait :",
@@ -7246,6 +7268,17 @@ const fr: Record<string, string> = {
 };
 
 const de: Record<string, string> = {
+  // (2026-11-26) THE WAYS' NAMES IN HIS WORDS, and the short line a phone shows under each
+  "Narrated Pictures": "Erzählte Bilder",
+  "Narrated Video": "Erzähltes Video",
+  "Acted Film": "Gespielter Film",
+  "Still images, read aloud": "Standbilder, vorgelesen",
+  "Every scene moves": "Jede Szene bewegt sich",
+  "Characters talk on camera": "Figuren sprechen vor der Kamera",
+  "Phone, house & body cams": "Handy, Hauskamera und Bodycam",
+  "Hand-drawn, six styles": "Handgezeichnet, sechs Stile",
+  "Cartoons & sing-alongs": "Cartoons und Mitsinglieder",
+  "Your artist sings": "Dein Künstler singt",
   // (2026-11-26) THE GUIDE BOX at the top of the Movie Maker, and its starters
   "Got an idea? Type it here": "Eine Idee? Schreib sie hier",
   "We'd make this:": "Wir würden daraus machen:",
@@ -10865,6 +10898,17 @@ const de: Record<string, string> = {
 };
 
 const zh: Record<string, string> = {
+  // (2026-11-26) THE WAYS' NAMES IN HIS WORDS, and the short line a phone shows under each
+  "Narrated Pictures": "旁白配图",
+  "Narrated Video": "旁白视频",
+  "Acted Film": "真人演出电影",
+  "Still images, read aloud": "静态画面，配音朗读",
+  "Every scene moves": "每个场景都会动",
+  "Characters talk on camera": "角色对着镜头说话",
+  "Phone, house & body cams": "手机、家用摄像头和随身摄像头",
+  "Hand-drawn, six styles": "手绘，六种风格",
+  "Cartoons & sing-alongs": "动画片和跟唱",
+  "Your artist sings": "你的歌手演唱",
   // (2026-11-26) THE GUIDE BOX at the top of the Movie Maker, and its starters
   "Got an idea? Type it here": "有想法吗？写在这里",
   "We'd make this:": "我们会做成：",
@@ -14535,6 +14579,17 @@ const zh: Record<string, string> = {
 };
 
 const ur: Record<string, string> = {
+  // (2026-11-26) THE WAYS' NAMES IN HIS WORDS, and the short line a phone shows under each
+  "Narrated Pictures": "بیان کردہ تصاویر",
+  "Narrated Video": "بیان کردہ ویڈیو",
+  "Acted Film": "اداکاری والی فلم",
+  "Still images, read aloud": "ساکن تصاویر، بلند آواز میں پڑھی گئی",
+  "Every scene moves": "ہر منظر حرکت کرتا ہے",
+  "Characters talk on camera": "کردار کیمرے پر بات کرتے ہیں",
+  "Phone, house & body cams": "فون، گھر اور باڈی کیم",
+  "Hand-drawn, six styles": "ہاتھ سے بنی، چھ انداز",
+  "Cartoons & sing-alongs": "کارٹون اور ساتھ گانے",
+  "Your artist sings": "آپ کا فنکار گاتا ہے",
   // (2026-11-26) THE GUIDE BOX at the top of the Movie Maker, and its starters
   "Got an idea? Type it here": "کوئی خیال ہے؟ یہاں لکھیں",
   "We'd make this:": "ہم اسے یوں بنائیں گے:",

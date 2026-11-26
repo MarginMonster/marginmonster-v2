@@ -226,6 +226,9 @@ export type HeroShelf = {
   line: string;
   /** the row's header line, under the cards ("Pick a genre") */
   pick: string;
+  /** the card's SHORT line — what a phone shows under its name (the long `line` shows from 640px): 2026-11-26, the owner
+   *  of the phone view: "need better descriptions here" */
+  short: string;
   /** the ladder (how a story is told) or "Only on EasyMode" */
   group: "ladder" | "only";
   /** the way card's art */
@@ -245,22 +248,26 @@ export const CAUGHT_ON_CAM = {
   tag: "Found footage",
   line: FOUND_FOOTAGE_DOOR.meta,
   pick: "Pick the camera",
+  short: "Phone, house & body cams",
   group: "only" as const,
   art: { still: "/landing/ff-cam-house.jpg", clip: FOUND_FOOTAGE_DOOR.clip, at: "28% 50%" } as WayArt,
   cameras: (["house", "bodycam", "phone", "camcorder"] as CameraLook[]).map((k) => ({ key: k, name: CAMERA_LOOKS.find((c) => c.key === k)?.name || k })),
 };
 const SHELVES: ReadonlyArray<Omit<HeroShelf, "heroes"> & { has: (h: FilmHero) => boolean }> = [
-  { key: "still", name: "Picture Book", tag: "Cheapest", line: "A narrator tells it over still pictures that slowly move", pick: "Pick a genre", group: "ladder", rung: "still",
+  // (NAMES, 2026-11-26 — the owner, of the phone view: "Picture book sounds like a physical book / story / film come across as
+  //  confusing need better descriptions here". The ladder is his own hierarchy, in his words: "narrated with stills / simple,
+  //  narrated with stills to video mid, and acted premium" → Narrated Pictures · Narrated Video · Acted Film.)
+  { key: "still", name: "Narrated Pictures", tag: "Cheapest", line: "A narrator tells it over still pictures that slowly move", short: "Still images, read aloud", pick: "Pick a genre", group: "ladder", rung: "still",
     art: { still: "/landing/film-still-fantasystory-tall.jpg" }, has: (h) => h.told === "narrated" && !h.shelf },
-  { key: "told", name: "Story", tag: "Most popular", line: "A narrator tells it over moving pictures", pick: "Pick a genre", group: "ladder", rung: "moving",
+  { key: "told", name: "Narrated Video", tag: "Most popular", line: "A narrator tells it over moving pictures", short: "Every scene moves", pick: "Pick a genre", group: "ladder", rung: "moving",
     art: { still: "/landing/film-loop-horrorstory.jpg", clip: "/landing/film-loop-horrorstory.mp4", strip: true }, has: (h) => h.told === "narrated" && !h.shelf },
-  { key: "acted", name: "Film", tag: "Premium", line: "Actors speak the lines on camera", pick: "Pick a genre", group: "ladder",
+  { key: "acted", name: "Acted Film", tag: "Premium", line: "Actors speak the lines on camera", short: "Characters talk on camera", pick: "Pick a genre", group: "ladder",
     art: { still: "/landing/film-still-testmovie-tall.jpg", clip: "/landing/film-loop-testmovie-tall.mp4" }, has: (h) => h.told === "acted" && !KIDS_HEROES.includes(h.id) },
-  { key: "anime", name: "Anime", tag: "New", line: "A narrator tells it over hand-drawn anime pictures", pick: "Pick a style", group: "only",
+  { key: "anime", name: "Anime", tag: "New", line: "A narrator tells it over hand-drawn anime pictures", short: "Hand-drawn, six styles", pick: "Pick a style", group: "only",
     art: { still: "/landing/film-still-animesky-tall.jpg", at: "50% 30%" }, has: (h) => h.shelf === "anime" },
-  { key: "kids", name: "Kids", tag: "For little ones", line: "Cartoons and sing-alongs", pick: "Pick one", group: "only",
+  { key: "kids", name: "Kids", tag: "For little ones", line: "Cartoons and sing-alongs", short: "Cartoons & sing-alongs", pick: "Pick one", group: "only",
     art: { still: "/landing/film-still-kidstv-tall.jpg", clip: "/landing/film-loop-kidstv-tall.mp4" }, has: (h) => KIDS_HEROES.includes(h.id) },
-  { key: "sung", name: "Music Video", tag: "Sung", line: "Your artist sings on camera", pick: "Pick one", group: "only",
+  { key: "sung", name: "Music Video", tag: "Sung", line: "Your artist sings on camera", short: "Your artist sings", pick: "Pick one", group: "only",
     art: { still: "/landing/film-loop-musicvideo.jpg", clip: "/landing/film-loop-musicvideo-tall.mp4", at: "50% 25%" }, has: (h) => h.told === null && !KIDS_HEROES.includes(h.id) },
 ];
 /** The heroes a page offers, as its shelves — every hero on exactly one WAY shelf (or, an anime style, on its own), in
