@@ -19,7 +19,12 @@
  *     it must match far better there than a few lines further on (a curtain's folds or a forest's trunks are alike all
  *     the way down; a copy is alike in one place).
  * What is left is the picture's own CONTENT BOX. The thresholds were tuned on real pictures — the bakery, and every
- * story, film and portrait picture kept on this machine — see tests/full-frame.test.ts.
+ * story, film and portrait picture kept on this machine (1,518; each of the 75 it flags looked at: letterboxes, flat
+ * bands, things on a plain ground — no full scene) — and on test draws made to be hard: see tests/full-frame.test.ts.
+ * NOT caught by measuring (seen in test draws of the bakery): a second, DIFFERENT view stacked on the first, and a
+ * cut-away model whose plain ground fills only a corner. The words at the source took those away (story-shots.ts →
+ * frameShapeLine, story-picture.ts → PLACE_FULL_SIZE: 4 broken of 5 → 0 of 5), and the look already asks whether a
+ * smaller picture sits along an edge (story-picture.ts → storyGrimePrompt, "inset").
  *
  * Pure: the caller reads the picture (ffmpeg → `scale=96:96:flags=area,format=gray`, one raw frame). */
 
