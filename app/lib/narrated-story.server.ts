@@ -44,7 +44,7 @@ import { CLOTHED_FIRST, dressedInWater, parseStoryUnclothed, storyFirst } from "
 import { clothedEditOn, keepClothed } from "./clothed.server";
 // EVERY PICTURE FILLS ITS FRAME (2026-11-26 — full-frame.ts: an empty band or a doubled strip, measured; cut off at the end)
 import { bandOf, coverBand } from "./full-frame.server";
-import { bandCuttable } from "./full-frame";
+import { bandCuttable, bandFault } from "./full-frame";
 import { DOORS_SHUT, DRESSED, FRAMED_FIX, FRAMED_SIZE, framedIn, INSIDE_STAYS, NO_EXTRAS, NO_LENS, NOTHING_WRITTEN, ONE_PICTURE, SHADOW_SHAPE, shadowNote, STORY_SOUND, TODAY_LOOK, TRUE_SIZE, parseStoryGrime, parseStoryInset, storyGrimePrompt, PLACE_FRAMING, PLACE_SHEET_ASPECT, PORTRAIT_ASPECT, STORY_CAST_MAX, STORY_LADDER, castEntry, characterKind, creatureHidden, creatureNote, keptFaults, castStillIn, castToken, noLettering, oneMoment, parseStoryCast, parseStoryExtras, parseStoryLens, parseStoryOutside, parseStoryPanels, parseStoryTwice, placeKey, placeNote, placeSheetPrompt, placesStillIn, portraitPrompt, readCastToken, recurringPlaces, sameCharacter, insideNote, storyCastPrompt, storyExtrasPrompt, storyPictureInput, storyFaults, storyFix, storyPanelsPrompt, type StoryCastRef, type StoryCheck, type StoryKept, type StoryPlaceRef } from "./story-picture";
 import { clampNarrated, filmTemplate, previewFilmTreatment, type FilmTreatment } from "./film-engine.server";
 // (2026-11-25, stories up to five minutes: a long story is cut in parts, and read in parts when it is that long)
@@ -419,11 +419,15 @@ export async function narratedSceneSeeds(o: {
         const covered = cut ? await coverBand(was.img, cut) : null;
         if (!cut) { best = { img: was.img, faults: storyFaults(rest), check: rest }; if (!best.faults) img = was.img; }
         else if (covered) {
-          const check = bandCuttable(cut) ? rest : { ...rest, band: cut };
+          // (…and the cover read again: a side the read missed is still in it, and then it is not called right —
+          //  review of S14, a black bar over a dark road that the first read did not see)
+          const left = await bandOf(covered);
+          const right = bandCuttable(cut) && !left;
+          const check = right ? rest : { ...rest, band: left || cut };
           best = { img: covered, faults: storyFaults(check), check };
           if (!best.faults) img = covered;
-          console.log(`[narrated] scene ${i + 1}: kept with an empty band or a doubled strip — cut to its content and covered (${Math.round(cut.keeps * 100)}% of it kept)${bandCuttable(cut) ? "" : ", still flagged"}`);
-        }
+          console.log(`[narrated] scene ${i + 1}: kept with an empty band or a doubled strip — cut to its content and covered (${Math.round(cut.keeps * 100)}% of it kept)${right ? "" : ", still flagged"}`);
+        } else console.error(`[narrated] scene ${i + 1}: kept with an empty band or a doubled strip — the cover could not be made, kept as it was (flagged)`);
       }
       if (!img && best) { img = best.img; faultsOut[i] = best.faults; checksOut[i] = { ...best.check, who: here.map((c) => c.name) }; }
       // (…a letterboxed picture kept because every go was letterboxed was never looked at — review of S8, 2026-11-25:
@@ -437,8 +441,13 @@ export async function narratedSceneSeeds(o: {
           const lenient = await renderCreativeSeed(`${safe}${night ? `${NIGHT_LINE} ` : ""}${dressedInWater((scene.visual || "").slice(0, 300))}. ${tmpl.sceneHint}`, aspect);
           img = lenient ? await keepClothed({ url: lenient, ref: (u) => abs(u) || u, edit: (u, bare) => clothedEditOn(u, bare, aspect), log: (l) => console.log(`[narrated] scene ${i + 1} (the lenient path): ${l}`) }) : null;
           // (…and never shown with a band either: cut to its content and covered — full-frame.ts)
+          // (…flagged like the others when cutting it off does not leave a right picture — review of S14: the lenient
+          //  picture's scene was marked right whatever its cover kept)
           const lb = img ? await bandOf(img) : null;
-          if (img && lb) img = (await coverBand(img, lb)) || img;
+          if (img && lb) {
+            img = (await coverBand(img, lb)) || img;
+            if (!bandCuttable(lb)) { faultsOut[i] = bandFault(lb); checksOut[i] = { seen: [], panels: false, band: lb, who: [] }; }
+          }
         } catch { img = null; }
       }
       out[i] = img;

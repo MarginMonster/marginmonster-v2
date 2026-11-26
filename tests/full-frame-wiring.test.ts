@@ -37,6 +37,9 @@ test("a band is a fault in the check: weighed like a split picture, named first 
   // the piece's record says a scene was kept cut from a banded picture
   assert.deepEqual(keptFaults([{ ...clean, band: bakery, who: ["Humphrey"] }, null]), [{ scene: 1, missing: [], band: true }]);
   assert.deepEqual(keptFaults([{ ...clean, who: [] }]), []);
+  // …and the lenient path's picture, flagged with the check it is given (review of S14): no cast looked for, the band
+  assert.equal(storyFaults({ seen: [], panels: false, band: bakery }), 4);
+  assert.deepEqual(keptFaults([null, { seen: [], panels: false, band: bakery, who: [] }]), [{ scene: 2, missing: [], band: true }]);
 });
 
 test("a place's sheet is a scale model only on the sheet", () => {
@@ -46,7 +49,7 @@ test("a place's sheet is a scale model only on the sheet", () => {
 
 test("wired: every told picture is measured, a band is a fault and its sheet is let go, never shown with a band", () => {
   const nar = read("app", "lib", "narrated-story.server.ts");
-  assert.ok(nar.includes("import { bandOf, coverBand } from \"./full-frame.server\";") && nar.includes("import { bandCuttable } from \"./full-frame\";"));
+  assert.ok(nar.includes("import { bandOf, coverBand } from \"./full-frame.server\";") && nar.includes("import { bandCuttable, bandFault } from \"./full-frame\";"));
   assert.ok(nar.includes("${cam ? ` ${cameraLine(cam, aspect)}` : \"\"}"), "the frame's shape in the picture's ask");
   const loop = nar.slice(nar.indexOf("for (let a = 0; a < 3 && !img; a++) {"), nar.indexOf("out[i] = img;"));
   assert.ok(loop.includes("const band = await bandOf(got);\n        if (band && withPlace) framedGoes++;\n        const looked = await lookAt(got);\n        const seenAs: StoryCheck | null = band ? { ...(looked || { seen: castPics.map(() => true), panels: false }), band } : looked;\n        const faults = seenAs ? storyFaults(seenAs) : 0;"));
@@ -57,11 +60,15 @@ test("wired: every told picture is measured, a band is a fault and its sheet is 
   // after the goes: covered, its fault gone only when cutting it off leaves a right picture
   assert.ok(loop.includes("if (!img && best?.check.band) {") && loop.includes("const cut = await bandOf(was.img);\n        const covered = cut ? await coverBand(was.img, cut) : null;"), "measured again: an edit may have dressed the picture kept");
   assert.ok(loop.includes("if (!cut) { best = { img: was.img, faults: storyFaults(rest), check: rest }; if (!best.faults) img = was.img; }"), "no band left: no band fault");
-  assert.ok(loop.includes("const check = bandCuttable(cut) ? rest : { ...rest, band: cut };") && loop.includes("best = { img: covered, faults: storyFaults(check), check };"));
+  // (…and the cover read again: a side the first read missed leaves it flagged — review of S14)
+  assert.ok(loop.includes("const left = await bandOf(covered);\n          const right = bandCuttable(cut) && !left;\n          const check = right ? rest : { ...rest, band: left || cut };") && loop.includes("best = { img: covered, faults: storyFaults(check), check };"));
+  assert.ok(loop.includes("} else console.error(`[narrated] scene ${i + 1}: kept with an empty band or a doubled strip — the cover could not be made, kept as it was (flagged)`);"), "a cover that cannot be made is said, and the band's fault stays");
   assert.ok(loop.indexOf("if (!img && best?.check.unclothed) {") < loop.indexOf("if (!img && best?.check.band) {"), "dressed first, then cut");
   assert.ok(loop.indexOf("if (!img && best?.check.band) {") < loop.indexOf("if (!img && best) { img = best.img;"));
   // …the lenient path's picture too
-  assert.ok(loop.includes("const lb = img ? await bandOf(img) : null;\n          if (img && lb) img = (await coverBand(img, lb)) || img;"));
+  // (…and its scene flagged when cutting it off does not leave a right picture — review of S14)
+  assert.ok(loop.includes("const lb = img ? await bandOf(img) : null;\n          if (img && lb) {\n            img = (await coverBand(img, lb)) || img;\n            if (!bandCuttable(lb)) { faultsOut[i] = bandFault(lb); checksOut[i] = { seen: [], panels: false, band: lb, who: [] }; }\n          }"));
+  assert.ok(nar.indexOf("checksOut[i] = { seen: [], panels: false, band: lb, who: [] }") > 0 && nar.indexOf("if (img && faultsOut[i] == null) faultsOut[i] = 0;") > nar.indexOf("checksOut[i] = { seen: [], panels: false, band: lb, who: [] }"), "its flag is set before the scene is called right");
   // the read and the crop
   const srv = read("app", "lib", "full-frame.server.ts");
   assert.ok(srv.includes("\"-vf\", `scale=${BAND_SIZE}:${BAND_SIZE}:flags=area,format=gray`, \"-frames:v\", \"1\", \"-f\", \"rawvideo\", \"-pix_fmt\", \"gray\", raw]"));
