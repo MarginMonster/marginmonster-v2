@@ -9,6 +9,10 @@
 import type { UiLang } from "./ui-i18n";
 
 const es: Record<string, string> = {
+  "Still pictures": "Imágenes fijas",
+  "Moving pictures": "Imágenes en movimiento",
+  "Cheapest": "La más barata",
+  "a slow camera move on each · ready sooner": "un lento movimiento de cámara en cada una · lista antes",
   "A narrator tells it over moving pictures or cheaper stills": "Un narrador la cuenta sobre imágenes en movimiento o fijas, más baratas",
   "Picked up again after a restart": "Retomado tras un reinicio",
   "Should be night": "Debería ser de noche",
@@ -3578,6 +3582,10 @@ const es: Record<string, string> = {
 };
 
 const fr: Record<string, string> = {
+  "Still pictures": "Images fixes",
+  "Moving pictures": "Images animées",
+  "Cheapest": "La moins chère",
+  "a slow camera move on each · ready sooner": "un lent mouvement de caméra sur chacune · prête plus tôt",
   "A narrator tells it over moving pictures or cheaper stills": "Un narrateur la raconte sur des images animées, ou fixes et moins chères",
   "Picked up again after a restart": "Repris après un redémarrage",
   "Should be night": "Devrait être la nuit",
@@ -7128,6 +7136,10 @@ const fr: Record<string, string> = {
 };
 
 const de: Record<string, string> = {
+  "Still pictures": "Standbilder",
+  "Moving pictures": "Bewegte Bilder",
+  "Cheapest": "Am günstigsten",
+  "a slow camera move on each · ready sooner": "eine langsame Kamerafahrt über jedes · schneller fertig",
   "A narrator tells it over moving pictures or cheaper stills": "Ein Erzähler erzählt sie zu bewegten Bildern oder günstigeren Standbildern",
   "Picked up again after a restart": "Nach einem Neustart fortgesetzt",
   "Should be night": "Sollte Nacht sein",
@@ -10688,6 +10700,10 @@ const de: Record<string, string> = {
 };
 
 const zh: Record<string, string> = {
+  "Still pictures": "静态画面",
+  "Moving pictures": "动态画面",
+  "Cheapest": "最便宜",
+  "a slow camera move on each · ready sooner": "每张都有缓慢的镜头移动 · 更快完成",
   "A narrator tells it over moving pictures or cheaper stills": "旁白配着动态画面讲述，或用更便宜的静态画面",
   "Picked up again after a restart": "重启后已继续制作",
   "Should be night": "应该是夜晚",
@@ -14300,6 +14316,10 @@ const zh: Record<string, string> = {
 };
 
 const ur: Record<string, string> = {
+  "Still pictures": "ساکن تصویریں",
+  "Moving pictures": "متحرک تصویریں",
+  "Cheapest": "سب سے سستی",
+  "a slow camera move on each · ready sooner": "ہر ایک پر کیمرے کی دھیمی حرکت · جلد تیار",
   "A narrator tells it over moving pictures or cheaper stills": "ایک راوی اسے متحرک تصویروں پر سناتا ہے، یا سستی ساکن تصویروں پر",
   "Picked up again after a restart": "ری اسٹارٹ کے بعد دوبارہ جاری",
   "Should be night": "رات ہونی چاہیے",

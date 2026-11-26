@@ -336,7 +336,9 @@ test("the card says what the slider says: '≈ 1:44 · 18 shots' — 'scenes' fo
 });
 
 test("the cost line is the ESTIMATE, with 'free while we finish films' beside it while films are free", () => {
-  assert.ok(ui.includes("const lenTokens = (n: number) => (cost > 0 ? estimateFilmTokens(n) : tokensFor(lenWay, lenSecs(n)));"));
+  // (…at the story's rung since 2026-11-25: a told story over still pictures is estimated at the still rate —
+  //  tests/video-ladder.test.ts)
+  assert.ok(ui.includes("const lenTokens = (n: number) => (cost > 0 ? estimateFilmTokens(n) : tokensFor(priceWay(lenWay, lenStill), lenSecs(n)));"));
   // films are free today — the page's own price is nothing — so the slider shows the estimate AND the tag
   assert.equal(estimateFilmTokens(52), 0);
   assert.ok(ui.includes("const cost = estimateFilmTokens(tmpl?.lipSyncSinger ? mvBillScenes(mvSceneCount, mvSceneSec) : scenes);"));

@@ -93,6 +93,8 @@ import { REWRITE_FAILED, applyRewrite, type RewriteTreatment, type RewrittenLine
 import { LengthSlider } from "../components/film/LengthSlider";
 import { filmClock } from "../lib/film-flow";
 import { lengthStops, maxShots, renderMinutes, scriptParts, secondsFor, tokensFor, type FilmWay } from "../lib/film-length";
+// (2026-11-25) a told story over still pictures is priced as the cheapest rung — PicturesPick, under the Length slider
+import { priceWay } from "../lib/film-length";
 
 // (theme-color: in the DARK theme the Movie Maker is a theater — FS_THEATER, at the foot of this file — and
 //  a phone's own bar goes dark with it instead of framing it in white. The shell's loader knows the theme.)
@@ -1492,6 +1494,64 @@ function LoopCover({ k, loop, tall, still, clip }: { k: string; /** it has a loo
   );
 }
 
+/* STILL OR MOVING — A TOLD STORY'S TWO RUNGS, WHERE ITS LENGTH AND ITS PRICE ARE (2026-11-25).
+ * The owner, with a photo of the Stories shelf ("A narrator tells it over moving pictures"): "Stories narrated moving
+ * pictures - we also need the timeless pictures with narration as an extremely cheap base tier". The engine already
+ * told a story over its still pictures when asked (story-motion.ts → THE LADDER) — but the asking was the sixth of
+ * six cards, with no price on it, and he had never met it. So the choice sits in the Length step, under the slider
+ * that already shows the estimate: two tiles, each with its OWN estimate for the length on the slider (film-length.ts
+ * → tokensFor, 1 token a second over stills against 2.5 moving), the still one marked the cheapest — and the slider's
+ * own estimate follows the one picked. Each tile shows what it makes, on the format's own poster picture: the still
+ * one creeps in as a still story's picture does; the moving one runs in a strip of film, and plays the format's own
+ * clip where it has one. (Moving stays the default: it is the fuller film, and the tester whose stories were told
+ * over stills, 2026-11-23, said they "only stop screen on one image".) Nothing is redrawn by choosing. */
+function PicturesPick({ value, onPick, media, tokens, t }: {
+  value: StoryPictures; onPick: (k: StoryPictures) => void;
+  /** the hero's poster key (film-heroes.ts → media) */
+  media: string;
+  /** what the story at the slider's length is estimated at, told each way */
+  tokens: (k: StoryPictures) => number;
+  t: (s: string, p?: Record<string, string | number>) => string;
+}) {
+  const vid = useRef<HTMLVideoElement | null>(null);
+  const clip = LOOP_KEYS.includes(media);
+  useEffect(() => {
+    const v = vid.current;
+    if (!v || (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches)) return;
+    v.muted = true;
+    v.play().catch(() => undefined);
+  }, [media]);
+  const still = Math.max(0, Math.round(tokens("still")));
+  const moving = Math.max(0, Math.round(tokens("moving")));
+  const pic = TALL_STILLS.has(media) ? `/landing/film-still-${media}-tall.jpg?v=${STILL_V}` : stillOf(media);
+  const opts: ReadonlyArray<{ k: StoryPictures; name: string; line: string; n: number }> = [
+    { k: "still", name: "Still pictures", line: "a slow camera move on each · ready sooner", n: still },
+    { k: "moving", name: "Moving pictures", line: "every picture comes to life", n: moving },
+  ];
+  return (
+    <div className="mm-pics">
+      <div className="mm-pics-h" aria-hidden="true">{t("The pictures")}</div>
+      <div className="mm-pics-row" role="group" aria-label={t("The pictures")}>
+        {opts.map((o) => (
+          <button type="button" key={o.k} className={`mm-pic is-${o.k}${value === o.k ? " on" : ""}`} aria-pressed={value === o.k} onClick={() => onPick(o.k)}>
+            <span className="mm-pic-view" aria-hidden="true">
+              <img src={pic} alt="" loading="lazy" onError={stillFallback} />
+              {o.k === "moving" && clip && <video ref={vid} src={`/landing/film-loop-${media}-tall.mp4?v=${LOOP_V}`} muted loop playsInline preload="metadata" tabIndex={-1} />}
+              {o.k === "still" && still < moving && <em className="mm-pic-tag">{t("Cheapest")}</em>}
+              {value === o.k && <span className="mm-pic-chk"><Ico n="check" size={12} /></span>}
+            </span>
+            <span className="mm-pic-txt">
+              <b>{t(o.name)}</b>
+              <span className="mm-pic-cost">{t("≈ {n} tokens", { n: o.n.toLocaleString("en-US") })}</span>
+              <small>{t(o.line)}</small>
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ───────── THE LYRIC VIDEO BUILDER (lyric-video.ts) ─────────
  * The owner, 2026-11-24: "simple active exciting lyrics … input link and it converts to a Lyric Video". So the
  * whole builder is: drop a song or paste a YouTube link, tick that it's yours (or you have its owner's permission),
@@ -2806,7 +2866,12 @@ export default function FilmStudio() {
   // finish films" — the page's FREE badges stay); the day a price is set, that price (plan-config.ts →
   // estimateFilmTokens, the one function that quotes AND charges), so the slider never says one number and the
   // button another
-  const lenTokens = (n: number) => (cost > 0 ? estimateFilmTokens(n) : tokensFor(lenWay, lenSecs(n)));
+  // …AND AT ITS RUNG (2026-11-25, film-length.ts → priceWay): a told story over STILL pictures is the cheapest — as is
+  // every told story on a server whose pictures cannot move (d.storyMotion off: the choice is not offered there)
+  const lenStill = narrated && (!d.storyMotion || pictures === "still");
+  const lenTokens = (n: number) => (cost > 0 ? estimateFilmTokens(n) : tokensFor(priceWay(lenWay, lenStill), lenSecs(n)));
+  // what the story at the slider's length comes to told each way — the two tiles under the slider (PicturesPick)
+  const picTokens = (k: StoryPictures) => (cost > 0 ? estimateFilmTokens(lenPending ?? scenes) : tokensFor(priceWay(lenWay, k === "still"), lenSecs(lenPending ?? scenes)));
   // A SLIDER CANNOT ASK FIRST PER VALUE. Each length button was armed before it threw a written script away (the
   // page's "tap again" way); a drag passes through a dozen lengths. So with a script on the page a new length is
   // held as PENDING — the thumb shows it, nothing is thrown away — and one calm line under the slider asks, "This
@@ -4702,6 +4767,10 @@ export default function FilmStudio() {
               <span className="mm-step" aria-hidden="true">{storyDone.length ? <Ico n="check" size={13} /> : 2}</span>
               <span className="mm-card-top"><span className="mm-card-ico c4"><Ico n="film" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The cut")}</span><b>{t("Length")}</b></span></span>
               <span className="mm-val">{lenLabel(scenes)} · {narrated ? (scenes === 1 ? t("1 scene") : t("{n} scenes", { n: scenes })) : (scenes === 1 ? t("1 shot") : t("{n} shots", { n: scenes }))}</span>
+              {/* (a told story's rung, said on the card itself — still or moving, and what that comes to) */}
+              {narrated && d.storyMotion && (
+                <span className={`mm-val mm-val-pics is-${pictures}`}>{t(pictures === "still" ? "Still pictures" : "Moving pictures")} · <b>{t("≈ {n} tokens", { n: lenTokens(scenes).toLocaleString("en-US") })}</b></span>
+              )}
             </button>
             {/* 3 · Shape */}
             <button type="button" style={{ order: 7 }} className={`mm-card${storyCard === "shape" ? " on" : ""}${storyDone.shape ? " done" : ""}`} onClick={() => tapStory("shape")}>
@@ -4724,31 +4793,9 @@ export default function FilmStudio() {
                 : <><span className="mm-card-top"><span className="mm-card-ico c5"><Ico n="sliders" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The lens")}</span><b>{t("Engine")}</b></span></span>
                     <span className="mm-val">{dialogueEngine === "veo" ? t("Veo 3 · premium") : t("Kling 3 · recommended")}</span></>}
             </button>
-            {/* 6 · Motion — a told story only (the owner's ladder, 2026-11-24: "narrated with stills / simple,
-                narrated with stills to video mid, and acted premium"): the pictures come to life, or the
-                story is told over them as they are. Acted is another poster, not a setting. With it a told
-                story's cards are six — two full rows of three, three full rows of two. */}
-            {narrated && d.storyMotion && (
-              <button type="button" style={{ order: 13 }} className={`mm-card${storyCard === "motion" ? " on" : ""}${storyDone.motion ? " done" : ""}`} onClick={() => tapStory("motion")}>
-                <span className="mm-step" aria-hidden="true">{storyDone.motion ? <Ico n="check" size={13} /> : 6}</span>
-                <span className="mm-card-top"><span className="mm-card-ico c2"><Ico n="play" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The pictures")}</span><b>{t("Motion")}</b></span></span>
-                <span className="mm-val">{pictures === "still" ? t("Still · told over the pictures") : t("Moving · every picture comes to life")}</span>
-              </button>
-            )}
-            {storyCard === "motion" && narrated && d.storyMotion && (
-              <div className="mm-opts mm-opts-grid" style={{ order: 14 }}>
-                <div className="mm-opts-h">{t("Do the pictures move?")}</div>
-                <div className="mm-opts-sub">{t("Moving brings every scene's picture to life — the fuller film. Still tells the story over the pictures themselves: simpler, and ready sooner.")}</div>
-                <div className="mm-lenpick mm-motionpick" role="group" aria-label={t("Motion")}>
-                  {([["moving", "Moving", "every picture comes to life"], ["still", "Still", "told over the pictures · ready sooner"]] as const).map(([k, name, line]) => (
-                    <button type="button" key={k} className={`mm-lenopt${pictures === k ? " on" : ""}`} aria-pressed={pictures === k} onClick={() => setPictures(k)}>
-                      <b>{t(name)}</b>
-                      <small>{t(line)}</small>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* (The pictures — still or moving — were a sixth card here, "The pictures · Motion", until 2026-11-25: the
+                last of six, with no price on it, and the owner never met it. They are chosen in the Length step now,
+                under the slider, each with its own estimate: PicturesPick.) */}
 
             {/* THE CAST STEP'S PANEL — the only cast UI on the page. With no script yet: we cast it, or pick who
                 stars. Once an acted film has its script (`scripted`): the script's characters, one row each —
@@ -4964,6 +5011,11 @@ export default function FilmStudio() {
                       <button type="button" className="mm-lenwipe-keep" onClick={keepLen}>{t("Keep")}</button>
                     </span>
                   </p>
+                )}
+                {/* STILL OR MOVING (a told story, where its pictures can move at all): each with its own estimate for
+                    the length above; the slider's estimate follows the one picked */}
+                {narrated && d.storyMotion && (
+                  <PicturesPick value={pictures} onPick={setPictures} media={heroById(heroId)?.media || "shortstory"} tokens={picTokens} t={t} />
                 )}
               </div>
             )}
@@ -5904,11 +5956,49 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-told:disabled{opacity:.5;cursor:default;}
 @media(max-width:520px){.mm-toldpick{grid-template-columns:1fr;}}
 .mm-shapepick .mm-lenopt{gap:5px;}
-/* (the Motion card has two choices: they share the row — three columns left a third of it empty) */
-.mm-lenpick.mm-motionpick{grid-template-columns:1fr 1fr;}
-.mm-motionpick .mm-lenopt{gap:4px;padding:13px 10px;}
-.mm-motionpick .mm-lenopt b{font-size:15.5px;}
-.mm-motionpick .mm-lenopt small{font-size:11.5px;line-height:1.35;text-align:center;}
+/* STILL OR MOVING (PicturesPick, 2026-11-25 — it was the sixth card, "Motion", and nobody met it): two tiles under
+   the Length slider, each a little poster of what it makes with its own estimate under its name. Phone first: side by
+   side, the picture over the words; on a wide panel, the picture beside them. The still one creeps in, as a still
+   story's picture does; the moving one runs in a strip of film (the slider above is a strip of film too). */
+.mm-pics{margin-top:14px;}
+.mm-pics-h{font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--ink3,#9AA39B);margin:0 0 7px;}
+.mm-pics-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+.mm-pic{position:relative;display:flex;flex-direction:column;align-items:stretch;min-width:0;padding:0;text-align:start;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:14px;overflow:hidden;cursor:pointer;font-family:Poppins,sans-serif;color:var(--ink,#14201A);transition:border-color .14s,box-shadow .14s;}
+.mm-pic:hover{border-color:var(--green2,#1EA85C);}
+.mm-pic.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 1.5px var(--green,#0C7A46),0 12px 26px -18px rgba(12,122,70,.55);}
+.mm-pic-view{position:relative;display:block;height:96px;overflow:hidden;background:#14201A;}
+.mm-pic-view img,.mm-pic-view video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 30%;}
+.mm-pic.is-still .mm-pic-view img{transform-origin:50% 34%;animation:mmPicCreep 7s ease-in-out infinite alternate;}
+.mm-pic.is-moving .mm-pic-view img{animation:mmPicLive 4.5s ease-in-out infinite alternate;}
+.mm-pic.is-moving .mm-pic-view::before,.mm-pic.is-moving .mm-pic-view::after{content:"";position:absolute;left:0;right:0;z-index:2;height:9px;background-color:#0E1411;background-image:repeating-linear-gradient(90deg,transparent 0 4px,rgba(246,241,228,.92) 4px 9px,transparent 9px 13px);background-size:13px 4px;background-repeat:repeat-x;background-position:0 50%;animation:mmPicRun .8s linear infinite;}
+.mm-pic.is-moving .mm-pic-view::before{top:0;}
+.mm-pic.is-moving .mm-pic-view::after{bottom:0;}
+@keyframes mmPicCreep{from{transform:scale(1);}to{transform:scale(1.15);}}
+@keyframes mmPicLive{from{transform:scale(1.12) translate(-3%,1%);}to{transform:scale(1.16) translate(3%,-1.5%);}}
+@keyframes mmPicRun{to{background-position:-13px 50%;}}
+.mm-pic-tag{position:absolute;z-index:3;inset-inline-start:7px;bottom:7px;font-style:normal;font-family:Poppins,sans-serif;font-size:9.5px;font-weight:800;line-height:1.2;letter-spacing:.06em;text-transform:uppercase;color:#0A5E36;background:#E3F4EA;border:1px solid #BFE3CF;border-radius:999px;padding:3px 8px;box-shadow:0 2px 6px rgba(0,0,0,.25);}
+.mm-pic-chk{position:absolute;z-index:3;top:14px;inset-inline-end:8px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:var(--green,#0C7A46);box-shadow:0 0 0 2px #fff;}
+.mm-pic-chk svg{stroke:#fff;stroke-width:2.6;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+.mm-pic-txt{display:flex;flex-direction:column;gap:2px;padding:9px 11px 11px;min-width:0;}
+.mm-pic-txt b{font-size:14px;font-weight:800;line-height:1.2;}
+.mm-pic-cost{font-size:13.5px;font-weight:800;line-height:1.25;font-variant-numeric:tabular-nums;color:var(--ink,#14201A);}
+.mm-pic.on .mm-pic-txt b,.mm-pic.on .mm-pic-cost{color:var(--green,#0C7A46);}
+.mm-pic-txt small{font-family:Inter,sans-serif;font-size:11px;font-weight:600;line-height:1.35;color:var(--ink2,#4A554E);}
+@media(min-width:700px){
+  .mm-pic{flex-direction:row;}
+  .mm-pic-view{flex:0 0 128px;height:auto;min-height:108px;}
+  .mm-pic-txt{justify-content:center;padding:12px 14px;}
+  .mm-pic-txt b{font-size:15px;}
+  .mm-pic-cost{font-size:14.5px;}
+  .mm-pic-txt small{font-size:12px;}
+}
+@media(prefers-reduced-motion:reduce){.mm-pic .mm-pic-view img,.mm-pic .mm-pic-view::before,.mm-pic .mm-pic-view::after{animation:none;}}
+[dir=rtl] .mm-pics-h,[dir=rtl] .mm-pic-tag{letter-spacing:0;}
+/* …and the Length CARD says the rung too: a told story's pictures, and what the story comes to */
+.mm-val.mm-val-pics{margin-top:5px;font-size:12px;}
+.mm-val-pics b{font-weight:800;color:var(--ink,#14201A);white-space:nowrap;}
+.mm-val-pics.is-still b{color:var(--green,#0C7A46);}
+@media(min-width:960px){.mm-val.mm-val-pics{margin-top:6px;font-size:13.5px;}}
 .mm-shapepick .mm-lenopt b{font-size:14.5px;}
 .mm-shape{display:block;border:2px solid currentColor;border-radius:4px;color:var(--ink3,#9AA39B);background:rgba(20,32,26,.04);}
 .mm-shape.s16x9{width:44px;height:25px;margin:9px 0;}
