@@ -76,7 +76,8 @@ test("the plan is used three times: the writer's list, the picture's camera line
   assert.ok(engine.includes("if (camPlan.length) list = list.map((s, i) => { const cam = shotInWords(s.visual) ?? camPlan[i]; return cam ? { ...s, cam } : s; });"), "each scene keeps how it is seen — as its own words say it, else as planned");
   const nar = read("app", "lib", "narrated-story.server.ts");
   assert.ok(nar.includes("const cam = sceneShot(scene);"));
-  assert.ok(nar.includes("${cam ? ` ${cameraLine(cam)}` : \"\"}"));
+  // (…given the frame's shape since 2026-11-26: a far view in a tall frame is told it is tall — story-shots.ts → frameShapeLine)
+  assert.ok(nar.includes("${cam ? ` ${cameraLine(cam, aspect)}` : \"\"}"));
   assert.ok(nar.includes("cams: treatment.scenes.map((s) => sceneShot(s)),"), "the motion follows it");
   assert.ok(read("app", "lib", "story-motion.server.ts").includes("prompt: motionPrompt(o.visuals[i] || \"\", o.cams?.[i]), durationSec: ask });"));
 });

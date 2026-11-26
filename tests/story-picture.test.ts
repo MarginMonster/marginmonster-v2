@@ -150,7 +150,8 @@ test("a horror cast does not grin: the format's own line reaches the narrated pi
   assert.ok(engine.includes("faceMood: \"Every living person in it looks tense, wary or afraid — nobody smiles, grins or laughs.\","));
   // only horror has a say (a kids' cartoon, a moral story and a short film keep whatever the scene calls for)
   assert.equal(engine.split("\n    faceMood: ").length - 1, 1);
-  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("Style: ${tmpl.sceneHint}.${tmpl.faceMood ? ` ${tmpl.faceMood}` : \"\"}${cam ? ` ${cameraLine(cam)}` : \"\"} ${[...notes, ...(withPlace ? placeNotes : [])].join(\" \")}"));
+  // (the camera line takes the frame's shape since 2026-11-26 — story-shots.ts → frameShapeLine; tests/full-frame.test.ts)
+  assert.ok(read("app", "lib", "narrated-story.server.ts").includes("Style: ${tmpl.sceneHint}.${tmpl.faceMood ? ` ${tmpl.faceMood}` : \"\"}${cam ? ` ${cameraLine(cam, aspect)}` : \"\"} ${[...notes, ...(withPlace ? placeNotes : [])].join(\" \")}"));
   // (…the film's THING by its own picture rides after it since 2026-11-25 — tests/acted-sighting.test.ts — and the
   //  genre's own world after that: tests/clothed.test.ts)
   assert.ok(read("app", "lib", "film-dialogue.server.ts").includes("action, mood: tmpl.faceMood, setting: nightSetting(cleanSetting(where), opts.topic, action), style: twoStyle, aspect, thing: thingIn && threat ? { url: abs(threat.img) || threat.img, name: threat.name, look: threat.look } : null, ownWorld: tmpl.ownWorld }));"));
