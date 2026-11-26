@@ -341,7 +341,7 @@ export async function narratedSceneSeeds(o: {
       // "just past the camera's edge"): the look is still asked, and its answer not counted here (story-picture.ts →
       // wornAsked, stareCounts). The ordinary home and the working hospital room, whose words never call them old, are
       // looked at as before; so is a face near the lens staring down it.
-      const wornHere = wornAsked(`${written} ${scene.caption || ""} ${setAt ? `${setAt.name}: ${setAt.look}` : ""}`, storyWords);
+      const wornHere = wornAsked(`${written} ${scene.caption || ""} ${setAt ? `${setAt.name}: ${setAt.look}` : ""}`, storyWords, idea);
       const stareHere = stareCounts(cam, written);
       // (a genre whose world is its OWN — Fantasy, film-genres.ts → ownWorld — is told everybody is clothed, and not that
       //  its places look the way they look TODAY: "no cottage and no castle unless they name one", 2026-11-25)

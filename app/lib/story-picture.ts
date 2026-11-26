@@ -435,9 +435,14 @@ export function wornSaid(text: string | null | undefined): boolean {
 /** IS A WORN PLACE ASKED FOR HERE? The scene's own words say so — or the STORY's words (its idea, its other scenes, its
  *  places) call a place worn that this scene's words name: "The old roller rink…" in the first scene's narration makes
  *  "far across the dark rink floor" in the third worn too. Then a picture the look calls run-down is not drawn again. */
-export function wornAsked(scene: string | null | undefined, story: string | null | undefined = ""): boolean {
+/*  (…and THE MEMBER'S OWN IDEA sets every scene's place — 2026-11-26, live: the idea was "a derelict, boarded-up seaside
+ *  arcade, closed for years"; scene 3, close on the claw machine's glass, named only the machine, never the arcade, and was
+ *  drawn again for looking run-down — in the derelict arcade the idea asked for. When the idea itself calls a place worn,
+ *  no scene of that story is drawn again for looking worn. An idea that calls a home only OLD does not: DOMESTIC, as above.) */
+export function wornAsked(scene: string | null | undefined, story: string | null | undefined = "", idea: string | null | undefined = ""): boolean {
   const s = String(scene || "").replace(/\s+/g, " ");
   if (wornSaid(s)) return true;
+  if (idea && wornSaid(idea)) return true;
   const words = ` ${s.toLowerCase().replace(/[^\p{L}\p{N}'’ -]/gu, " ")} `;
   // (the place's word as the scene writes it: one or many, or its own — "the ferry's wheel")
   const named = (p: string): RegExp => new RegExp(`[\\s-]${p.endsWith("y") ? `${p.slice(0, -1)}(?:y|ies)` : `${p}(?:s|es)?`}(?:['’]s?)?[\\s-]`, "u");
