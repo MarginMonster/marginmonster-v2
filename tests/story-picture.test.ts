@@ -167,3 +167,31 @@ test("a horror cast does not grin: the format's own line reaches the narrated pi
   assert.ok(img.includes("const mood = (opts.mood || \"\").replace(/\\s+/g, \" \").trim().slice(0, 160);"));
   assert.ok(img.includes("${moment}${mood ? ` ${mood}` : \"\"} ${consistencyNote}"));
 });
+
+
+test("SEEDREAM TAKES 4,000 CHARACTERS AT MOST (2026-11-26): its ask is fitted — standing rules first, then the middle — and nobody else's is touched", async () => {
+  const sp = await import("../app/lib/story-picture.ts");
+  const scene = "WIDE: inside the bedroom at night, Omar kneels beside his daughter's bed, lifting the blanket's edge.";
+  const notes = "Omar is the character in reference image 1 (a man in his thirties with a short black beard). ".repeat(26);
+  const long = `${scene} ${notes} ${sp.LIVED_IN} ${sp.INSIDE_STAYS} ${sp.NO_LENS} ${sp.DOORS_SHUT} ${sp.TRUE_SIZE} ${sp.STORY_SOUND} ${sp.ONE_PICTURE} ${sp.NOTHING_WRITTEN} No watermark, no signature.`;
+  assert.ok(long.length > 4000, String(long.length));
+  const fit = sp.fitStoryPrompt(long);
+  assert.ok(fit.length <= sp.SEEDREAM_PROMPT_MAX, String(fit.length));
+  assert.ok(fit.startsWith(scene), "the scene's own words lead it");
+  assert.ok(fit.endsWith(`${sp.NOTHING_WRITTEN} No watermark, no signature.`), "and nothing written still closes it");
+  assert.ok(!fit.includes(sp.STORY_SOUND) && !fit.includes(sp.TRUE_SIZE), "the least needed rules went first");
+  // a short ask is the same ask (spaces tidied only)
+  assert.equal(sp.fitStoryPrompt(`${scene}  ${sp.NO_LENS}`), `${scene} ${sp.NO_LENS}`);
+  // …and far over even then: cut back to a whole sentence, its end kept
+  const huge = `${scene} ${"Omar's look is said again here. ".repeat(200)}${sp.NOTHING_WRITTEN} No watermark, no signature.`;
+  const cut = sp.fitStoryPrompt(huge);
+  assert.ok(cut.length <= 4000 && cut.startsWith(scene) && cut.endsWith("No watermark, no signature.") && /\. Nothing in the picture is written/.test(cut));
+  // the input: Seedream is handed the fitted ask; the other two models the whole of it
+  assert.equal((sp.storyPictureInput(sp.STORY_SECOND_MODEL, { prompt: long, refs: [], aspect: "16:9" }) as { prompt: string }).prompt, fit);
+  assert.equal((sp.storyPictureInput(sp.STORY_MODEL, { prompt: long, refs: [], aspect: "16:9" }) as { prompt: string }).prompt, long);
+  assert.equal((sp.storyPictureInput(sp.STORY_LAST_MODEL, { prompt: long, refs: [], aspect: "16:9" }) as { prompt: string }).prompt, long);
+  // (the acted engine's three Seedream asks are fitted too)
+  const dlg = fs.readFileSync(path.join(root, "app", "lib", "film-dialogue.server.ts"), "utf8");
+  assert.equal(dlg.split('["bytedance/seedream-4.5", { prompt: fitStoryPrompt(ask),').length - 1, 3);
+  assert.ok(!dlg.includes('["bytedance/seedream-4.5", { prompt: ask,'));
+});

@@ -63,7 +63,7 @@ import { castThreat } from "./dialogue-cast";
 // THE PLACE REMEMBERS WHAT WAS DONE TO IT — a zipped tent stays zipped (2026-11-25, stream S12: place-state.ts)
 import { applyChange, changeEndLine, changesState, clipEndsOnChange, clothPlace, placeChangeIn, placeStateAt, shutCloth, stateApart, stateLine, stateNow, type PlaceChange, type PlaceState } from "./place-state";
 import { changePicture } from "./acted-staging";
-import { PORTRAIT_ASPECT, STORY_LADDER, castEntry, storyPictureInput } from "./story-picture";
+import { PORTRAIT_ASPECT, STORY_LADDER, castEntry, fitStoryPrompt, storyPictureInput } from "./story-picture";
 // EVERYBODY IN EVERY PICTURE IS CLOTHED — the one look (2026-11-25, stream S8: clothed.server.ts → keepClothed)
 import { clothedEditOn, keepClothed } from "./clothed.server";
 
@@ -1539,7 +1539,7 @@ export async function generateTestMovie(opts: {
         ["black-forest-labs/flux-kontext-pro", { prompt: askOne, input_image: revealBase, aspect_ratio: aspect, output_format: "jpg", output_quality: 92 }],
         // (…and Seedream 4.5, a third maker's editor, when both refuse: the lake film's reveal did not come, and the
         //  woman it had circled for five shots was never seen — 2026-11-25)
-        ["bytedance/seedream-4.5", { prompt: ask, image_input: [revealBase, ...(thingFace ? [thingFace] : [])], aspect_ratio: aspect, size: "2K", max_images: 1 }],
+        ["bytedance/seedream-4.5", { prompt: fitStoryPrompt(ask), image_input: [revealBase, ...(thingFace ? [thingFace] : [])], aspect_ratio: aspect, size: "2K", max_images: 1 }],
       ] as Array<[string, Record<string, unknown>]>) {
         if (!ask || seedAbs) break;
         // (…and LOOKED at before it is used, as every film picture is — 2026-11-25: the thing it adds is "the woman in the
@@ -1579,7 +1579,7 @@ export async function generateTestMovie(opts: {
           for (const [model, input] of [
             ["google/nano-banana-pro", { prompt: ask, image_input: [base, ...(ref ? [ref.url] : [])], aspect_ratio: aspect, output_format: "jpg", resolution: "2K" }],
             ["black-forest-labs/flux-kontext-pro", { prompt: askOne, input_image: base, aspect_ratio: aspect, output_format: "jpg", output_quality: 92 }],
-            ["bytedance/seedream-4.5", { prompt: ask, image_input: [base, ...(ref ? [ref.url] : [])], aspect_ratio: aspect, size: "2K", max_images: 1 }],
+            ["bytedance/seedream-4.5", { prompt: fitStoryPrompt(ask), image_input: [base, ...(ref ? [ref.url] : [])], aspect_ratio: aspect, size: "2K", max_images: 1 }],
           ] as Array<[string, Record<string, unknown>]>) {
             if (!askOne || pic) break;
             try {
@@ -1681,7 +1681,7 @@ export async function generateTestMovie(opts: {
         const ask = changePicture({ change: placeChange, sides: [spkA, spkB].filter((n): n is string => !!n).map((n) => ({ name: n, side: sideFor(n) })), kept: stateNow(stateApart(placeBefore, placeChange)), outdoors });
         for (const [model, input] of [
           ["google/nano-banana-pro", { prompt: ask, image_input: [seedAbs], aspect_ratio: aspect, output_format: "jpg", resolution: "2K" }],
-          ["bytedance/seedream-4.5", { prompt: ask, image_input: [seedAbs], aspect_ratio: aspect, size: "2K", max_images: 1 }],
+          ["bytedance/seedream-4.5", { prompt: fitStoryPrompt(ask), image_input: [seedAbs], aspect_ratio: aspect, size: "2K", max_images: 1 }],
         ] as Array<[string, Record<string, unknown>]>) {
           if (!ask || pic) break;
           try {

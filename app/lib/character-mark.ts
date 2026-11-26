@@ -471,11 +471,23 @@ export const markLead = (tmplKey: string | null | undefined, drawn: boolean): bo
  *  only what its card gives it (SPEC-S16 Decision 2): its reference is its own photo, which shows nothing new, and a
  *  thing said only in words is drawn differently in every picture (the places proved it: story-picture.ts). `name` is
  *  the story's dealt example name, `things` its dealt examples (dealMarkThings). */
-export function markWriter(o: { drawn: boolean; childSafe: boolean; horror: boolean; lead: boolean; chosen?: boolean; name?: string; things?: ReadonlyArray<{ thing: string; seen: string; noun: string }> }): string {
+export function markWriter(o: { drawn: boolean; childSafe: boolean; horror: boolean; lead: boolean; chosen?: boolean; invent?: boolean; name?: string; things?: ReadonlyArray<{ thing: string; seen: string; noun: string }> }): string {
   const noWeapon = o.childSafe || o.horror;
   const things = (o.things && o.things.length ? o.things : FIRST_THINGS).filter((t) => !noWeapon || !WEAPON.test(t.thing));
   const ex = things[0] || FIRST_THINGS[0];
   const name = String(o.name || "").replace(/["“”]/g, "").trim() || "Kai";
+  // NOTHING INVENTED (2026-11-26 — every story that is not drawn: film-engine.server.ts → inventMarks). Only a character the
+  // maker chose can have a tag, from their own card: the writer keeps it, says the thing where it shows and the move where
+  // the story has a moment for it — and gives nobody else anything. No examples are shown: an example comes back as the story.
+  if (o.invent === false) {
+    return (
+      `WHAT THEY ALWAYS HAVE. A character the maker chose whose cast entry ends with a tag in square brackets (${o.horror ? "[always: …]" : "[always: … | move: …]"}) always has that with them: keep the tag word for word at the END of their entry. Give NOBODY else a thing they always have or a move of their own, and write no tag for anybody else — this story is the idea as it is told, with nothing added to its people.` +
+      ` Every VISUAL a character with an [always: …] tag is in names the thing in the same few words while it is in view, with the character as the one who has it ("${name}, ${ex.seen}, …" — never only "${name}'s ${ex.noun}").` +
+      (o.horror ? "" : ` A character whose tag has a move may show it once or twice, at the story's biggest moments — only where the idea has a moment for it: a scene that shows it sets "move" to their name, seen WIDE or FROM BELOW so the whole body is in the frame; its VISUAL is the instant the move is done, aimed at a thing, an obstacle or the air, never at a person, and nobody is hurt.`) +
+      (o.drawn ? "" : " Nothing they have glows (a lit lamp is only a light)" + (o.horror ? "." : ", and the move is one a stunt performer could really do: no beam, no magic.")) +
+      " Nothing they have carries letters, numbers or a logo."
+    );
+  }
   const lead = o.lead && !o.chosen
     ? "Each lead of this story has ONE thing they always have with them"
     : "A character may have ONE thing they always have with them, where it fits the story";

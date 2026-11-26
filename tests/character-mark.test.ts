@@ -340,7 +340,11 @@ test("wiring that cannot run here (no writer, no picture model locally) — pinn
   assert.ok(fn.includes("desc: narrated ? scrubFranchise(withMark(cut, markForFormat(markOf(c?.mark), markFmt)), keepNames) : cut,"));
   assert.ok(fn.includes("const typedIdea = scrubFranchise((opts.topic || \"\").trim(), keepNames);") && fn.indexOf("const typedIdea = ") < fn.indexOf("const nudged = "), "scrubbed before a starter is chosen from it");
   // the writer's lines: ORIGINAL_CAST after the idea (whole, plan) and the part's brief; markBrief after the cast — 3 each
-  assert.ok(fn.includes("const markBrief = narrated && storyFormat ? `\\n${markWriter({ drawn: !!tmpl.drawn, childSafe: !!tmpl.childSafe, horror: tmpl.key === \"horror\", lead: markLead(tmpl.key, !!tmpl.drawn), chosen: castChosen.length > 0, name: exName, things: dealMarkThings(Math.random, { weapons: !tmpl.childSafe && tmpl.key !== \"horror\" }) })}` : \"\";"));
+  // (…and only a drawn story is asked to INVENT a thing or a move; any other is told of a chosen card's, or of nothing at
+  //  all — 2026-11-26, the tester's "drama voice doesn't match screen movement": a Thanksgiving brother's "own watch")
+  assert.ok(fn.includes("const inventMarks = !!tmpl.drawn;"));
+  assert.ok(fn.includes("const chosenMarked = castChosen.some((c) => !!peelMark(c.desc).mark);"));
+  assert.ok(fn.includes("const markBrief = narrated && storyFormat && (inventMarks || chosenMarked) ? `\\n${markWriter({ drawn: !!tmpl.drawn, childSafe: !!tmpl.childSafe, horror: tmpl.key === \"horror\", lead: markLead(tmpl.key, !!tmpl.drawn), chosen: castChosen.length > 0, invent: inventMarks, name: exName, things: dealMarkThings(Math.random, { weapons: !tmpl.childSafe && tmpl.key !== \"horror\" }) })}` : \"\";"));
   const count = (s: string, x: string) => s.split(x).length - 1;
   assert.equal(count(fn, "(storyFormat ? `${ORIGINAL_CAST}\\n` : \"\") +"), 3);
   assert.equal(count(fn, "markBrief +\n"), 3);
@@ -349,13 +353,14 @@ test("wiring that cannot run here (no writer, no picture model locally) — pinn
   assert.ok(fn.includes("      ideaLine +\n      // (every character our own") && fn.includes("      castLine +\n      threatBrief +\n      markBrief +\n      `\\n${AGES_FIT_RELATION}` +"), "the plan");
   assert.ok(fn.includes("seenAs: one!.seenAs }) +\n    // (every part is told") && fn.includes("    partCast +\n    partThreat +\n    markBrief +\n"), "each part");
   // the answer: the cast normalised; a chosen face keeps only its card's; a move only where somebody has one; the scrub
-  assert.ok(fn.includes("const cast = Array.isArray(parsed.cast) ? parsed.cast.filter((c) => typeof c === \"string\" && c.trim()).slice(0, 5).map((e) => (narrated ? normalizeCastEntry(e, markFmt, 400, keepNames) : e)) : undefined;"));
+  // (…a tag the writer wrote anyway, outside a drawn story, is taken off — a chosen face's card's goes back on below)
+  assert.ok(fn.includes("const cast = Array.isArray(parsed.cast) ? parsed.cast.filter((c) => typeof c === \"string\" && c.trim()).slice(0, 5).map((e) => (narrated ? normalizeCastEntry(inventMarks ? e : setMarkIn(e, null), markFmt, 400, keepNames) : e)) : undefined;"));
   assert.ok(fn.includes("(typeof e === \"string\" ? franchiseIn(e, keepNames) : null)"));
   // (an entry the ages' second ask returned is made whole again, and gets back a tag it lost — review of S16a)
   const props = fn.slice(fn.indexOf("  // PROPS & MOVES, AS THE STORY LEAVES ITS WRITER"));
-  assert.ok(props.includes("cast[i] = normalizeCastEntry(cast[i], markFmt, 400, keepNames);") && props.includes("if (was) cast[i] = setMarkIn(cast[i], was.mark);"));
+  assert.ok(props.includes("cast[i] = normalizeCastEntry(inventMarks ? cast[i] : setMarkIn(cast[i], null), markFmt, 400, keepNames);") && props.includes("if (was) cast[i] = setMarkIn(cast[i], was.mark);"));
   assert.ok(fn.indexOf("const marksWritten = ") > fn.indexOf("const cast = Array.isArray(parsed.cast)") && fn.indexOf("const marksWritten = ") < fn.indexOf("const problem = castAgeProblem("), "read before the ages' second ask");
-  assert.ok(props.indexOf("normalizeCastEntry(cast[i]") < props.indexOf("if (own) cast[i] = setMarkIn("), "before a chosen face is given its card's");
+  assert.ok(props.indexOf("normalizeCastEntry(inventMarks ? cast[i]") < props.indexOf("if (own) cast[i] = setMarkIn("), "before a chosen face is given its card's");
   assert.ok(fn.includes("if (own) cast[i] = setMarkIn(cast[i], markForFormat(peelMark(own.desc).mark, markFmt));"));
   assert.ok(fn.includes("const movers = (cast || []).map((e) => castEntry(e)).filter((c) => !!c.name && !!c.mark?.move).map((c) => c.name);") && fn.includes("const moves = castMoves(list, movers);"));
   assert.ok(fn.includes("console.log(`[film] an existing character's name was taken out: \"${ip.word}\" → \"${ip.as}\"`);"));
@@ -410,4 +415,21 @@ test("the leads, and the examples a story is dealt", () => {
     assert.equal(!!t.weapon, WEAPON.test(t.thing), `${t.thing}: marked a weapon exactly when it is one`);
     assert.ok(t.seen.includes(t.noun), t.thing);
   }
+});
+
+
+test("NOTHING INVENTED outside a drawn story (2026-11-26): the writer keeps a chosen card's tag and gives nobody else anything", () => {
+  const keep = markWriter({ drawn: false, childSafe: false, horror: false, lead: true, chosen: true, invent: false, name: "Tamsin" });
+  assert.ok(keep.startsWith("WHAT THEY ALWAYS HAVE. A character the maker chose whose cast entry ends with a tag in square brackets ([always: … | move: …]) always has that with them"));
+  assert.ok(keep.includes("Give NOBODY else a thing they always have or a move of their own, and write no tag for anybody else"));
+  // (no examples: a dealt example comes back as the story — the bedtime horror's father and his "battery lantern torch")
+  for (const t of MARK_THINGS) assert.ok(!keep.includes(t.thing), t.thing);
+  assert.ok(!/Each lead of this story has ONE thing/.test(keep) && !/where it fits the story/.test(keep));
+  assert.ok(keep.includes("Tamsin, the cobalt scarf whipping behind"), "the example of naming a thing in a VISUAL, with the dealt name");
+  assert.ok(keep.includes("no beam, no magic") && keep.includes("Nothing they have carries letters, numbers or a logo."));
+  // a horror story: the tag has no move, and the writer is told nothing about moves
+  const horror = markWriter({ drawn: false, childSafe: false, horror: true, lead: false, chosen: true, invent: false });
+  assert.ok(horror.includes("([always: …])") && !/move/.test(horror.replace("a move of their own", "")), horror);
+  // …and leaving `invent` out is the drawn story's brief, as it was
+  assert.equal(markWriter({ drawn: true, childSafe: false, horror: false, lead: true }), markWriter({ drawn: true, childSafe: false, horror: false, lead: true, invent: true }));
 });

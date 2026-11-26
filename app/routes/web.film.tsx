@@ -4449,7 +4449,8 @@ export default function FilmStudio() {
                 onClick={() => { if (idea) { try { window.sessionStorage.setItem(IDEA_HANDOFF_KEY, packHandoff(idea, Date.now())); } catch { /* the camera is still the one asked for */ } } }}>
                 <span className="fs-fmt-cover">
                   <LoopCover k={`ff-${c.key}`} still={c.still} clip={c.clip} />
-                  <span className={`fs-fmt-ico ${FOUND_FOOTAGE_DOOR.tint}`} aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="14" height="12" rx="2" /><path d="M16 10l6-3v10l-6-3" /><circle cx="6" cy="9.5" r="1" /></svg></span>
+                  {/* (no badge on a camera's card — 2026-11-26, the owner's phone photo: it sat on the footage's own time
+                      stamp, "16 MON 02:17:48", and the iPhone's "HD 30"; the row's own header already shows the camera) */}
                   <span className="fs-fmt-label"><b>{t(c.name)}</b></span>
                 </span>
               </a>
@@ -7169,6 +7170,10 @@ a.mm-pace-auto{text-decoration:none;}
 .fs-way-pic img,.fs-way-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
 .fs-way-pic .is-strip{left:-100%;width:300%;}
 .fs-way-vid{opacity:0;transition:opacity .4s ease;}
+/* (Caught on Cam's card: the house camera's own date strip along the top of its footage ran under the "Found footage"
+   tag — the owner's phone photo, 2026-11-26. The footage is drawn a little larger from its foot, so that strip is out of
+   the card and the tag sits on the picture.) */
+.fs-way.is-cam .fs-way-pic img,.fs-way.is-cam .fs-way-vid{transform:scale(1.16);transform-origin:50% 94%;}
 .fs-way-vid.is-on{opacity:1;}
 .fs-way-art::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(10,16,12,.86),rgba(10,16,12,0) 62%);pointer-events:none;}
 .fs-way-pic img{animation:fsWayDrift 18s ease-in-out infinite alternate;}

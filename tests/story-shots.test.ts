@@ -217,3 +217,18 @@ test("what frightens: a creature a horror story invents is photographed, slightl
   const nar = read("app", "lib", "narrated-story.server.ts");
   assert.ok(nar.includes("if (!tmpl.childSafe) own.forEach((c) => { if (characterKind(c.name, c.look) === \"monster\") notes.push(creatureHidden(c.name)); });"), "only a creature the STORY invented — a cast member the maker chose is seen");
 });
+
+
+test("OVER THE SHOULDER is never the shoulder of the one the scene is ABOUT (2026-11-26: \"Priya froze mid-bite\" was her back)", () => {
+  assert.ok(STORY_SHOTS.over.write.endsWith("— never the shoulder of the one this scene's CAPTION is about: they are the one we see beyond it, facing us"));
+  assert.ok(shotListBrief(["over"]).includes("never the shoulder of the one this scene's CAPTION is about"));
+});
+
+test("THE WRITER IS TOLD who a caption is about is SEEN doing it, a gathering stays gathered, and anyone seen twice is in the cast (2026-11-26)", () => {
+  const eng = fs.readFileSync(path.join(root, "app", "lib", "film-engine.server.ts"), "utf8");
+  // (the tester's Thanksgiving drama: the one who "froze mid-bite" was a back, and the full table emptied after scene 1)
+  assert.ok(eng.includes("WHOEVER A CAPTION IS ABOUT — the one who acts, speaks or feels in it — is IN that scene's VISUAL doing exactly what the caption says, their FACE toward the camera"));
+  assert.ok(eng.includes("A GATHERING STAYS GATHERED: while the story's people are together in one place"));
+  // (the tester's bedtime horror: the daughter in every scene and in no cast entry — no portrait, a different age each time)
+  assert.ok(eng.includes("Anyone else who is SEEN in more than one scene (a child, a partner, a friend, a parent, a victim) IS added to \\\"cast\\\""));
+});

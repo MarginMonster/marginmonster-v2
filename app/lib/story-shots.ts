@@ -60,7 +60,7 @@ export const STORY_SHOTS: Record<StoryShot, ShotSpec> = {
     far: true,
   },
   over: {
-    write: "OVER THE SHOULDER — from just behind one of them (their back and shoulder dark in the foreground), looking at who or what they are looking at, several steps away; NAME whose shoulder it is (\"over NAME's shoulder\")",
+    write: "OVER THE SHOULDER — from just behind one of them (their back and shoulder dark in the foreground), looking at who or what they are looking at, several steps away; NAME whose shoulder it is (\"over NAME's shoulder\") — never the shoulder of the one this scene's CAPTION is about: they are the one we see beyond it, facing us",
     camera: "CAMERA: over the shoulder — the nearer figure is one of the people these words NAME, seen from BEHIND, large in the foreground at one side; beyond them, several steps away, is what they are looking at. When these words name nobody to stand there, the foreground is the dark edge of the place instead (a door frame, a curtain, a chair back) — never a stranger.",
     motion: "Both hold their places; only small movement. The camera holds still.",
   },

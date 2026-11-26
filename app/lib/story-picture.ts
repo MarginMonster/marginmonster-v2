@@ -865,9 +865,37 @@ export const STORY_LADDER: ReadonlyArray<string> = [STORY_MODEL, STORY_SECOND_MO
  *  the everyday model as it was. (nano-banana-pro was asked for 1K — "what the story is cut at" — until the owner
  *  called the stories' look "rough", 2026-11-25: its 2K is the same price as its 1K ($0.15 a picture; 4K is
  *  $0.30), and a story's slow push-in and the motion engine both start from this picture.) */
+/* SEEDREAM TAKES 4,000 CHARACTERS AT MOST (2026-11-26, the live log of a tester's stories: "input.prompt: String length
+ * must be less than or equal to 4000" — twice in one Horror Story, each time right after nano-banana-pro refused the
+ * picture, so the scene fell through to the everyday model: the "poop engine" the owner caught on 2026-11-24). A told
+ * scene's ask runs past it once its notes pile up — the cast, a creature, the place, the night, who is inside, today's
+ * look. So Seedream's ask is FITTED: the standing rules it can best do without go first, one at a time, until it fits
+ * (each is a whole sentence of the ask); then, only if it must, the middle is cut at its last whole sentence — the
+ * scene's own words lead the ask and "nothing written" closes it, so both stay. A picture told a little less beats a
+ * picture the stronger model never drew. Every other model is asked the whole of it. */
+export const SEEDREAM_PROMPT_MAX = 4000;
+const SEEDREAM_DROPS: ReadonlyArray<string> = [STORY_SOUND, TRUE_SIZE, DOORS_SHUT, NIGHT_STYLE_LIGHT, SHADOW_SHAPE, LIVED_IN, INSIDE_STAYS, NO_LENS, ONE_PICTURE];
+export function fitStoryPrompt(prompt: string, max = SEEDREAM_PROMPT_MAX): string {
+  const tidy = (t: string): string => t.replace(/\s+/g, " ").trim();
+  let s = tidy(prompt);
+  for (const rule of SEEDREAM_DROPS) {
+    if (s.length <= max) return s;
+    if (s.includes(rule)) s = tidy(s.split(rule).join(" "));
+  }
+  if (s.length <= max) return s;
+  // (still over: keep its end — "nothing written" and what follows it — and cut the middle back to a whole sentence)
+  const at = s.lastIndexOf(NOTHING_WRITTEN);
+  const tail = at >= 0 ? s.slice(at) : "";
+  const room = Math.max(0, max - tail.length - 1);
+  const head = (at >= 0 ? s.slice(0, at) : s).slice(0, room);
+  const end = Math.max(head.lastIndexOf(". "), head.lastIndexOf("! "), head.lastIndexOf("? "), head.lastIndexOf(".” "));
+  const kept = end > room * 0.5 ? head.slice(0, end + 1) : head.slice(0, Math.max(0, head.lastIndexOf(" ")));
+  return tidy(`${kept} ${tail}`).slice(0, max);
+}
+
 export function storyPictureInput(model: string, o: { prompt: string; refs: ReadonlyArray<string>; aspect: string }): Record<string, unknown> {
   const refs = o.refs.length ? { image_input: [...o.refs] } : {};
-  if (model === STORY_SECOND_MODEL) return { prompt: o.prompt, ...refs, aspect_ratio: o.aspect, size: "2K", max_images: 1 };
+  if (model === STORY_SECOND_MODEL) return { prompt: fitStoryPrompt(o.prompt), ...refs, aspect_ratio: o.aspect, size: "2K", max_images: 1 };
   if (model === STORY_LAST_MODEL) return { prompt: o.prompt, ...refs, aspect_ratio: o.aspect, output_format: "jpg" };
   return { prompt: o.prompt, ...refs, aspect_ratio: o.aspect, output_format: "jpg", resolution: "2K" };
 }
