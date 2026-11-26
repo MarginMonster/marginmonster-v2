@@ -18,6 +18,8 @@ import { trimTitle } from "./text-trim.ts";
 import { isNarratedStory, storyLangOf, toldFrom } from "./story-translate.ts";
 import { castCardsOf, castStillIn, castToken, placesOf, placesStillIn, type StoryCastRef } from "./story-picture.ts";
 import { stillCameraOf, storyCameraOf, storyIsStill, type StillCamera } from "./story-motion.ts";
+// (a character's cast entry ends with what they always have — 2026-11-26, SPEC-S16)
+import { fitEntry } from "./character-mark.ts";
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => !!v && typeof v === "object" && !Array.isArray(v);
@@ -33,7 +35,7 @@ const oneLine = (s: string): string => s.replace(/[\u0000-\u001f\u007f]+/g, " ")
 export const EDIT_MIN_SCENES = 3;
 export const EDIT_MAX_SCENES = 12;
 
-export type EditScene = { visual: string; caption: string; where?: string; shot?: string; tone?: string; kind?: "perform" | "broll"; /** how the scene is SEEN (story-shots.ts) — kept, so a story told again keeps its shot plan */ cam?: string; /** a still picture's OWN camera, when the storyboard gave it one (story-motion.ts → StillCamera) */ camera?: StillCamera };
+export type EditScene = { visual: string; caption: string; where?: string; shot?: string; tone?: string; kind?: "perform" | "broll"; /** how the scene is SEEN (story-shots.ts) — kept, so a story told again keeps its shot plan */ cam?: string; /** a still picture's OWN camera, when the storyboard gave it one (story-motion.ts → StillCamera) */ camera?: StillCamera; /** whose special MOVE this scene shows (film-engine.server.ts → FilmScene.move, SPEC-S16) — kept, so a scene drawn again while editing is still the move */ move?: string };
 export type StoryToEdit = {
   /** the story it was opened from (this shop's own — the loader checked) */
   from: string;
@@ -92,13 +94,17 @@ export function storyToEditFrom(
     ...(s.kind === "perform" || s.kind === "broll" ? { kind: s.kind } : {}),
     ...(typeof s.cam === "string" && /^[a-z]{2,12}$/.test(s.cam) ? { cam: s.cam } : {}),
     ...(stillCameraOf(s.camera) ? { camera: stillCameraOf(s.camera) as StillCamera } : {}),
+    // (a name, one line, short — whose move it is: character-mark.ts)
+    ...(oneLine(str(s.move)) ? { move: oneLine(str(s.move)).slice(0, 40) } : {}),
   }));
   // (a story is told in the scenes that have something to say — as the render itself does)
   if (scenes.length !== tr.scenes.length || scenes.filter((s) => s.caption).length < EDIT_MIN_SCENES) return null;
   const kept = !!pictures && pictures.length === scenes.length && pictures.every((p) => typeof p === "string" && !!p);
   const aspect = str(meta.aspect);
   const captions = str(meta.captions);
-  const castList = (Array.isArray(tr.cast) ? tr.cast : []).map((c) => oneLine(str(c)).slice(0, 300)).filter(Boolean).slice(0, 8);
+  // (each entry with what they always have whole — the tag at its end, character-mark.ts → fitEntry; an untagged one is cut
+  //  exactly as it was)
+  const castList = (Array.isArray(tr.cast) ? tr.cast : []).map((c) => fitEntry(oneLine(str(c)), 300)).filter(Boolean).slice(0, 8);
   const ownCast = castStillIn(castCardsOf(meta), castList);
   // THE STORY'S PLACES come back with it: the list the writer gave, and the design sheet each was drawn
   // from — so a scene added or drawn again while editing is set in the same ferry, not a new one

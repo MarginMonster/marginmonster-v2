@@ -59,6 +59,10 @@ import { NIGHT_STYLE_LIGHT, parseStoryNight, storyNight } from "./story-picture"
 // for and a stare its shot asks for are no faults; at most half its scenes in redraws for a soft fault, a quarter for stares,
 // a hard one always)
 import { coverNow, faultTier, redrawPurse, spendRedraw, stareCounts, wornAsked } from "./story-picture";
+// PROPS & MOVES (2026-11-26, SPEC-S16): what a character always has, said in every scene they are in; their move, only in the
+// scene that shows it; and nobody else's character in any picture
+import { markForFormat, markLine, moveLine, pictureText, scrubFranchise } from "./character-mark";
+import { castMarks } from "./story-picture";
 import { streamSeconds } from "./film-join.server";
 import { castForMeta, episodeTitle, seriesMeta, type SeriesBrief } from "./film-series";
 import { episodeOwnName, type ShowMeta } from "./character-series";
@@ -112,7 +116,9 @@ const CAST_LOCK = "CRITICAL: every character taken from a reference image is the
  *  a scene's cast notes live), on the good model — and, when it refuses or cannot be reached, on the next one
  *  down (story-picture.ts → STORY_LADDER). Null when none of them draws it. */
 async function drawScene(prompt: string, refs: string[], aspect: string): Promise<string | null> {
-  const full = `${frameWords(aspect)} ${prompt} No watermark, no signature.`;
+  // (…with nobody else's character in it, whatever its words: the last net — a maker's own edited "what we see" box
+  //  reaches here unread by any writer. SPEC-S16 Decision 5, character-mark.ts → scrubFranchise)
+  const full = scrubFranchise(`${frameWords(aspect)} ${prompt} No watermark, no signature.`);
   for (const m of STORY_LADDER) {
     try {
       return await persistRemote(await repRun(m, storyPictureInput(m, { prompt: full, refs, aspect }), 150_000), "jpg");
@@ -200,6 +206,11 @@ export async function narratedSceneSeeds(o: {
   //  which the treatment keeps: film-engine.server.ts → FilmTreatment.nudge)
   const idea = `${o.idea || ""} ${o.treatment.nudge || ""}`.trim();
   const picked = (o.cast || []).filter((c) => c && c.name && c.faceUrl);
+  // WHAT EACH CHARACTER ALWAYS HAS, and their move (SPEC-S16, character-mark.ts): read from the cast entries' tags — an
+  // invented character's and a picked face's alike (story-picture.ts → castMarks) — and fit for the story: no weapon in a
+  // children's story, no move in a horror one
+  const marks = castMarks(o.treatment.cast || []);
+  for (const [k, m] of marks) { const fit = markForFormat(m, { childSafe: !!tmpl.childSafe, horror: tmpl.key === "horror" }); if (fit) marks.set(k, fit); else marks.delete(k); }
   // the story's recurring characters nobody gave a picture to
   const others = (o.treatment.cast || []).filter((e) => !!e && !picked.some((c) => namedIn(c.name, entryName(e)) || namedIn(entryName(e), c.name)));
   const scenes = o.treatment.scenes;
@@ -307,12 +318,22 @@ export async function narratedSceneSeeds(o: {
       // A CREATURE STAYS THAT CREATURE (story-picture.ts → creatureNote): a werewolf asked to "crouch" came back
       // an ordinary wolf, and one gripped by the sleeve came back a man with a wolf's head in a clean shirt.
       here.forEach((c) => { const note = creatureNote(c.name, c.kind); if (note) notes.push(note); });
+      // WHAT THEY ALWAYS HAVE (SPEC-S16, character-mark.ts → markLine): said again in every scene they are in, the same as
+      // in their portrait — the owner, 2026-11-26: "specific props … that often show in scenes"
+      here.forEach((c, n) => { const m = marks.get(c.name.trim().toLowerCase()); if (m?.has) notes.push(markLine(c.name, m.has, n + 1)); });
+      // …and THEIR MOVE, only in the scene whose words call for it (the writer marked it: FilmScene.move) — at its peak,
+      // aimed at a thing and never at us, nobody hurt; drawn wind and speed lines in a drawn story, a stunt performer's real
+      // move in any other (character-mark.ts → moveLine)
+      const mover = scene.move ? here.find((c) => sameCharacter(c.name, scene.move!)) : undefined;
+      const mv = mover ? marks.get(mover.name.trim().toLowerCase())?.move : undefined;
+      if (mover && mv) notes.push(moveLine(mover.name, mv, { drawn: !!tmpl.drawn, childSafe: !!tmpl.childSafe }));
       // WHAT FRIGHTENS (story-picture.ts): a creature the STORY invented is mostly hidden — never a cast
       // member the maker chose (a show's own star is seen), never in a children's format
       // (…a creature by its NAME as well as its look: "the ghost lady, a tall woman who…" was drawn whole and lit,
       //  grinning and waving at the window — story-picture.ts → characterKind)
       if (!tmpl.childSafe) own.forEach((c) => { if (characterKind(c.name, c.look) === "monster") notes.push(creatureHidden(c.name)); });
-      if (sheet) notes.push(`Reference image ${here.length + 1} is a sheet of other characters: from it take ONLY ${who[k].others.map((e) => e.slice(0, 200)).join("; and ")}.`);
+      // (a character drawn from WORDS has its thing too, and never its move or its tag: character-mark.ts → pictureText)
+      if (sheet) notes.push(`Reference image ${here.length + 1} is a sheet of other characters: from it take ONLY ${who[k].others.map((e) => pictureText(e, 200)).join("; and ")}.`);
       // (the place's own lines are kept apart: a scene that keeps coming back as a framed panel is drawn once
       //  more WITHOUT its place's sheet — from its words, as every scene was before there were sheets)
       // (the "camera is near them" line is for a scene with NO camera line of its own — it made every picture
@@ -321,7 +342,7 @@ export async function narratedSceneSeeds(o: {
       // (a character with no picture of its own here — its portrait could not be drawn, or it is a fourth
       //  in one scene — is drawn from its words, as every invented character once was)
       const unpictured = sheet ? [] : who[k].others.filter((e) => !own.some((c) => c === cardFor(e)));
-      if (unpictured.length) notes.push(`In this picture: ${unpictured.map((e) => e.slice(0, 200)).join("; and ")}.`);
+      if (unpictured.length) notes.push(`In this picture: ${unpictured.map((e) => pictureText(e, 200)).join("; and ")}.`);
       // THE WORDS THE PICTURE IS DRAWN FROM are tidied first (story-picture.ts): one moment, nothing written.
       // (…and a person the words put IN WATER is dressed in the same words, right behind them — DRESSED at the end of a
       //  long prompt did not dress the woman in the lake: story-picture.ts → dressedInWater, 2026-11-25)
