@@ -9,6 +9,13 @@
 import type { UiLang } from "./ui-i18n";
 
 const es: Record<string, string> = {
+  // (2026-11-26) THE ROWS of the Movie Maker home — each says how it is told — and the builder's first card, the Genre
+  "A narrator tells it": "Lo cuenta un narrador",
+  "Actors speak on camera": "Los actores hablan a cámara",
+  "The kind": "El tipo",
+  "Style": "Estilo",
+  "A new genre writes it again — tap again to change": "Un género nuevo lo escribe otra vez — toca de nuevo para cambiarlo",
+  "A new style writes it again — tap again to change": "Un estilo nuevo lo escribe otra vez — toca de nuevo para cambiarlo",
   // (2026-11-26) THE WAYS' NAMES IN HIS WORDS, and the short line a phone shows under each
   "Narrated Pictures": "Imágenes narradas",
   "Narrated Video": "Video narrado",
@@ -3648,6 +3655,14 @@ const es: Record<string, string> = {
 };
 
 const fr: Record<string, string> = {
+  // (2026-11-26) THE ROWS of the Movie Maker home — each says how it is told — and the builder's first card, the Genre
+  "A narrator tells it": "Un narrateur la raconte",
+  "Actors speak on camera": "Des acteurs parlent face caméra",
+  "The kind": "Le type",
+  "Genre": "Genre",
+  "Style": "Style",
+  "A new genre writes it again — tap again to change": "Un nouveau genre le réécrit — touche encore pour changer",
+  "A new style writes it again — tap again to change": "Un nouveau style le réécrit — touche encore pour changer",
   // (2026-11-26) THE WAYS' NAMES IN HIS WORDS, and the short line a phone shows under each
   "Narrated Pictures": "Images racontées",
   "Narrated Video": "Vidéo racontée",
@@ -7268,6 +7283,14 @@ const fr: Record<string, string> = {
 };
 
 const de: Record<string, string> = {
+  // (2026-11-26) THE ROWS of the Movie Maker home — each says how it is told — and the builder's first card, the Genre
+  "A narrator tells it": "Ein Erzähler erzählt sie",
+  "Actors speak on camera": "Schauspieler sprechen vor der Kamera",
+  "The kind": "Die Art",
+  "Genre": "Genre",
+  "Style": "Stil",
+  "A new genre writes it again — tap again to change": "Ein neues Genre schreibt es neu — tippe erneut, um zu wechseln",
+  "A new style writes it again — tap again to change": "Ein neuer Stil schreibt es neu — tippe erneut, um zu wechseln",
   // (2026-11-26) THE WAYS' NAMES IN HIS WORDS, and the short line a phone shows under each
   "Narrated Pictures": "Erzählte Bilder",
   "Narrated Video": "Erzähltes Video",
@@ -10898,6 +10921,14 @@ const de: Record<string, string> = {
 };
 
 const zh: Record<string, string> = {
+  // (2026-11-26) THE ROWS of the Movie Maker home — each says how it is told — and the builder's first card, the Genre
+  // ("Genre" itself is below, with the Music Video's card: one word for a song's kind and a film's — 类型)
+  "A narrator tells it": "由旁白讲述",
+  "Actors speak on camera": "演员对着镜头说话",
+  "The kind": "题材",
+  "Style": "风格",
+  "A new genre writes it again — tap again to change": "换一种类型会重新写过——再点一次即可更换",
+  "A new style writes it again — tap again to change": "换一种风格会重新写过——再点一次即可更换",
   // (2026-11-26) THE WAYS' NAMES IN HIS WORDS, and the short line a phone shows under each
   "Narrated Pictures": "旁白配图",
   "Narrated Video": "旁白视频",
@@ -13142,7 +13173,8 @@ const zh: Record<string, string> = {
   " + {n} cast": " + {n} 位演员",
   "We cast one · or pick your avatar": "我们来选角 · 或选你的虚拟形象",
   "The beat": "节拍",
-  "Genre": "曲风",
+  // (类型, not 曲风 — a song's style alone: since 2026-11-26 the same card title names a FILM's genre, the story builder's first card)
+  "Genre": "类型",
   "The song": "歌曲",
   "Your track": "你的歌曲",
   "Write me one": "帮我写一首",
@@ -14579,6 +14611,13 @@ const zh: Record<string, string> = {
 };
 
 const ur: Record<string, string> = {
+  // (2026-11-26) THE ROWS of the Movie Maker home — each says how it is told — and the builder's first card, the Genre
+  "A narrator tells it": "ایک راوی سناتا ہے",
+  "Actors speak on camera": "اداکار کیمرے پر بولتے ہیں",
+  "The kind": "قسم",
+  "Style": "انداز",
+  "A new genre writes it again — tap again to change": "نئی صنف اسے دوبارہ لکھے گی — بدلنے کے لیے دوبارہ ٹیپ کریں",
+  "A new style writes it again — tap again to change": "نیا انداز اسے دوبارہ لکھے گا — بدلنے کے لیے دوبارہ ٹیپ کریں",
   // (2026-11-26) THE WAYS' NAMES IN HIS WORDS, and the short line a phone shows under each
   "Narrated Pictures": "بیان کردہ تصاویر",
   "Narrated Video": "بیان کردہ ویڈیو",

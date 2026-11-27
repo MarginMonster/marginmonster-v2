@@ -51,7 +51,7 @@ import { storyThreat, threatFromWords } from "../lib/acted-staging";
 import { castEntry } from "../lib/story-picture";
 // (2026-11-24) the posters stand on three shelves: told · acted · sung
 import { heroShelves } from "../lib/film-heroes";
-// (2026-11-26) …and the told heroes again on a shelf of their still rung: a poster's key says which shelf it stands on
+// (2026-11-26) …and a tile's zoom key is the hero it opens on its rung: Narrated Pictures' is `still:<id>`
 import { posterKey } from "../lib/film-heroes";
 // (2026-11-26) …and the ANIME styles on a shelf of their own: a style's template is told only, and draws its own cast
 import { animeStyleOf } from "../lib/anime-styles";
@@ -59,8 +59,9 @@ import { animeStyleOf } from "../lib/anime-styles";
 import { LYRIC_HERO } from "../lib/film-heroes";
 // (2026-11-24) FOUND FOOTAGE has its own builder (web.found-footage.tsx): a door to it on the Films shelf, operators only
 import { FOUND_FOOTAGE_DOOR } from "../lib/film-heroes";
-// (2026-11-26) THE WAYS: the home's big cards — the ladder, then "Only on EasyMode" (Caught on Cam's cameras among them)
-import { CAUGHT_ON_CAM, wayParamOf, type WayArt, type WayKey } from "../lib/film-heroes";
+// (2026-11-26) THE ROWS: the home's rows of FORMAT tiles, each row designated by how it is told (Caught on Cam's cameras
+// among them) — and the genre, the first card of the builder a tile opens
+import { CAUGHT_ON_CAM, genreWayOf, heroOfTile, homeRows, rowOfWay, tileOfWay, wayParamOf, type HomeRowKey, type HomeTile, type WayKey } from "../lib/film-heroes";
 // (2026-11-26) THE GUIDE BOX's answer — where an idea would be made — and its starters and Found Footage handoff
 import { IDEA_HANDOFF_KEY, dealHeroStarters, packHandoff, routeFromRead, routeIdea, type HeroStarter, type IdeaRoute, type IdeaSignals } from "../lib/idea-route";
 import { LYRIC_LOOKS, RIGHTS_ASK, RIGHTS_LINE, RIGHTS_NOTE, lyricEtaMinutes, songTitleOf, type LyricLook, type LyricShape } from "../lib/lyric-video";
@@ -1503,53 +1504,13 @@ function HeroReel({ clips, onShow }: { clips: ReelClip[]; onShow: (key: string) 
   );
 }
 
+/** Each ROW's icon on the home (film-heroes.ts → THE ROWS): how it is told — a book, a clapper, a note, a camera. */
+const ROW_ICON: Record<HomeRowKey, string> = { told: "book", acted: "film", sung: "music", cam: "camera" };
+
 /** A format card's cover: its still, and the format's loop playing over it while a pointer is on the card
  *  (or it has keyboard focus) — on a touch screen, while the card is on screen. The clip is fetched the
  *  first time it is needed, in the cut that fits the card (16:9 on a wide screen, 4:5 on a phone). */
-/* A WAY CARD'S PICTURE (2026-11-26): its still — eager, it is on the first screen — and its loop, which loads only the
- * first time it plays: while its card is the chosen way and at least half on screen, or (a mouse) while hovered or
- * focused; paused off screen; never under reduced motion. On a phone that is at most ONE way clip. */
-function WayCover({ art, on }: { art: WayArt; on: boolean }) {
-  const box = useRef<HTMLSpanElement | null>(null);
-  const vid = useRef<HTMLVideoElement | null>(null);
-  const [seen, setSeen] = useState(false);
-  const [near, setNear] = useState(false);
-  const [playing, setPlaying] = useState(false);
-  useEffect(() => {
-    const el = box.current;
-    if (!el || !art.clip || typeof IntersectionObserver === "undefined") return;
-    const io = new IntersectionObserver(([e]) => setSeen(!!e && e.isIntersecting && e.intersectionRatio >= 0.5), { threshold: [0, 0.5, 1] });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [art.clip]);
-  useEffect(() => {
-    const card = box.current?.closest(".fs-way");
-    if (!card || !art.clip) return;
-    const yes = () => setNear(true), no = () => setNear(false);
-    card.addEventListener("mouseenter", yes); card.addEventListener("mouseleave", no);
-    card.addEventListener("focusin", yes); card.addEventListener("focusout", no);
-    return () => { card.removeEventListener("mouseenter", yes); card.removeEventListener("mouseleave", no); card.removeEventListener("focusin", yes); card.removeEventListener("focusout", no); };
-  }, [art.clip]);
-  useEffect(() => {
-    const v = vid.current;
-    if (!v || !art.clip) return;
-    const still = typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (!still && seen && (on || near)) { if (!v.getAttribute("src")) v.setAttribute("src", art.clip); v.play().catch(() => { /* a still picture is fine */ }); }
-    else v.pause();
-  }, [seen, on, near, art.clip]);
-  const at = art.at ? { objectPosition: art.at } : undefined;
-  return (
-    <span ref={box} className="fs-way-pic">
-      <img src={art.still} alt="" className={art.strip ? "is-strip" : undefined} style={at} draggable={false} />
-      {art.clip ? <video ref={vid} className={`fs-way-vid${playing ? " is-on" : ""}${art.strip ? " is-strip" : ""}`} style={at} muted loop playsInline preload="none" tabIndex={-1} aria-hidden="true" onPlaying={() => setPlaying(true)} /> : null}
-    </span>
-  );
-}
-/** The ladder's rungs (the dots on a card) and each way's icon. */
-const WAY_STEP: Partial<Record<WayKey, number>> = { still: 1, told: 2, acted: 3 };
-const WAY_ICON: Record<WayKey, string> = { still: "image", told: "book", acted: "film", anime: "sparkle", kids: "star", sung: "music", cam: "camera" };
-
-function LoopCover({ k, loop, tall, still, clip }: { k: string; /** it has a loop and a phone cut though its key is not in LOOP_KEYS / TALL_STILLS (the Lyric Video's card) */ loop?: boolean; tall?: boolean; /** a cover not named after a film key — its picture and its clip by address, one cut for every screen (the Found Footage door) */ still?: string; clip?: string }) {
+function LoopCover({ k, loop, tall, still, clip, strip }: { k: string; /** it has a loop and a phone cut though its key is not in LOOP_KEYS / TALL_STILLS (the Lyric Video's card) */ loop?: boolean; tall?: boolean; /** a cover not named after a film key — its picture and its clip by address, one cut for every screen (the Found Footage door, the Narrated Video's tile) */ still?: string; clip?: string; /** a wide strip of three upright pictures: a phone's card shows its MIDDLE one (the Narrated Video's tile) */ strip?: boolean }) {
   const ref = useRef<HTMLVideoElement | null>(null);
   const [on, setOn] = useState(false);
   const has = !!clip || (loop ?? LOOP_KEYS.includes(k));
@@ -1584,7 +1545,7 @@ function LoopCover({ k, loop, tall, still, clip }: { k: string; /** it has a loo
   }, [k, clip]);
   return (
     <>
-      {still ? <img src={still} alt="" loading="lazy" onError={stillFallback} /> : (tall ?? TALL_STILLS.has(k)) ? (
+      {still ? <img src={still} alt="" loading="lazy" onError={stillFallback} className={strip ? "is-strip" : undefined} /> : (tall ?? TALL_STILLS.has(k)) ? (
         <picture>
           <source media="(max-width:639px)" srcSet={`/landing/film-still-${k}-tall.jpg?v=${STILL_V}`} />
           <img src={stillOf(k)} alt="" loading="lazy" onError={stillFallback} />
@@ -1592,7 +1553,7 @@ function LoopCover({ k, loop, tall, still, clip }: { k: string; /** it has a loo
       ) : (
         <img src={stillOf(k)} alt="" loading="lazy" onError={stillFallback} />
       )}
-      {has && <video ref={ref} className={`fs-fmt-vid${on ? " on" : ""}`} muted loop playsInline preload="none" tabIndex={-1} aria-hidden="true" onPlaying={() => setOn(true)} />}
+      {has && <video ref={ref} className={`fs-fmt-vid${on ? " on" : ""}${strip ? " is-strip" : ""}`} muted loop playsInline preload="none" tabIndex={-1} aria-hidden="true" onPlaying={() => setOn(true)} />}
     </>
   );
 }
@@ -1898,11 +1859,10 @@ function LyricVideoBuilder({ t }: { t: ReturnType<typeof useT> }) {
   );
 }
 
-/* The Lyric Video's styles: its card's badge on the shelf, and its builder. In the page's own colours (the theme's
- * variables), so it is right in the light and the dark alike; a phone first (two looks to a row), four looks to a
- * row on a wide screen. */
+/* The Lyric Video's styles: its builder (its tile on the Music row is the page's own poster, with no badge since the
+ * ROWS of 2026-11-26), and a Found Footage door's. In the page's own colours (the theme's variables), so it is right in
+ * the light and the dark alike; a phone first (two looks to a row), four looks to a row on a wide screen. */
 const LV_STYLE = `
-.t-lyric{background:linear-gradient(135deg,#F2A93B,#C2487E);}
 .t-ff{background:linear-gradient(135deg,#5B6B60,#1A2420);}
 a.fs-fmt.fs-door{display:block;text-decoration:none;color:inherit;}
 .lv{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;max-width:760px;margin:0 auto;padding:4px 0 28px;}
@@ -2175,29 +2135,17 @@ export default function FilmStudio() {
   // …and the HERO it was opened as (film-heroes.ts): the template plus the way it is told. The heroes this
   // account is offered are the ones whose template it has (and, for a narrated one, that can be narrated).
   const heroes = heroesFor(d.templates.map((x) => x.key), d.narratable || []);
-  // THE WAYS (film-heroes.ts → heroShelves, CAUGHT_ON_CAM — 2026-11-26, the owner's "A"): the cards in their order — the
-  // ladder, then Caught on Cam (an operator's, as its builder is), then the rest of "Only on EasyMode" — and the ONE way
-  // whose row is shown under them. Story is lit first; a link may open another (?way=).
+  // THE ROWS (film-heroes.ts → homeRows — 2026-11-26, that evening; the owner: "I liked when it was rows designated (the
+  // genere tiles are what complicated things)"): Stories · Films · Music · Caught on Cam (an operator's, as its builder
+  // is), each a few FORMAT tiles, one tap from their builders. The shelves are the WAYS the tiles are made of — and what
+  // the builder's Genre card offers.
   const shelves = heroShelves(heroes, { still: d.storyMotion });
-  const wayCards: Array<{ key: WayKey; name: string; tag: string; line: string; short: string; pick: string; group: "ladder" | "only"; art: WayArt }> = [
-    ...shelves.filter((sh) => sh.group === "ladder"),
-    ...(d.foundFootage ? [CAUGHT_ON_CAM] : []),
-    ...shelves.filter((sh) => sh.group === "only"),
-  ];
-  const [way, setWay] = useState<WayKey>(() => (d.openWay as WayKey | null) || "told");
-  const wayOn: WayKey = wayCards.some((w) => w.key === way) ? way : (wayCards.find((w) => w.key === "told") || wayCards[0])?.key || "told";
-  // (a tapped way HOLDS: the guide box then guesses only the pick inside it — the member's own tap is never overruled)
-  const [wayHeld, setWayHeld] = useState(() => !!d.openWay);
-  const pickWay = (k: WayKey) => {
-    setWay(k);
-    setWayHeld(true);
-    if (typeof window === "undefined") return;
-    // …and the row it shows is brought into view (no navigation: the same page, one row swapped)
-    window.requestAnimationFrame(() => {
-      const still = !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-      document.querySelector(".fs-shelves .fs-shelf")?.scrollIntoView({ block: "nearest", behavior: still ? "auto" : "smooth" });
-    });
-  };
+  const rows = homeRows(shelves, heroes, { lyric: d.lyricVideo, cam: d.foundFootage });
+  // the ways this viewer is offered (the guide box guesses among them); a link's way (?way=) is ITS ROW, brought into view
+  // and ringed — nothing is entered — and while that way is a story's, a story idea is guessed in it
+  const ways: WayKey[] = [...shelves.map((sh) => sh.key), ...(d.foundFootage ? (["cam"] as const) : [])];
+  const wayLit: WayKey = d.openWay && ways.includes(d.openWay) ? d.openWay : "told";
+  const [ringRow, setRingRow] = useState<HomeRowKey | null>(() => rowOfWay(rows, d.openWay));
   const [heroId, setHeroId] = useState(() => FILM_HEROES.find((h) => h.tmpl === (d.templates[0]?.key || "musicvideo"))?.id || "musicvideo");
   // THE LYRIC VIDEO is open (its own builder, not a film template's — so the format it was opened over stays as it was)
   const [lyricOn, setLyricOn] = useState(false);
@@ -2419,7 +2367,8 @@ export default function FilmStudio() {
   // ───── The STORY builder (Short Film · Moral Story · Horror Story · Kids Cartoon) ─────
   // The same tap-a-card flow as the Music Video (the owner: "we need the other film creators to have
   // the same setup as music video with all of the bells and whistle pickers").
-  type StoryCard = "cast" | "told" | "length" | "shape" | "captions" | "voice" | "motion";
+  // (…and its FIRST card, "genre" — the Genre card, an anime's Style: the genre is picked in the builder, not on the home)
+  type StoryCard = "genre" | "cast" | "told" | "length" | "shape" | "captions" | "voice" | "motion";
   // THE LADDER's first two rungs (story-motion.ts): do a told story's pictures move? They do unless its maker
   // says otherwise — and the choice is only offered where the server can make them move at all.
   const [pictures, setPictures] = useState<StoryPictures>("moving");
@@ -2822,6 +2771,47 @@ export default function FilmStudio() {
     // another format is an ordinary new film (a next episode sets its series again right after this)
     setSeries(null); setSeriesCast([]); setSeriesOwn([]);
   };
+  /* THE GENRE IS A SETUP STEP (2026-11-26). The owner, of the home's genre posters: "Does genre even matter ?" — "Genre may
+   * be able to be just added at the setup step before seed generation". It matters — it picks the template: the writer's
+   * brief, the look and the light, the places, the starters, the director's notes, the narrator — but it is not a PATH. A
+   * tile on the home opens its builder at once, and the genre (an anime's style) is the builder's FIRST card, its panel the
+   * genres of the way it was opened in (film-heroes.ts → genreWayOf). Not for a Kids Cartoon or a sung format — one format
+   * each — and not for a next episode or a story opened to edit: their genre is the series' own, the story's own. */
+  const genreWay = lyricOn ? null : genreWayOf(hero);
+  const genreSh = genreWay ? shelves.find((sh) => sh.key === genreWay) : undefined;
+  const genreOn = isStoryboard && !series && !editing && !!genreSh && genreSh.heroes.length > 1 && genreSh.heroes.some((h) => h.id === heroId);
+  // (the steps count on after it — Genre 1, Cast 2 … Narrator or Engine 6; without it Cast 1 … 5, as they were)
+  const stepAt = genreOn ? 1 : 0;
+  const genreCardRef = useRef<HTMLButtonElement | null>(null);
+  /** ANOTHER GENRE — not another format (switchHero starts everything over). The template is the new genre's; what the
+   *  member SET stays: the idea, the stars, the length (held to the new genre's range — an acted film still at its old
+   *  genre's opening length takes the new one's), the shape, the captions, the narrator, the still camera, the engine, how
+   *  it is told and on which rung. What the old genre WROTE goes: the script, its pictures, its cast — and a Horror film's
+   *  monster where the new genre has none. */
+  const switchGenre = (id: string) => {
+    const h = heroById(id);
+    const nt = h ? d.templates.find((x) => x.key === h.tmpl) : undefined;
+    if (!h || !nt || !tmpl) return;
+    setHeroId(h.id);
+    setTemplate(h.tmpl);
+    setScenes(narrated
+      ? Math.max(d.narratedScenes.min, Math.min(d.narratedScenes.max, scenes))
+      : Math.max(nt.minScenes, Math.min(nt.maxScenes, scenes === tmpl.defaultScenes ? nt.defaultScenes : scenes)));
+    setTreatment(null); setSeeds(null); setFrames([]); setCast([]);
+    if (h.tmpl !== "horror") setStoryMonster(null);
+    setStoryCard(null);
+    setStoryDone((sd) => ({ ...sd, genre: true }));
+    // (the tile that was tapped goes with its panel: the card it was opened from takes the focus)
+    window.requestAnimationFrame(() => genreCardRef.current?.focus({ preventScroll: true }));
+  };
+  /** A genre's tile. With a script or a storyboard on the page it ASKS FIRST, the page's own "tap again" (orArm — as a new
+   *  length does): the first tap says what it would do, the second does it. The genre already picked closes the panel. */
+  const pickGenre = (id: string) => {
+    // (never while a script or its pictures are being made: the old genre's would land under the new one)
+    if (writing || seedBusy) return;
+    if (id === heroId) { setWipeArm(""); setStoryCard(null); return; }
+    orArm(`genre:${id}`, true, () => switchGenre(id));
+  };
   // NEXT EPISODE — one tap on a card of the "Next episode" row (film-series.ts): open that film's format
   // with everything set as it was for that film — the same cast (same people, same order), length, shape,
   // captions, and narrator or camera and voices — an empty idea box, and the series it continues.
@@ -2947,11 +2937,11 @@ export default function FilmStudio() {
   const [anim, setAnim] = useState<"" | "in" | "out">("");
   // which format the hero's reel is showing off right now ("" = its opening clip)
   const [reelKey, setReelKey] = useState("");
-  // THE RUNG A POSTER OPENS ON (film-heroes.ts → SHELVES, 2026-11-26 — the owner, of the still tier: "Maybe just make
-  // it an additional tier on the actual movie maker (would look like more options)"). A told hero stands on two
-  // shelves, Stories and Still Stories: `rung` is the shelf's, and the poster that pops is the one tapped (posterKey).
-  // It is set AFTER switchHero, whose own setPictures("moving") runs first in the same batch — so the shelf's rung wins.
-  // Re-entering the same hero from the other shelf changes ONLY the rung: its script, cast and storyboard are kept (a
+  // THE RUNG A TILE OPENS ON (film-heroes.ts → SHELVES, 2026-11-26 — the owner, of the still tier: "Maybe just make it an
+  // additional tier on the actual movie maker (would look like more options)"). A told hero opens from two tiles, Narrated
+  // Video and Narrated Pictures: `rung` is the tile's, and the tile that pops is the one tapped (posterKey).
+  // It is set AFTER switchHero, whose own setPictures("moving") runs first in the same batch — so the tile's rung wins.
+  // Re-entering the same hero from the other tile changes ONLY the rung: its script, cast and storyboard are kept (a
   // still story's pictures are the same pictures — Still and Moving are the two tiles of its Length step).
   const enterFormat = (key: string, rung?: StoryPictures) => {
     // Clean, robust transition (the old fly-to-viewport-center math glitched the card up into the hero,
@@ -2971,9 +2961,10 @@ export default function FilmStudio() {
   /* THE GUIDE BOX (2026-11-26 — the owner: "I'm not really sure what the describe box at the top hero will be for, unless it
    * guides user on page to actual prompt to use"). It IS the builder's own box, raised to the top: bound to the same
    * `topic`, so whatever way into a builder is taken carries the idea. The line under it says WHERE it would be made
-   * (idea-route.ts → routeIdea: keywords — free, instant); a chip SHOWS that place (its card lit, its row below, the
-   * poster ringed); Start goes there — the poster's own path, enterFormat — or, for Caught on Cam, to Found Footage with
-   * the idea in this tab's sessionStorage. NOTHING is made or spent from here: the builder's Generate does that. */
+   * (idea-route.ts → routeIdea: keywords — free, instant): the TILE, and the genre it opens with; a chip SHOWS that tile
+   * (brought into view, ringed); Start goes there — the tile's own path, enterFormat, its genre already picked — or, for
+   * Caught on Cam, to Found Footage with the idea in this tab's sessionStorage. NOTHING is made or spent from here: the
+   * builder's Generate does that. */
   const [starterRoute, setStarterRoute] = useState<{ text: string; route: IdeaRoute } | null>(null);
   const [askUrge, setAskUrge] = useState(false);
   const idea = topic.trim();
@@ -2989,20 +2980,29 @@ export default function FilmStudio() {
     return () => window.clearTimeout(id);
   }, [idea, entered]); // eslint-disable-line react-hooks/exhaustive-deps
   const ideaRead = readFetcher.data && readFetcher.data.text === idea ? readFetcher.data.read || null : null;
-  const routeOpts = { heroes, ways: wayCards.map((w) => w.key), current: wayOn, held: wayHeld };
+  const routeOpts = { heroes, ways, current: wayLit };
   const guess: IdeaRoute = starterRoute && starterRoute.text === topic ? starterRoute.route : ideaRead ? routeFromRead(ideaRead, topic, routeOpts) : routeIdea(topic, routeOpts);
-  const guessKey = !idea ? null : guess.way === "cam" ? `cam:${guess.camera || "house"}` : guess.heroId ? posterKey(guess.heroId, guess.rung) : null;
-  const guessWay = wayCards.find((w) => w.key === guess.way);
+  // WHERE IT LANDS ON THE ROWS (film-heroes.ts → tileOfWay): the tile — ringed (`is-guess`) and named by the first chip —
+  // and, by the second, the genre (an anime's style, a camera) it opens with: the one Start opens
+  const guessTile = !idea ? null : tileOfWay(rows, guess);
+  const guessOn = rows.flatMap((r) => r.tiles).find((w) => w.key === guessTile);
+  const guessName = !guessTile ? null : guess.way === "cam" ? CAUGHT_ON_CAM.name : guessOn?.name || null;
   const guessPick = !idea ? null : guess.way === "cam" ? CAUGHT_ON_CAM.cameras.find((c) => c.key === (guess.camera || "house"))?.name || null
-    : guess.heroId ? (() => { const h = heroes.find((x) => x.id === guess.heroId); return h && (shelves.find((sh) => sh.key === guess.way)?.heroes.length || 0) > 1 ? h.card : null; })() : null;
-  const starters: HeroStarter[] = dealHeroStarters(wayCards.map((w) => w.key), d.day);
+    : guess.heroId ? (() => { const h = heroes.find((x) => x.id === guess.heroId); return h && (guessOn?.heroes.length || 0) > 1 ? h.card : null; })() : null;
+  // (…and a tile tapped with an idea in the box opens THAT genre: the guess where it falls in the tile's way, else the same
+  //  genre in this one — film-heroes.ts → heroOfTile)
+  const tileGuess = idea ? guess : null;
+  // (a tile whose builder already holds the member's own genre re-opens THAT one — their pick and their work kept, never
+  //  replaced by the first genre or a guess: review of the genre step, 2026-11-26)
+  const tileHero = (w: HomeTile): string => (!lyricOn && w.heroes.some((h) => h.id === heroId) ? heroId : heroOfTile(w, tileGuess));
+  const openTile = (w: HomeTile) => { setRingRow(null); enterFormat(tileHero(w), w.rung); };
+  const starters: HeroStarter[] = dealHeroStarters(ways, d.day);
   const showGuess = () => {
-    setWay(guess.way);
-    setWayHeld(false);
-    if (typeof window === "undefined") return;
+    setRingRow(null);
+    if (typeof window === "undefined" || !guessTile) return;
     window.requestAnimationFrame(() => {
       const still = !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-      document.querySelector(".fs-ways")?.scrollIntoView({ block: "start", behavior: still ? "auto" : "smooth" });
+      document.querySelector(`.fs-shelf [data-tile="${guessTile}"]`)?.scrollIntoView({ block: "center", inline: "center", behavior: still ? "auto" : "smooth" });
     });
   };
   const startIdea = () => {
@@ -3018,14 +3018,13 @@ export default function FilmStudio() {
       return;
     }
     if (!guess.heroId) { showGuess(); return; }
-    setWay(guess.way);
+    setRingRow(null);
     enterFormat(guess.heroId, guess.rung);
   };
   const pickStarter = (st: HeroStarter) => {
     const shown = t(st.text);
     setTopic(shown);
     setStarterRoute({ text: shown, route: st.route });
-    setWayHeld(false);
   };
   // THE IDEA LANDS: a builder entered with words already in the box glides to that box and glows once, so the member
   // SEES their words arrive (never for a next episode, an edit, or a builder already holding a script or pictures; the
@@ -3076,8 +3075,14 @@ export default function FilmStudio() {
     let live = true;
     document.fonts?.ready.then(() => { if (live) place(); }).catch(() => undefined);
     return () => { live = false; rows.forEach((row) => row.removeEventListener("scroll", onScroll)); window.removeEventListener("resize", place); };
-  // (…and with the chosen way: one row is shown at a time now, a new element each time a way is picked — 2026-11-26)
-  }, [entered, wayOn, heroes.length, d.lyricVideo, d.foundFootage]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [entered, heroes.length, d.lyricVideo, d.foundFootage]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A LINK'S WAY (?way=) is its row, brought into view once, on arrival, and ringed until a tile or the guide box's chip is
+  // tapped (`ringRow`). Nothing is entered.
+  useEffect(() => {
+    if (!ringRow || entered) return;
+    const still = !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    window.requestAnimationFrame(() => document.getElementById(`fs-row-${ringRow}`)?.scrollIntoView({ block: "start", behavior: still ? "auto" : "smooth" }));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const pickCatalog = (idx: number) => {
     const p = d.products[idx];
     if (!p) return;
@@ -4263,6 +4268,7 @@ export default function FilmStudio() {
   //  name — two of them once said "Peppa / Bluey" and "CoComelon"; the owner, 2026-11-17: "they can't
   //  say those things".)
   const heroTitle = hero?.name || tmpl?.name || "Film";
+  // (a format's badge — since the ROWS, 2026-11-26, the builder's Genre card's icon, on the genre's own tint)
   const fmtIcon = (key: string, told = false) => {
     // (an anime style's badge is a spark — drawn, where a Story's is the told book: anime-styles.ts, 2026-11-26)
     if (animeStyleOf(key)) return <svg viewBox="0 0 24 24"><path d="M11.5 3.4c.6 3.9 1.7 5 5.6 5.6-3.9.6-5 1.7-5.6 5.6-.6-3.9-1.7-5-5.6-5.6 3.9-.6 5-1.7 5.6-5.6z" /><path d="M18.2 14c.3 1.8.8 2.3 2.6 2.6-1.8.3-2.3.8-2.6 2.6-.3-1.8-.8-2.3-2.6-2.6 1.8-.3 2.3-.8 2.6-2.6z" /></svg>;
@@ -4285,91 +4291,6 @@ export default function FilmStudio() {
     row.scrollBy({ left: dir * (cs.direction === "rtl" ? -1 : 1) * step, behavior: reduce ? "auto" : "smooth" });
   };
 
-  // THE CHOSEN WAY'S ROW, and the group of cards it opens under (the ladder, or "Only on EasyMode")
-  const wayGroup = wayCards.find((w) => w.key === wayOn)?.group || "ladder";
-  const wayRow = (
-          <div key="row" className={`fs-shelves${anim === "in" ? " throw" : ""}`}>
-            {/* THE CHOSEN WAY'S ROW — one at a time: Picture Book's are pages (its posters drift and sit on a cream mat), the
-                Story's the same genres moving, Film's the acted ones, Anime's its styles, Kids' and Music Video's theirs. The
-                header says what to do; the way's tag and line are on its card above, said once. */}
-            {shelves.filter((sh) => sh.key !== "still").map((sh) => (
-            <section key={sh.key} className={`fs-shelf is-${sh.key}`} aria-labelledby={`fs-shelf-${sh.key}`}>
-              {/* the card's ENGRAVING (THE TICKET, in the stylesheet): a layer that covers the card and cuts
-                  itself to the card's shape, so the card itself clips nothing — a picture only */}
-              <span className="fs-shelf-wm" aria-hidden="true" />
-              <header className="fs-shelf-h">
-                <span className="fs-shelf-ico" aria-hidden="true"><Ico n={WAY_ICON[sh.key]} size={18} /></span>
-                <span className="fs-shelf-txt">
-                  <h2 className="fs-shelf-name" id={`fs-shelf-${sh.key}`}>{t(sh.name)}</h2>
-                  <span>{t(sh.line)}</span>
-                </span>
-                {/* (the uniques stay ON DISPLAY — the owner, 11-26: "Those need to be on display") */}
-                {sh.group === "only" ? <em className="fs-shelf-tag">✦ {t("Only on EasyMode")}</em> : <em className="fs-shelf-tag">{t(sh.tag)}</em>}
-              </header>
-          <div className={`fs-fmtgrid${anim === "in" ? " throw" : ""}`} role="tablist" aria-label={t(sh.name)}>
-            {/* one poster per HERO (film-heroes.ts): the movie category on its picture — "Comedy", not "Comedy Film" — and
-                nothing under it (the way above says how it is told, once). A screen reader is still told the whole name,
-                its line and its note. A RUNG row (Picture Book) re-lists the Story's heroes and opens each ON THAT RUNG. */}
-            {sh.heroes.map((h) => (
-              <button type="button" role="tab" key={h.id} className={`fs-fmt${zoomKey === posterKey(h.id, sh.rung) ? " zoom" : ""}${h.told === "narrated" ? " is-told" : ""}${guessKey === posterKey(h.id, sh.rung) ? " is-guess" : ""}`}
-                aria-selected={heroId === h.id && (!sh.rung || pictures === sh.rung)} aria-label={[t(h.name), h.kick ? t(h.kick) : "", sh.rung === "still" ? t("Still pictures") : h.meta ? t(h.meta) : ""].filter(Boolean).join(" · ")} onClick={() => enterFormat(h.id, sh.rung)}>
-                <span className="fs-fmt-cover">
-                  <LoopCover k={h.media} loop={sh.rung === "still" ? false : undefined} />
-                  <span className={`fs-fmt-ico ${h.tint}`} aria-hidden="true">{sh.rung === "still" ? <Ico n="image" size={15} /> : fmtIcon(h.tmpl, h.told === "narrated")}</span>
-                  <span className="fs-fmt-label"><b>{t(h.card)}</b></span>
-                </span>
-              </button>
-            ))}
-            {/* THE LYRIC VIDEO (film-heroes.ts → LYRIC_HERO): after the sung heroes — operators only until it has a price */}
-            {sh.key === "sung" && d.lyricVideo && (
-              <button type="button" role="tab" key={LYRIC_HERO.id} className={`fs-fmt${zoomKey === LYRIC_HERO.id ? " zoom" : ""}`}
-                aria-selected={lyricOn} aria-label={[t(LYRIC_HERO.name), t(LYRIC_HERO.kick), t(LYRIC_HERO.meta)].join(" · ")} onClick={() => enterFormat(LYRIC_HERO.id)}>
-                <span className="fs-fmt-cover">
-                  <LoopCover k={LYRIC_HERO.media} loop tall />
-                  <span className={`fs-fmt-ico ${LYRIC_HERO.tint}`} aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 6h11M3 11h11M3 16h7" /><path d="M18 17V5l3 1" /><circle cx="16" cy="17" r="2" /></svg></span>
-                  <span className="fs-fmt-label"><b>{t(LYRIC_HERO.name)}</b></span>
-                </span>
-              </button>
-            )}
-          </div>
-              {/* A WIDE SCREEN'S ARROWS (FS_SHELF_GO): a mouse's way along a row that runs on past four — shown only where
-                  there is a mouse and room for four; nothing a keyboard or a screen reader steps through */}
-              {sh.heroes.length + (sh.key === "sung" && d.lyricVideo ? 1 : 0) > 4 && (<>
-                <span className="fs-shelf-arrow is-back" aria-hidden="true" onClick={(e) => stepShelf(e.currentTarget, -1)}><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" /></svg></span>
-                <span className="fs-shelf-arrow is-on" aria-hidden="true" onClick={(e) => stepShelf(e.currentTarget, 1)}><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" /></svg></span>
-              </>)}
-            </section>
-            ))}
-            {/* CAUGHT ON CAM (film-heroes.ts → CAUGHT_ON_CAM): Found Footage's cameras — each opens its own builder on that
-                camera (?camera=). A door, not a hero this page builds; operators only, like the builder it opens. */}
-            {d.foundFootage && (
-            <section key="cam" className="fs-shelf is-cam" aria-labelledby="fs-shelf-cam">
-              <span className="fs-shelf-wm" aria-hidden="true" />
-              <header className="fs-shelf-h">
-                <span className="fs-shelf-ico" aria-hidden="true"><Ico n="camera" size={18} /></span>
-                <span className="fs-shelf-txt">
-                  <h2 className="fs-shelf-name" id="fs-shelf-cam">{t(CAUGHT_ON_CAM.name)}</h2>
-                  <span>{t(CAUGHT_ON_CAM.short)}</span>
-                </span>
-                <em className="fs-shelf-tag">✦ {t("Only on EasyMode")}</em>
-              </header>
-          <div className={`fs-fmtgrid${anim === "in" ? " throw" : ""}`} role="tablist" aria-label={t(CAUGHT_ON_CAM.name)}>
-            {CAUGHT_ON_CAM.cameras.map((c) => (
-              <a role="tab" aria-selected={false} key={c.key} data-cam={c.key} className={`fs-fmt fs-door${guessKey === `cam:${c.key}` ? " is-guess" : ""}`} href={`${FOUND_FOOTAGE_DOOR.href}?camera=${c.key}`} aria-label={[t(c.name), t(FOUND_FOOTAGE_DOOR.name)].join(" · ")}
-                onClick={() => { if (idea) { try { window.sessionStorage.setItem(IDEA_HANDOFF_KEY, packHandoff(idea, Date.now())); } catch { /* the camera is still the one asked for */ } } }}>
-                <span className="fs-fmt-cover">
-                  <LoopCover k={`ff-${c.key}`} still={c.still} clip={c.clip} />
-                  {/* (no badge on a camera's card — 2026-11-26, the owner's phone photo: it sat on the footage's own time
-                      stamp, "16 MON 02:17:48", and the iPhone's "HD 30"; the row's own header already shows the camera) */}
-                  <span className="fs-fmt-label"><b>{t(c.name)}</b></span>
-                </span>
-              </a>
-            ))}
-          </div>
-            </section>
-            )}
-          </div>
-  );
   return (
     <div className={`fs-wrap${theme === "dark" ? " fs-theater" : ""}`} data-theme={theme}>
       <style dangerouslySetInnerHTML={{ __html: FS_STYLE }} />
@@ -4405,13 +4326,13 @@ export default function FilmStudio() {
           <form className="fs-ask" onSubmit={(e) => { e.preventDefault(); startIdea(); }}>
             <input id="fs-ask-in" className="fs-ask-in" type="text" value={topic} maxLength={IDEA_MAX} autoComplete="off" enterKeyHint="go"
               placeholder={t("Got an idea? Type it here")} aria-label={t("What's your movie about?")} aria-describedby="fs-ask-line"
-              onChange={(e) => { setTopic(e.target.value.replace(/[\r\n]+/g, " ")); if (!e.target.value.trim()) setWayHeld(false); }} />
+              onChange={(e) => setTopic(e.target.value.replace(/[\r\n]+/g, " "))} />
             <button type="submit" className="fs-ask-go">{t("Start")} <span aria-hidden="true">▶</span></button>
           </form>
           <span id="fs-ask-line" className="fs-ask-line" aria-live="polite">
-            {idea && guessWay ? (<>
+            {idea && guessName ? (<>
               {t("We'd make this:")}
-              <button type="button" className="fs-ask-pick is-way" onClick={showGuess}>{t(guessWay.name)} <span aria-hidden="true">▾</span></button>
+              <button type="button" className="fs-ask-pick is-way" onClick={showGuess}>{t(guessName)} <span aria-hidden="true">▾</span></button>
               {guessPick ? <button type="button" className="fs-ask-pick" onClick={showGuess}>{t(guessPick)} <span aria-hidden="true">▾</span></button> : null}
             </>) : t("We'll take you to the right place with your idea in it. Nothing is made yet.")}
           </span>
@@ -4472,22 +4393,72 @@ export default function FilmStudio() {
         ) : null;
       })()}
       <div className="fs-switch">
-        {!entered && (<>
-          {/* THE WAYS (film-heroes.ts → heroShelves + CAUGHT_ON_CAM — 2026-11-26). The owner, of the Stories and the Still
-              Stories showing the same nine posters: "This has become repetitive and unorganized and confusing"; he picked
-              "A", then: "I don't want to lose our distinctive categories like caught on cam, found footage, and our other
-              uniques" — "Those need to be on display". So: big cards — THE LADDER, how a story is told from the cheapest to
-              the most cinematic, then "Only on EasyMode" — and one tap shows that way's row below. Nothing navigates, and
-              each thing appears ONCE. */}
-          {/* ROWS DESIGNATED, ALL AT ONCE (2026-11-26, that evening — the owner, with photos of the ways grid: "Because this
-              setup is hard to understand narrated/acted being at the top of the selection looks odd and easy to misunderstand.
-              I liked when it was rows designated", then "Fix the FUCKING MOVIE PAGE"). The ways grid is gone: every way is its
-              own labelled row, one under the other, each poster one tap into its builder. A told story's still pictures are
-              picked in its Length step, so there is no second row of the same stories. */}
-          <div className={`fs-ways${anim === "in" ? " throw" : ""}`} role="group" aria-label={t("Pick what to make")}>
-            {wayRow}
+        {!entered && (
+          <div className={`fs-shelves${anim === "in" ? " throw" : ""}`}>
+            {/* THE ROWS (film-heroes.ts → homeRows — 2026-11-26, that evening). The owner, of the ways and their genre posters
+                on his phone: "Because this setup is hard to understand narrated/acted being at the top of the selection looks
+                odd and easy to misunderstand. I liked when it was rows designated (the genere tiles are what complicated
+                things)". So the shelves of 11-24 again: each row DESIGNATED by how what is on it is told — an icon, a name,
+                one line — and its tiles a few FORMATS, never a genre. One tap on a tile opens its builder, where the genre
+                is the first card. */}
+            {rows.map((row) => (
+            <section key={row.key} id={`fs-row-${row.key}`} className={`fs-shelf is-${row.key}${ringRow === row.key ? " is-ring" : ""}`} aria-labelledby={`fs-shelf-${row.key}`}>
+              {/* the card's ENGRAVING (THE TICKET, in the stylesheet): a layer that covers the card and cuts
+                  itself to the card's shape, so the card itself clips nothing — a picture only */}
+              <span className="fs-shelf-wm" aria-hidden="true" />
+              <header className="fs-shelf-h">
+                <span className="fs-shelf-ico" aria-hidden="true"><Ico n={ROW_ICON[row.key]} size={18} /></span>
+                <span className="fs-shelf-txt">
+                  <h2 className="fs-shelf-name" id={`fs-shelf-${row.key}`}>{t(row.name)}</h2>
+                  {/* (and what is only on EasyMode says so — "Those need to be on display", the owner) */}
+                  <span>{t(row.line)}{row.only ? <> · <b className="fs-only"><span aria-hidden="true">✦</span> {t("Only on EasyMode")}</b></> : null}</span>
+                </span>
+              </header>
+          <div className={`fs-fmtgrid${anim === "in" ? " throw" : ""}`}>
+            {/* one tile per FORMAT: its picture, its tag, its name (✦ where it is only on EasyMode) and its one short line
+                under it; a screen reader hears its whole line. A tile of genres opens the one the guide box's idea names, else
+                its first (heroOfTile) — and its zoom key is that hero on the tile's rung (posterKey). */}
+            {row.tiles.map((w) => {
+              const zk = posterKey(tileHero(w), w.rung);
+              return (
+              <button type="button" key={w.key} data-tile={w.key} className={`fs-fmt fs-tile is-${w.key}${zoomKey === zk ? " zoom" : ""}${guessTile === w.key ? " is-guess" : ""}`}
+                aria-label={[t(w.name), t(w.line), w.tag ? t(w.tag) : "", w.only ? t("Only on EasyMode") : ""].filter(Boolean).join(" · ")} onClick={() => openTile(w)}>
+                <span className="fs-fmt-cover">
+                  {"art" in w.cover
+                    ? <LoopCover k={w.key} still={w.cover.art.still} clip={w.cover.art.clip} strip={w.cover.art.strip} />
+                    : <LoopCover k={w.cover.media} loop={w.cover.loop} tall={w.cover.tall} />}
+                  {w.tag ? <span className="fs-fmt-tag">{t(w.tag)}</span> : null}
+                  <span className="fs-fmt-label">{w.only ? <span className="fs-fmt-kick is-only">✦ {t("Only on EasyMode")}</span> : null}<b>{t(w.name)}</b></span>
+                </span>
+                <span className="fs-fmt-sub">{t(w.short)}</span>
+              </button>
+              );
+            })}
+            {/* CAUGHT ON CAM (film-heroes.ts → CAUGHT_ON_CAM): Found Footage's cameras — each opens its own builder on that
+                camera (?camera=), the idea in the box going with it. A door, not a hero this page builds; operators only,
+                like the builder it opens. */}
+            {row.cameras?.map((c) => (
+              <a key={c.key} data-cam={c.key} data-tile={`cam:${c.key}`} className={`fs-fmt fs-door${guessTile === `cam:${c.key}` ? " is-guess" : ""}`} href={`${FOUND_FOOTAGE_DOOR.href}?camera=${c.key}`} aria-label={[t(c.name), t(FOUND_FOOTAGE_DOOR.name)].join(" · ")}
+                onClick={() => { if (idea) { try { window.sessionStorage.setItem(IDEA_HANDOFF_KEY, packHandoff(idea, Date.now())); } catch { /* the camera is still the one asked for */ } } }}>
+                <span className="fs-fmt-cover">
+                  <LoopCover k={`ff-${c.key}`} still={c.still} clip={c.clip} />
+                  {/* (no badge on a camera's card — 2026-11-26, the owner's phone photo: it sat on the footage's own time
+                      stamp, "16 MON 02:17:48", and the iPhone's "HD 30"; the row's own header already shows the camera) */}
+                  <span className="fs-fmt-label"><b>{t(c.name)}</b></span>
+                </span>
+              </a>
+            ))}
           </div>
-        </>)}
+              {/* A WIDE SCREEN'S ARROWS (FS_SHELF_GO): a mouse's way along a row that runs on past four — shown only where
+                  there is a mouse and room for four; nothing a keyboard or a screen reader steps through */}
+              {row.tiles.length + (row.cameras?.length || 0) > 4 && (<>
+                <span className="fs-shelf-arrow is-back" aria-hidden="true" onClick={(e) => stepShelf(e.currentTarget, -1)}><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" /></svg></span>
+                <span className="fs-shelf-arrow is-on" aria-hidden="true" onClick={(e) => stepShelf(e.currentTarget, 1)}><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" /></svg></span>
+              </>)}
+            </section>
+            ))}
+          </div>
+        )}
 
         {entered && (
           <div className={`fs-stage${anim === "out" ? " out" : ""}`}>
@@ -4499,7 +4470,9 @@ export default function FilmStudio() {
               <div className="fs-hero-ttl">{t(heroTitle)}</div>
               <div className="fs-hero-sub">{t(hero?.kick || "")}{hero?.meta ? ` · ${t(hero.meta)}` : ""}</div>
             </div>
-            <div className="fs-stepsin" key={lyricOn ? LYRIC_HERO.id : template}>
+            {/* (another GENRE is the same builder — the Genre card changes the template, not the format: nothing rises in
+                again; another format does) */}
+            <div className="fs-stepsin" key={lyricOn ? LYRIC_HERO.id : genreWay || template}>
             {/* THE LYRIC VIDEO has its own builder (LyricVideoBuilder, below); every other format, the builders here */}
             {lyricOn ? <LyricVideoBuilder t={t} /> : (<>
 
@@ -5067,13 +5040,42 @@ export default function FilmStudio() {
         return (
         <div className="mm mm-story">
           <div className="mm-grid">
+            {/* GENRE — the FIRST card, where the genre is picked (an anime's style: "The look · Style"). It is a setup step
+                now, not a path on the home (the owner: "Genre may be able to be just added at the setup step before seed
+                generation"): the card says the genre this builder is in, and its panel holds the genres of its way — a tile
+                each, its poster and its word — one tap to change it. Only where there is a genre to pick (genreOn), and then
+                the steps after it count on from 2 (stepAt). */}
+            {genreOn && hero && (
+              <button type="button" ref={genreCardRef} style={{ order: -2 }} className={`mm-card${storyCard === "genre" ? " on" : ""}${storyDone.genre ? " done" : ""}`} aria-expanded={storyCard === "genre"} onClick={() => tapStory("genre")}>
+                <span className="mm-step" aria-hidden="true">{storyDone.genre ? <Ico n="check" size={13} /> : 1}</span>
+                <span className="mm-card-top"><span className={`mm-card-ico is-genre ${hero.tint}`}>{fmtIcon(hero.tmpl, hero.told === "narrated")}</span><span className="mm-card-ttl"><span className="mm-card-kick">{t(genreWay === "anime" ? "The look" : "The kind")}</span><b>{t(genreWay === "anime" ? "Style" : "Genre")}</b></span></span>
+                <span className="mm-val">{t(hero.card)}</span>
+              </button>
+            )}
+            {genreOn && genreSh && storyCard === "genre" && (
+              <div className="mm-opts mm-opts-grid" style={{ order: -1 }}>
+                <div className="mm-opts-h">{t(genreSh.pick)}</div>
+                {/* (one tile per genre of this way, in its order: the genre's own poster — still: nothing plays — and its word;
+                    the one this builder is in is pressed. With a script or pictures on the page a tap asks first: pickGenre) */}
+                <div className="mm-genres" role="group" aria-label={t(genreWay === "anime" ? "Style" : "Genre")}>
+                  {genreSh.heroes.map((h) => (
+                    <button type="button" key={h.id} className={`mm-genre${heroId === h.id ? " on" : ""}${wipeArm === `genre:${h.id}` ? " is-arm" : ""}`} aria-pressed={heroId === h.id} aria-label={t(h.name)} onClick={() => pickGenre(h.id)}>
+                      <span className="mm-genre-view"><LoopCover k={h.media} loop={false} /></span>
+                      {heroId === h.id && <span className="mm-genre-chk" aria-hidden="true"><Ico n="check" size={11} /></span>}
+                      <span className="mm-genre-nm">{t(h.card)}</span>
+                    </button>
+                  ))}
+                </div>
+                {wipeArm.startsWith("genre:") && <p className="mm-note mm-shape-warn" role="status">{t(genreWay === "anime" ? "A new style writes it again — tap again to change" : "A new genre writes it again — tap again to change")}</p>}
+              </div>
+            )}
             {/* 1 · Cast — the ONE place a film is cast. Before a script: who stars, or "we invent them". Once an
                 acted film has its script the card is about the SCRIPT'S characters: their faces (a lettered
                 disc for anyone not cast yet), their names, and how many have a face. */}
             {/* (…and until the step has been opened once it ASKS — one pulse when it is on screen, one line under
                 the faces. It asks; it never opens itself, and Generate never waits on it.) */}
             <button type="button" ref={castCardRef} style={{ order: 1 }} className={`mm-card${storyCard === "cast" ? " on" : ""}${storyDone.cast ? " done" : ""}${castNudge && castLit ? " is-new" : ""}`} onClick={() => tapStory("cast")}>
-              <span className="mm-step" aria-hidden="true">{storyDone.cast ? <Ico n="check" size={13} /> : 1}</span>
+              <span className="mm-step" aria-hidden="true">{storyDone.cast ? <Ico n="check" size={13} /> : 1 + stepAt}</span>
               {scripted ? (<>
                 <span className="mm-card-top">
                   {cast[0]?.faceUrl
@@ -5122,9 +5124,9 @@ export default function FilmStudio() {
               </>)}
             </button>
             {/* (How it's told is not a step any more: it is the HERO that was picked — film-heroes.ts) */}
-            {/* 2 · Length */}
+            {/* 2 · Length (3 after the Genre card: stepAt — and so on down) */}
             <button type="button" style={{ order: 5 }} className={`mm-card${storyCard === "length" ? " on" : ""}${storyDone.length ? " done" : ""}`} onClick={() => tapStory("length")}>
-              <span className="mm-step" aria-hidden="true">{storyDone.length ? <Ico n="check" size={13} /> : 2}</span>
+              <span className="mm-step" aria-hidden="true">{storyDone.length ? <Ico n="check" size={13} /> : 2 + stepAt}</span>
               <span className="mm-card-top"><span className="mm-card-ico c4"><Ico n="film" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The cut")}</span><b>{t("Length")}</b></span></span>
               <span className="mm-val">{lenLabel(scenes)} · {narrated ? (scenes === 1 ? t("1 scene") : t("{n} scenes", { n: scenes })) : (scenes === 1 ? t("1 shot") : t("{n} shots", { n: scenes }))}</span>
               {/* (a told story's rung, said on the card itself — still or moving, and what that comes to) */}
@@ -5134,19 +5136,19 @@ export default function FilmStudio() {
             </button>
             {/* 3 · Shape */}
             <button type="button" style={{ order: 7 }} className={`mm-card${storyCard === "shape" ? " on" : ""}${storyDone.shape ? " done" : ""}`} onClick={() => tapStory("shape")}>
-              <span className="mm-step" aria-hidden="true">{storyDone.shape ? <Ico n="check" size={13} /> : 3}</span>
+              <span className="mm-step" aria-hidden="true">{storyDone.shape ? <Ico n="check" size={13} /> : 3 + stepAt}</span>
               <span className="mm-card-top"><span className="mm-card-ico c3"><Ico n="expand" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The frame")}</span><b>{t("Shape")}</b></span></span>
               <span className="mm-val">{shapeName} · {filmAspect}</span>
             </button>
             {/* 4 · Captions */}
             <button type="button" style={{ order: 9 }} className={`mm-card${storyCard === "captions" ? " on" : ""}${storyDone.captions ? " done" : ""}`} onClick={() => tapStory("captions")}>
-              <span className="mm-step" aria-hidden="true">{storyDone.captions ? <Ico n="check" size={13} /> : 4}</span>
+              <span className="mm-step" aria-hidden="true">{storyDone.captions ? <Ico n="check" size={13} /> : 4 + stepAt}</span>
               <span className="mm-card-top"><span className="mm-card-ico c1"><Ico n="article" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The words")}</span><b>{t("Captions")}</b></span></span>
               <span className="mm-val">{capName}{captions !== "off" ? <> · {t(captions === "bold" ? "big words, in time" : captions === "highlight" ? "the spoken word lights up" : "a line along the bottom")}</> : null}</span>
             </button>
             {/* 5 · Narrator (narrated) or Engine (acted) */}
             <button type="button" style={{ order: 11 }} className={`mm-card${storyCard === "voice" ? " on" : ""}${storyDone.voice ? " done" : ""}`} onClick={() => tapStory("voice")}>
-              <span className="mm-step" aria-hidden="true">{storyDone.voice ? <Ico n="check" size={13} /> : 5}</span>
+              <span className="mm-step" aria-hidden="true">{storyDone.voice ? <Ico n="check" size={13} /> : 5 + stepAt}</span>
               {narrated
                 ? <><span className="mm-card-top"><span className="mm-card-ico c5"><Ico n="headphones" size={20} /></span><span className="mm-card-ttl"><span className="mm-card-kick">{t("The voice")}</span><b>{t("Narrator")}</b></span></span>
                     <span className="mm-val">{narratorName ? t(narratorName) : t("Our pick")}{!narrPick ? <> · {t("our pick for this format")}</> : null}</span></>
@@ -5884,26 +5886,11 @@ ${CAST_ID_CSS}
 .fs-shelves{display:grid;gap:18px;margin:18px 0 6px;}
 .fs-shelf{position:relative;border-radius:22px;padding:14px 14px 14px;border:1px solid var(--line,#E4DFCF);background:linear-gradient(180deg,#FFFEFA,#FBF8F0);transition:background .3s ease,border-color .3s ease;}
 .fs-shelf.is-told{--shelf:#A8741B;--shelf-soft:rgba(168,116,27,.1);}
-/* (the STILL shelf, 2026-11-26: a cool steel blue — a still picture's own cold light, apart from the storybook gold,
-   the stage's green and the music video's violet. Its tag reads 5.0:1 on its plate, its icon 5.7:1) */
-.fs-shelf.is-still{--shelf:#3E6A8E;--shelf-soft:rgba(62,106,142,.09);}
 .fs-shelf.is-acted{--shelf:#0C7A46;--shelf-soft:rgba(12,122,70,.09);}
 .fs-shelf.is-sung{--shelf:#6B4BC8;--shelf-soft:rgba(107,75,200,.09);}
-/* (the ANIME shelf, 2026-11-26: a warm cherry pink — the drawn shelf's own, apart from the storybook gold, the still
-   blue, the stage's green and the music video's violet. Held to the same sums as the others: its tag 4.5:1 on its
-   plate, its icon 5.1:1, a shelf's name 11.6:1 and its line 4.7:1 where the engraving runs under them — the plate's
-   tint at .08, not .09, is what lets a red that saturated keep the line at 4.7) */
-.fs-shelf.is-anime{--shelf:#CA3254;--shelf-soft:rgba(202,50,84,.08);}
-/* (2026-11-26, THE WAYS) the Kids' row and Caught on Cam's cameras have accents of their own */
-.fs-shelf.is-kids{--shelf:#A85A10;--shelf-soft:rgba(168,90,16,.08);}
-.fs-shelf.is-cam{--shelf:#B83A28;--shelf-soft:rgba(184,58,40,.08);}
-/* PICTURE BOOK'S GENRES ARE PAGES (2026-11-26 — the owner, of the Stories and the Still Stories showing the same nine
-   posters: "This has become repetitive and unorganized and confusing"): a cream mat and a page's slight tilt, over the
-   still story's own drift, so the nine pictures never read as the Story's row again. */
-.fs-shelf.is-still .fs-fmt{padding:7px;background:#FBF6E8;border-color:#E4DCC5;border-radius:8px;}
-.fs-shelf.is-still .fs-fmt-cover{border-radius:3px;}
-.fs-shelf.is-still .fs-fmt:nth-child(odd){rotate:-.6deg;}
-.fs-shelf.is-still .fs-fmt:nth-child(even){rotate:.5deg;}
+/* (2026-11-26) Caught on Cam's row has an accent of its own, a camera's red. Held to the others' sums since it is a row
+   for good (THE ROWS): its plate's tint at .07 is what keeps the line under its name at 4.7:1 where the engraving runs */
+.fs-shelf.is-cam{--shelf:#B83A28;--shelf-soft:rgba(184,58,40,.07);}
 .fs-door[data-cam=house] .fs-fmt-cover img,.fs-door[data-cam=house] .fs-fmt-vid{object-position:28% 50%;}
 .fs-shelf::before{content:"";position:absolute;left:0;top:18px;bottom:18px;width:4px;border-radius:0 4px 4px 0;background:var(--shelf);opacity:.85;}
 .fs-shelf-h{display:flex;align-items:center;gap:11px;margin:0 2px 12px 6px;transition:opacity .25s ease;}
@@ -5970,38 +5957,23 @@ ${CAST_ID_CSS}
 /* the format's loop, faded in over its still while the card is pointed at (see LoopCover) */
 .fs-fmt-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .35s ease;pointer-events:none;}
 .fs-fmt-vid.on{opacity:1;}
-/* THE STILL SHELF (2026-11-26): A STILL POSTER MOVES THE WAY A STILL STORY MOVES. The owner, of the still tier: "Maybe
-   just make it an additional tier on the actual movie maker (would look like more options)" — and nine posters the
-   Stories shelf already shows, standing still, read as the same shelf twice. So a poster on it plays no loop: its
-   picture drifts as the story's own default camera moves a picture — Gentle, S13b's mmCamGentle (push in, drift,
-   ease back) — slowly, 14 s a way and back again, a transform and nothing else (no video, no script). On a touch
-   screen it always moves, and its neighbours start at another point of the move, so the row breathes rather than
-   marching. Where there is a mouse it moves while the poster is pointed at or has the keyboard's focus, as a loop
-   plays — from the move's start, so a row at rest stands evenly framed (photographed at 1280: posters paused at
-   three points of the move read as three odd crops). Nothing moves for anyone who asks for less motion. (Within the
-   cover: at its widest the move shifts the picture 5.75% of its width at 115% — 7.5% to spare on each side; at its
-   end 3.2% at 107%, with 3.5% — no edge ever shows.) */
-.fs-shelf.is-still .fs-fmt-cover img{animation:mmCamGentle 14s ease-in-out infinite alternate;}
-@media not all and (hover:hover) and (pointer:fine){
-  .fs-shelf.is-still .fs-fmt:nth-child(3n+2) .fs-fmt-cover img{animation-delay:-4.7s;}
-  .fs-shelf.is-still .fs-fmt:nth-child(3n) .fs-fmt-cover img{animation-delay:-9.3s;}
-}
+/* NARRATED PICTURES' TILE MOVES THE WAY A STILL STORY MOVES (2026-11-26: a shelf of still posters that morning — the owner:
+   "Maybe just make it an additional tier on the actual movie maker (would look like more options)" — and since that
+   evening one tile of the Stories row: THE TILES, below). It plays no loop: its picture drifts as the story's own default
+   camera moves a picture — Gentle, S13b's mmCamGentle (push in, drift, ease back) — slowly, 14 s a way and back again, a
+   transform and nothing else (no video, no script). On a touch screen it always moves. Where there is a mouse it moves
+   while the tile is pointed at or has the keyboard's focus, as a loop plays — from the move's start, so a row at rest
+   stands evenly framed. Nothing moves for anyone who asks for less motion. (Within the cover: at its widest the move
+   shifts the picture 5.75% of its width at 115% — 7.5% to spare on each side; at its end 3.2% at 107%, with 3.5% — no
+   edge ever shows.) */
+.fs-tile.is-still .fs-fmt-cover img{animation:mmCamGentle 14s ease-in-out infinite alternate;}
 @media(hover:hover) and (pointer:fine){
-  .fs-shelf.is-still .fs-fmt-cover img{animation-play-state:paused;}
-  .fs-shelf.is-still .fs-fmt:hover .fs-fmt-cover img,.fs-shelf.is-still :focus-visible > .fs-fmt-cover img{animation-play-state:running;}
+  .fs-tile.is-still .fs-fmt-cover img{animation-play-state:paused;}
+  .fs-tile.is-still:hover .fs-fmt-cover img,.fs-tile.is-still:focus-visible .fs-fmt-cover img{animation-play-state:running;}
 }
-@media(prefers-reduced-motion:reduce){.fs-shelf.is-still .fs-fmt-cover img{animation:none;}}
-/* (…and a still poster's badge and note are the shelf's own steel blue, the same on every poster of the row. Reviewed
-   at 390 px, 2026-11-26: with each genre's own badge tint the row under the Stories was the same nine pictures in the
-   same nine colours, a small glyph apart: it read as the Stories twice. One blue across the row, under the blue
-   heading, says "another tier" before a word is read. White on the badge reads 4.5:1 at its lighter end, 8.4:1 at its
-   darker; the note's blue on the card's white, 5.7:1.) */
-.fs-shelf.is-still .fs-fmt-ico{background:linear-gradient(135deg,#4A7BA3,#2D506E);}
-.fs-shelf.is-still .fs-fmt-sub em{color:var(--shelf);}
+@media(prefers-reduced-motion:reduce){.fs-tile.is-still .fs-fmt-cover img{animation:none;}}
 /* the covers MOVE now, so the title has to win: a deeper, taller shade under it and a bigger, heavier name */
 .fs-fmt-cover::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(6,14,10,.94) 0%,rgba(6,14,10,.62) 24%,rgba(6,14,10,.14) 50%,transparent 68%);}
-.fs-fmt-ico{position:absolute;z-index:2;top:8px;left:8px;width:28px;height:28px;border-radius:9px;display:grid;place-items:center;box-shadow:0 5px 14px -5px rgba(0,0,0,.6);}
-.fs-fmt-ico svg{width:15px;height:15px;stroke:#fff;stroke-width:2;fill:none;stroke-linecap:round;stroke-linejoin:round;}
 .fs-fmt-check{position:absolute;z-index:2;top:10px;right:10px;width:23px;height:23px;border-radius:50%;background:var(--green,#0C7A46);display:grid;place-items:center;box-shadow:0 4px 10px -3px rgba(0,0,0,.5);}
 .fs-fmt-check svg{width:12px;height:12px;stroke:#fff;stroke-width:3;fill:none;}
 .fs-fmt-label{position:absolute;z-index:2;left:9px;right:9px;bottom:9px;}
@@ -6478,6 +6450,25 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-sc-cam.is-own{background:var(--green,#0C7A46);box-shadow:0 0 0 1.5px rgba(255,255,255,.85),0 4px 12px -6px rgba(0,0,0,.6);}
 .mm-sb-flag ~ .mm-sc-cam{bottom:auto;top:33px;}
 .mm-cam-drawer .mm-cams{margin-top:2px;}
+/* THE GENRE PANEL (2026-11-26 — the genre is a setup step: "Genre may be able to be just added at the setup step before seed
+   generation", the owner): a tile per genre of the way, its poster still above its word, the camera tiles' look; the one
+   the builder is in is ticked. Phone first: three a row; five on a wide panel. A tile that would throw a script away is
+   armed first — the amber every arming on the page wears. */
+.mm-genres{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:4px;}
+@media(min-width:700px){.mm-genres{grid-template-columns:repeat(5,minmax(0,1fr));}}
+.mm-genre{position:relative;display:flex;flex-direction:column;align-items:stretch;gap:6px;min-width:0;min-height:44px;padding:4px 4px 7px;border:1.5px solid var(--line,#E4DFCF);background:#fff;border-radius:12px;cursor:pointer;font-family:Poppins,sans-serif;color:var(--ink,#14201A);text-align:center;transition:border-color .14s,box-shadow .14s;}
+.mm-genre:hover{border-color:var(--green2,#1EA85C);}
+.mm-genre.on{border-color:var(--green,#0C7A46);box-shadow:0 0 0 1.5px var(--green,#0C7A46),0 10px 20px -16px rgba(12,122,70,.6);}
+.mm-genre-view{position:relative;display:block;aspect-ratio:4/3;border-radius:8px;overflow:hidden;background:#14201A;}
+.mm-genre-view picture{display:contents;}
+.mm-genre-view img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 30%;}
+.mm-genre-chk{position:absolute;z-index:2;top:8px;inset-inline-end:8px;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;background:var(--green,#0C7A46);box-shadow:0 0 0 2px #fff;}
+.mm-genre-chk svg{stroke:#fff;stroke-width:2.8;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+.mm-genre-nm{display:block;font-size:12px;font-weight:800;line-height:1.2;overflow-wrap:anywhere;}
+.mm-genre.on .mm-genre-nm{color:var(--green,#0C7A46);}
+/* (the Genre card's icon is the genre's own badge on its own tint: the badge is drawn at the card icons' size) */
+.mm-card-ico.is-genre svg{width:20px;height:20px;}
+@media(min-width:960px){.mm-card-ico.is-genre svg{width:24px;height:24px;}}
 .mm-shapepick .mm-lenopt b{font-size:14.5px;}
 .mm-shape{display:block;border:2px solid currentColor;border-radius:4px;color:var(--ink3,#9AA39B);background:rgba(20,32,26,.04);}
 .mm-shape.s16x9{width:44px;height:25px;margin:9px 0;}
@@ -7070,7 +7061,7 @@ a.mm-pace-auto{text-decoration:none;}
 .mm-aspect-opt.arm small{color:#7A5A12;}
 .mm-shape-warn{font-size:11.5px;font-weight:600;color:#7A5A12;background:#FFF7E3;border:1px solid #EBD9A8;border-radius:10px;padding:8px 11px;}
 /* a tap that would start the story over is ARMED first (amber) and done on the second tap */
-.fs-rface.is-arm,.mm-told.is-arm,.mm-lenopt.is-arm{border-color:#D9A53A;box-shadow:0 0 0 2px #EBD9A8;background:#FFF7E3;color:#7A5A12;}
+.fs-rface.is-arm,.mm-told.is-arm,.mm-lenopt.is-arm,.mm-genre.is-arm{border-color:#D9A53A;box-shadow:0 0 0 2px #EBD9A8;background:#FFF7E3;color:#7A5A12;}
 .fs-stepper button.is-arm{background:#FFF1CF;color:#7A5A12;}
 .mm-opts .mm-shape-warn,.mm-topic .mm-shape-warn{text-align:left;margin-top:10px;}
 .mm-idea-kept{text-align:left;margin-top:7px;font-size:11.5px;font-weight:600;}
@@ -7172,75 +7163,27 @@ a.mm-pace-auto{text-decoration:none;}
   .mm-topic.is-landed{animation:none;box-shadow:0 0 0 2px rgba(12,122,70,.4);}
 }
 
-/* ───────── THE WAYS — big cards: the ladder, then "Only on EasyMode" (2026-11-26, the owner's "A") ─────────
-   One tap shows that way's row below. The ladder reads left to right, cheapest to most cinematic, with its rung dots;
-   the originals sit on a dark green-gold panel so they are on display. Everything moves by transform only. */
-.fs-ways{display:grid;gap:14px;margin:18px 0 0;}
-.fs-ways-grp{transition:opacity .32s ease,transform .36s ease;}
-.fs-ways.throw > .fs-ways-grp{opacity:0;transform:scale(.97);pointer-events:none;}
-/* (the chosen way's row, in the ways' own flow: right under the group that was tapped) */
-.fs-ways > .fs-shelves{margin:0;}
-.fs-ways-h{display:flex;align-items:center;gap:8px;margin:0 0 8px 2px;font:800 11px/1.2 Poppins,system-ui,sans-serif;letter-spacing:.16em;text-transform:uppercase;color:var(--ink2,#4A554E);}
-.fs-ways-h::after{content:"";flex:1;height:1px;background:var(--line,#E1DECD);}
-.fs-ways-row{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:8px;}
-.fs-ways-grp.is-only{padding:10px;border-radius:20px;background:linear-gradient(135deg,#14201A,#1E2E25 60%,#2A2414);box-shadow:0 14px 30px -14px rgba(20,32,26,.5);}
-.fs-ways-grp.is-only .fs-ways-h{color:#F3D98C;margin-inline-start:4px;}
-.fs-ways-grp.is-only .fs-ways-h::after{background:rgba(243,217,140,.28);}
-.fs-way{--way:#A8741B;--way-tag:#8C6014;position:relative;display:block;width:100%;padding:0;border:0;border-radius:16px;overflow:hidden;background:#0E1712;color:#fff;text-align:start;cursor:pointer;font:inherit;box-shadow:0 1px 0 rgba(20,32,26,.08),0 8px 20px -10px rgba(20,32,26,.35);transition:transform .25s cubic-bezier(.2,.9,.3,1.2),box-shadow .25s ease;}
-.fs-way:hover{transform:translateY(-3px);}
-.fs-way.on{transform:translateY(-3px);box-shadow:0 0 0 3px var(--way),0 16px 32px -12px rgba(20,32,26,.45);}
-.fs-way:focus-visible{outline:3px solid #12A85E;outline-offset:3px;}
-.fs-way.is-still{--way:#3E6A8E;--way-tag:#3E6A8E;}
-.fs-way.is-told{--way:#A8741B;--way-tag:#8C6014;}
-.fs-way.is-acted{--way:#0C7A46;--way-tag:#0C7A46;}
-.fs-way.is-cam{--way:#B83A28;--way-tag:#B83A28;}
-.fs-way.is-anime{--way:#CA3254;--way-tag:#CA3254;}
-.fs-way.is-kids{--way:#A85A10;--way-tag:#A85A10;}
-.fs-way.is-sung{--way:#6B4BC8;--way-tag:#6B4BC8;}
-.fs-way-art{position:relative;display:block;aspect-ratio:4/5;overflow:hidden;}
-.fs-way-pic{position:absolute;inset:0;display:block;}
-.fs-way-pic img,.fs-way-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
-.fs-way-pic .is-strip{left:-100%;width:300%;}
-.fs-way-vid{opacity:0;transition:opacity .4s ease;}
-/* (Caught on Cam's card: the house camera's own date strip along the top of its footage ran under the "Found footage"
-   tag — the owner's phone photo, 2026-11-26. The footage is drawn a little larger from its foot, so that strip is out of
-   the card and the tag sits on the picture.) */
-/* (…as the scale property, which stacks with the card's drift animation — a transform here was overridden by it, and
-   the strip still showed: the owner's next photo, 2026-11-26) */
-.fs-way.is-cam .fs-way-pic img,.fs-way.is-cam .fs-way-vid{scale:1.18;transform-origin:50% 96%;}
-.fs-way-vid.is-on{opacity:1;}
-.fs-way-art::after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(10,16,12,.86),rgba(10,16,12,0) 62%);pointer-events:none;}
-.fs-way-pic img{animation:fsWayDrift 18s ease-in-out infinite alternate;}
-.fs-way.is-still .fs-way-pic img{animation:mmCamGentle 14s ease-in-out infinite alternate;}
-.fs-way.is-anime .fs-way-pic img{animation:fsWayPan 18s ease-in-out infinite alternate;}
-.fs-way.is-still .fs-way-art{outline:6px solid #FBF6E8;outline-offset:-6px;}
-@keyframes fsWayDrift{from{transform:scale(1.02);}to{transform:scale(1.09);}}
-@keyframes fsWayPan{from{transform:scale(1.12) translateX(4%);}to{transform:scale(1.12) translateX(-4%);}}
-.fs-way-tag{position:absolute;z-index:1;inset-block-start:8px;inset-inline-start:8px;padding:4px 8px;border-radius:999px;background:var(--way-tag);color:#fff;font:800 9.5px/1.2 Poppins,system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;}
-.fs-way-step{position:absolute;z-index:1;inset-block-start:11px;inset-inline-end:10px;display:none;gap:3px;}
-.fs-way-step i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.35);}
-.fs-way-step i.on{background:#fff;}
-.fs-way-name{position:absolute;z-index:1;inset-inline:10px;inset-block-end:9px;display:block;}
-.fs-way-name b{display:block;font:800 15px/1.1 Poppins,system-ui,sans-serif;color:#fff;text-shadow:0 1px 8px rgba(0,0,0,.35);}
-.fs-way-name small{display:none;margin-top:3px;font:500 11.5px/1.3 Poppins,system-ui,sans-serif;color:rgba(255,255,255,.86);}
-.fs-way-name small.is-short{display:block;font-size:10.5px;line-height:1.25;}
-@media(min-width:640px){.fs-way-name small{display:block;}.fs-way-name small.is-short{display:none;}.fs-way-step{display:flex;}}
-@media(max-width:639px){
-  .fs-ways-grp.is-only .fs-ways-row{grid-auto-flow:row;grid-template-columns:repeat(2,minmax(0,1fr));}
-  .fs-ways-grp.is-only .fs-way-art{aspect-ratio:16/10;}
-}
-@media(min-width:980px){
-  .fs-ways{display:flex;flex-wrap:wrap;align-items:flex-end;gap:18px;}
-  .fs-ways-grp{flex:var(--n) 1 0%;min-width:0;}
-  .fs-ways > .fs-shelves{order:9;flex:1 1 100%;min-width:0;}
-  .fs-way-name b{font-size:21px;}
-}
-@media(prefers-reduced-motion:reduce){
-  .fs-ways-grp,.fs-way,.fs-way-vid{transition:none;}
-  .fs-ways.throw > .fs-ways-grp{transform:none;}
-  .fs-way-pic img{animation:none;}
-  .fs-way.on,.fs-way:hover{transform:none;}
-}
+/* ───────── THE TILES — a row's FORMATS (2026-11-26, that evening: "I liked when it was rows designated") ─────────
+   A tile is the page's own poster (.fs-fmt), in its row's colours: its picture; its tag in the corner — the row's colour,
+   the Stories' a deeper gold, as the ways' tags were (white reads 5.5:1 on it, 4.1 on the shelf's own); its name on the
+   picture, and "✦ Only on EasyMode" over the name where that is so, in the gold that said it on the ways; and its one
+   short line under it (.fs-fmt-sub — the rows' rule gives every tile of a row the same height). Narrated Pictures' picture
+   drifts (above: it moves the way a still story moves); Narrated Video's is its strip of three, on a phone its middle
+   picture. The row a link names (?way=) is ringed in its colour, an outline: nothing of the ticket's shadow is touched. */
+.fs-fmt-tag{position:absolute;z-index:2;inset-block-start:8px;inset-inline-start:8px;max-width:calc(100% - 16px);padding:4px 8px;border-radius:999px;background:var(--shelf,#0C7A46);color:#fff;font:800 9.5px/1.2 Poppins,system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 4px 10px -4px rgba(0,0,0,.5);}
+.fs-shelf.is-told .fs-fmt-tag{background:#8C6014;}
+.fs-fmt-kick.is-only{margin-bottom:3px;color:#F3D98C;text-shadow:0 1px 6px rgba(0,0,0,.6);}
+.fs-only{font-weight:800;color:var(--shelf);white-space:nowrap;}
+.fs-only span{color:inherit;font:inherit;}
+/* (Caught on Cam's in the page's deeper red, the monster pick's: 5.2:1 where a line of the row's engraving runs under it,
+   which its own red, 4.1, is not) */
+.fs-shelf.is-cam .fs-only{color:#A3271D;}
+@media(max-width:639px){.fs-fmt-cover .is-strip{position:absolute;inset:0 auto 0 -100%;width:300%;}}
+.fs-shelf.is-ring{outline:3px solid var(--shelf);outline-offset:4px;}
+[dir=rtl] .fs-fmt-tag,[dir=rtl] .fs-fmt-kick{letter-spacing:0;}
+/* (a tile's name is a format's — "Narrated Pictures", "Kids Music Video" — longer than a genre's word: on a wide screen it
+   is set at the ways' cards' size, not a poster's) */
+@media(min-width:640px){.fs-tile .fs-fmt-label b{font-size:21px;}}
 
 /* ───────── THE ROWS — each shelf is ONE row of its posters, swiped sideways ─────────
    The owner, 2026-11-24, looking at the posters on his phone: "the film section needs sideways scroll for

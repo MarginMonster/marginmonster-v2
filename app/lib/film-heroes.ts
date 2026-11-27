@@ -215,42 +215,41 @@ export function heroesFor(templateKeys: string[], narratableKeys: string[]): Fil
  * Story · Film), then "Only on EasyMode" (Caught on Cam · Anime · Kids · Music Video) — and under it ONE row: the chosen
  * way's posters. A way is still a shelf here (heroShelves): every hero on exactly one non-rung way, Picture Book
  * re-listing the Story heroes on the still rung (that is not a copy on screen any more: one way's row shows at a time, and
- * Picture Book's posters are pages). The order of SHELVES is the order of the cards — his to change, one line each. */
-/** A way card's picture: a real file with NO burnt-in captions (the -tall Story loops have captions: never used). */
+ * Picture Book's posters are pages). The order of SHELVES is the order of the cards — his to change, one line each.
+ * (That evening the home became ROWS again — THE ROWS, below: the way cards and the chosen way's row are gone. The ways
+ * stay what everything else stands on: every hero on exactly one, the guide box's answer (idea-route.ts), and a TILE each
+ * on the rows, the genres it holds picked in the builder.) */
+/** A way's picture: a real file with NO burnt-in captions (the -tall Story loops have captions: never used). Since the
+ *  ROWS (below) it is the picture of the way's TILE on the home. */
 export type WayArt = { still: string; clip?: string; /** a wide three-panel strip: only its MIDDLE panel is shown */ strip?: boolean; /** CSS object-position */ at?: string };
 export type WayKey = "still" | "told" | "acted" | "anime" | "kids" | "sung" | "cam";
 export type HeroShelf = {
   key: "told" | "still" | "anime" | "acted" | "sung" | "kids";
   name: string;
   tag: string;
+  /** the whole line — what a screen reader hears after the tile's name */
   line: string;
-  /** the row's header line, under the cards ("Pick a genre") */
+  /** the heading of the builder's Genre panel, for the heroes of this way ("Pick a genre", "Pick a style") */
   pick: string;
-  /** the card's SHORT line — what a phone shows under its name (the long `line` shows from 640px): 2026-11-26, the owner
-   *  of the phone view: "need better descriptions here" */
+  /** the SHORT line — what a tile shows under its picture: 2026-11-26, the owner of the phone view: "need better
+   *  descriptions here" */
   short: string;
-  /** the ladder (how a story is told) or "Only on EasyMode" */
-  group: "ladder" | "only";
-  /** the way card's art */
+  /** the way's picture (its tile's) */
   art: WayArt;
-  /** a RUNG shelf: the told story's rung its posters open on (the told shelf's is "moving") */
+  /** a RUNG shelf: the told story's rung its tile opens on (the told shelf's is "moving") */
   rung?: StoryPictures;
   heroes: FilmHero[];
 };
 /** The kids' formats: a way of their own — a different audience and a different look; as the 11th poster of the
  *  photoreal Film row they were buried off a phone's screen. So Film and Music Video do not list them. */
 export const KIDS_HEROES: readonly string[] = ["kidstv", "kidsmusicvideo"];
-/** CAUGHT ON CAM — Found Footage's way on the home (operators only, as its builder is): its row is the builder's
- *  cameras, each opening the builder on that camera (?camera=). Not a shelf: nothing here is a FilmHero. */
+/** CAUGHT ON CAM — Found Footage's ROW on the home (operators only, as its builder is): the builder's cameras, each a
+ *  tile opening the builder on that camera (?camera=). Not a shelf: nothing here is a FilmHero. Its line says how it is
+ *  told, and "✦ Only on EasyMode" stands after it (the owner, 2026-11-26: "Those need to be on display"). */
 export const CAUGHT_ON_CAM = {
   key: "cam" as const,
   name: "Caught on Cam",
-  tag: "Found footage",
-  line: FOUND_FOOTAGE_DOOR.meta,
-  pick: "Pick the camera",
-  short: "Phone, house & body cams",
-  group: "only" as const,
-  art: { still: "/landing/ff-cam-house.jpg", clip: FOUND_FOOTAGE_DOOR.clip, at: "28% 50%" } as WayArt,
+  line: "Found footage",
   // (each camera's card has its own footage — 2026-11-26, the owner: "Phone needs to be the smiling woman video with iPhone
   //  overlay, camcorder needs to have the camcorder overlay (different video hero)". The phone's and the camcorder's are cut
   //  as a window centered on its own blurred copy, so a phone's 4:5 card and a wide 16:9 one both keep the whole overlay:
@@ -267,17 +266,17 @@ const SHELVES: ReadonlyArray<Omit<HeroShelf, "heroes"> & { has: (h: FilmHero) =>
   // (NAMES, 2026-11-26 — the owner, of the phone view: "Picture book sounds like a physical book / story / film come across as
   //  confusing need better descriptions here". The ladder is his own hierarchy, in his words: "narrated with stills / simple,
   //  narrated with stills to video mid, and acted premium" → Narrated Pictures · Narrated Video · Acted Film.)
-  { key: "still", name: "Narrated Pictures", tag: "Cheapest", line: "A narrator tells it over still pictures that slowly move", short: "Still images, read aloud", pick: "Pick a genre", group: "ladder", rung: "still",
+  { key: "still", name: "Narrated Pictures", tag: "Cheapest", line: "A narrator tells it over still pictures that slowly move", short: "Still images, read aloud", pick: "Pick a genre", rung: "still",
     art: { still: "/landing/film-still-fantasystory-tall.jpg" }, has: (h) => h.told === "narrated" && !h.shelf },
-  { key: "told", name: "Narrated Video", tag: "Most popular", line: "A narrator tells it over moving pictures", short: "Every scene moves", pick: "Pick a genre", group: "ladder", rung: "moving",
+  { key: "told", name: "Narrated Video", tag: "Most popular", line: "A narrator tells it over moving pictures", short: "Every scene moves", pick: "Pick a genre", rung: "moving",
     art: { still: "/landing/film-loop-horrorstory.jpg", clip: "/landing/film-loop-horrorstory.mp4", strip: true }, has: (h) => h.told === "narrated" && !h.shelf },
-  { key: "acted", name: "Acted Film", tag: "Premium", line: "Actors speak the lines on camera", short: "Characters talk on camera", pick: "Pick a genre", group: "ladder",
+  { key: "acted", name: "Acted Film", tag: "Premium", line: "Actors speak the lines on camera", short: "Characters talk on camera", pick: "Pick a genre",
     art: { still: "/landing/film-still-testmovie-tall.jpg", clip: "/landing/film-loop-testmovie-tall.mp4" }, has: (h) => h.told === "acted" && !KIDS_HEROES.includes(h.id) },
-  { key: "anime", name: "Anime", tag: "New", line: "A narrator tells it over hand-drawn anime pictures", short: "Hand-drawn, six styles", pick: "Pick a style", group: "only",
+  { key: "anime", name: "Anime", tag: "New", line: "A narrator tells it over hand-drawn anime pictures", short: "Hand-drawn, six styles", pick: "Pick a style",
     art: { still: "/landing/film-still-animesky-tall.jpg", at: "50% 30%" }, has: (h) => h.shelf === "anime" },
-  { key: "kids", name: "Kids", tag: "For little ones", line: "Cartoons and sing-alongs", short: "Cartoons & sing-alongs", pick: "Pick one", group: "only",
+  { key: "kids", name: "Kids", tag: "For little ones", line: "Cartoons and sing-alongs", short: "Cartoons & sing-alongs", pick: "Pick one",
     art: { still: "/landing/film-still-kidstv-tall.jpg", clip: "/landing/film-loop-kidstv-tall.mp4" }, has: (h) => KIDS_HEROES.includes(h.id) },
-  { key: "sung", name: "Music Video", tag: "Sung", line: "Your artist sings on camera", short: "Your artist sings", pick: "Pick one", group: "only",
+  { key: "sung", name: "Music Video", tag: "Sung", line: "Your artist sings on camera", short: "Your artist sings", pick: "Pick one",
     art: { still: "/landing/film-loop-musicvideo.jpg", clip: "/landing/film-loop-musicvideo-tall.mp4", at: "50% 25%" }, has: (h) => h.told === null && !KIDS_HEROES.includes(h.id) },
 ];
 /** The heroes a page offers, as its shelves — every hero on exactly one WAY shelf (or, an anime style, on its own), in
@@ -290,18 +289,125 @@ const SHELVES: ReadonlyArray<Omit<HeroShelf, "heroes"> & { has: (h: FilmHero) =>
 export function heroShelves(heroes: ReadonlyArray<FilmHero>, o: { still?: boolean } = {}): HeroShelf[] {
   const still = o.still !== false;
   const stillWay = SHELVES.find((s) => s.rung === "still")!;
-  // (where nothing can move, the Story says what it is told over then — and shows no motion: Picture Book's art)
+  // (where nothing can move, the Story says what it is told over then — its lines, the long and the short — and shows no
+  //  motion: Picture Book's art)
   return SHELVES.filter((s) => still || s.rung !== "still")
     // (the Kids' row in its own order: the cartoon first — the bigger draw — then the sing-along)
-    .map(({ has, ...s }) => ({ ...s, ...(!still && s.rung === "moving" ? { line: stillWay.line, art: stillWay.art } : {}), heroes: s.key === "kids" ? heroes.filter(has).sort((a, b) => KIDS_HEROES.indexOf(a.id) - KIDS_HEROES.indexOf(b.id)) : heroes.filter(has) }))
+    .map(({ has, ...s }) => ({ ...s, ...(!still && s.rung === "moving" ? { line: stillWay.line, short: stillWay.short, art: stillWay.art } : {}), heroes: s.key === "kids" ? heroes.filter(has).sort((a, b) => KIDS_HEROES.indexOf(a.id) - KIDS_HEROES.indexOf(b.id)) : heroes.filter(has) }))
     .filter((s) => s.heroes.length > 0);
 }
-/** A way named in a link (?way=…) — one of the ways' keys, or null. */
+/** A way named in a link (?way=…) — one of the ways' keys, or null. (The home rings the ROW it stands in: rowOfWay.) */
 export const wayParamOf = (v: unknown): WayKey | null => {
   const k = String(v ?? "").trim().toLowerCase();
   return k === "still" || k === "told" || k === "acted" || k === "anime" || k === "kids" || k === "sung" || k === "cam" ? k : null;
 };
 
-/** A poster's key on the page — the zoom key, so the same hero standing on two shelves pops only where it was
- *  tapped: `still:<id>` on the still shelf, the plain id everywhere else. */
+/* THE ROWS (2026-11-26, that evening). The owner, with two photos of the ways on the live home: "Because this setup is
+ * hard to understand narrated/acted being at the top of the selection looks odd and easy to misunderstand. I liked when it
+ * was rows designated (the genere tiles are what complicated things)". So the home is ROWS again — the shelves of 11-24,
+ * each DESIGNATED by how what stands on it is told:
+ *
+ *   Stories        A narrator tells it            Narrated Video · Narrated Pictures · Anime ✦
+ *   Films          Actors speak on camera         Acted Film · Kids Cartoon
+ *   Music          Sung                           Music Video · Kids Music Video · Lyric Video (an operator's)
+ *   Caught on Cam  Found footage · ✦              the four cameras (an operator's)
+ *
+ * — and a row holds a few FORMAT tiles, never a genre: one tap on a tile opens its builder, and the genre (an anime's
+ * style) is the builder's FIRST card (web.film.tsx → the Genre card; the owner, the same day: "Genre may be able to be
+ * just added at the setup step before seed generation"). A tile is a WAY (SHELVES: its name, its short line, its tag, its
+ * picture, the heroes it can open) — or, where a format is one hero (the Kids Cartoon, the sung ones), that hero. ✦ is
+ * "Only on EasyMode", on display ("Those need to be on display"). The names, the lines and the order are a first
+ * proposal, each one line to change. */
+export type HomeTileKey = "told" | "still" | "anime" | "acted" | "kidstv" | "musicvideo" | "kidsmusicvideo" | "lyricvideo";
+export type HomeTile = {
+  key: HomeTileKey;
+  /** the way it is to the guide box (idea-route.ts): where a guess lands */
+  way: WayKey;
+  name: string;
+  /** the one short line under its picture */
+  short: string;
+  /** its whole line: what a screen reader hears after its name */
+  line: string;
+  /** on its picture ("Most popular") */
+  tag?: string;
+  /** "✦ Only on EasyMode", on its picture */
+  only?: boolean;
+  /** the rung a told tile opens on */
+  rung?: StoryPictures;
+  /** the heroes it opens — its genres (an anime's styles), the builder's Genre card: the first, unless an idea says another */
+  heroes: FilmHero[];
+  /** its picture: a hero's poster (its phone cut on a phone, its wide one on a wide screen) — or a way's own art */
+  cover: { media: string; loop?: boolean; tall?: boolean } | { art: WayArt };
+};
+export type HomeRowKey = "told" | "acted" | "sung" | "cam";
+export type HomeRow = { key: HomeRowKey; name: string; line: string; only?: boolean; tiles: HomeTile[]; cameras?: typeof CAUGHT_ON_CAM.cameras };
+const ROWS: ReadonlyArray<{ key: HomeRowKey; name: string; line: string; only?: boolean }> = [
+  { key: "told", name: "Stories", line: "A narrator tells it" },
+  { key: "acted", name: "Films", line: "Actors speak on camera" },
+  { key: "sung", name: "Music", line: "Sung" },
+  { key: "cam", name: CAUGHT_ON_CAM.name, line: CAUGHT_ON_CAM.line, only: true },
+];
+/** A way's tile picture. Where the way's art IS one of its own heroes' phone posters (Narrated Pictures', Acted Film's,
+ *  Anime's), that hero's poster: on a phone the very picture, on a wide screen its wide cut (a phone's 4:5 picture in a
+ *  wide card is a band across its middle). A way of one hero shows that hero's. Else the way's own art — the Narrated
+ *  Video's strip of three, its middle one on a phone (a -tall Story loop has captions burnt in: never a cover). */
+function coverOf(sh: HeroShelf): HomeTile["cover"] {
+  if (sh.heroes.length === 1) return { media: sh.heroes[0].media };
+  const own = sh.heroes.find((h) => sh.art.still === `/landing/film-still-${h.media}-tall.jpg`);
+  return own ? { media: own.media } : { art: sh.art };
+}
+/** The rows a page offers: from its shelves (heroShelves — so where pictures cannot move there is no Narrated Pictures,
+ *  and a page not offered the anime templates has no Anime) and its heroes; `lyric` and `cam` — the Lyric Video, Caught on
+ *  Cam — are an operator's. A row with nothing on it is not shown. */
+export function homeRows(shelves: ReadonlyArray<HeroShelf>, heroes: ReadonlyArray<FilmHero>, o: { lyric?: boolean; cam?: boolean } = {}): HomeRow[] {
+  const way = (k: "told" | "still" | "anime" | "acted", extra: Partial<HomeTile> = {}): HomeTile[] => {
+    const sh = shelves.find((s) => s.key === k);
+    return sh ? [{ key: k, way: k, name: sh.name, short: sh.short, line: sh.line, tag: sh.tag, rung: sh.rung, heroes: sh.heroes, cover: coverOf(sh), ...extra }] : [];
+  };
+  const one = (h: FilmHero | undefined, w: WayKey, short = h?.kick || "", cover?: HomeTile["cover"]): HomeTile[] =>
+    (h ? [{ key: h.id as HomeTileKey, way: w, name: h.name, short, line: h.kick, heroes: [h], cover: cover || { media: h.media } }] : []);
+  const hero = (id: string) => heroes.find((h) => h.id === id);
+  const tiles: Record<HomeRowKey, HomeTile[]> = {
+    told: [...way("told"), ...way("still"), ...way("anime", { only: true })],
+    acted: [...way("acted"), ...one(hero("kidstv"), "kids")],
+    // (the Music Video says the sung way's own short line — "Your artist sings"; the Lyric Video's poster has a loop and a
+    //  phone cut though it is no film hero)
+    sung: [...one(hero("musicvideo"), "sung", shelves.find((s) => s.key === "sung")?.short), ...one(hero("kidsmusicvideo"), "kids"),
+      ...(o.lyric ? one(LYRIC_HERO, "sung", LYRIC_HERO.kick, { media: LYRIC_HERO.media, loop: true, tall: true }) : [])],
+    cam: [],
+  };
+  return ROWS.map((r): HomeRow => ({ ...r, tiles: tiles[r.key], ...(r.key === "cam" ? { cameras: o.cam ? CAUGHT_ON_CAM.cameras : [] } : {}) }))
+    .filter((r) => r.tiles.length > 0 || !!r.cameras?.length);
+}
+/** The tile a guess lands on (idea-route.ts → IdeaRoute): its way's — where a way has a tile per hero (Kids: the cartoon,
+ *  in Films, and the sing-along, in Music; the Music row's), the one that opens its hero. A camera's is `cam:<key>`. */
+export function tileOfWay(rows: ReadonlyArray<HomeRow>, route: { way: WayKey; heroId: string | null; camera?: string }): string | null {
+  if (route.way === "cam") return rows.some((r) => !!r.cameras?.length) ? `cam:${route.camera || "house"}` : null;
+  const tiles = rows.flatMap((r) => r.tiles).filter((w) => w.way === route.way);
+  return (tiles.find((w) => w.heroes.some((h) => h.id === route.heroId)) || tiles[0])?.key ?? null;
+}
+/** The row a way stands in — a link's ?way= is brought into view and ringed there, never entered (the Kids' first tile,
+ *  the cartoon, is a Film). */
+export const rowOfWay = (rows: ReadonlyArray<HomeRow>, way: WayKey | null | undefined): HomeRowKey | null =>
+  (!way ? null : rows.find((r) => (way === "cam" ? !!r.cameras?.length : r.tiles.some((w) => w.way === way)))?.key ?? null);
+/** The hero a tile opens: its only one — or, of its genres, the one the guide box's idea names: where the guess falls in
+ *  this tile's way, its hero (the genre it names, preselected); where it went another way, the SAME genre in this one (a
+ *  Horror Story idea tapped as an Acted Film is a Horror Film; there is no Action Story — Thriller, as idea-route.ts says);
+ *  else the first (Drama; the first style). The builder's Genre card changes it with one tap. */
+export function heroOfTile(w: HomeTile, guess: { way: WayKey; heroId: string | null } | null): string {
+  const first = w.heroes[0]?.id || "";
+  if (w.heroes.length < 2 || !guess?.heroId) return first;
+  if (guess.way === w.way && w.heroes.some((h) => h.id === guess.heroId)) return guess.heroId;
+  const g = heroById(guess.heroId)?.tmpl;
+  const tmpl = g === "action" && w.way !== "acted" ? "thriller" : g;
+  return w.heroes.find((h) => h.tmpl === tmpl)?.id || first;
+}
+/** THE GENRE CARD's way (web.film.tsx): where a hero's genres are picked from, the first card of its builder — an anime
+ *  style's, the Anime way (its styles); a told story's, the Stories' (Narrated Pictures opens the very same heroes); an
+ *  acted film's, the Films'. None for the Kids Cartoon, a sung format, or anything that is one format alone. */
+export const genreWayOf = (h: FilmHero | null | undefined): "told" | "acted" | "anime" | null =>
+  (!h ? null : h.shelf === "anime" ? "anime" : h.told === "narrated" ? "told" : h.told === "acted" && !KIDS_HEROES.includes(h.id) ? "acted" : null);
+
+/** A tile's zoom key on the page: the hero it opens, on its rung — `still:<id>` for Narrated Pictures, the plain id
+ *  everywhere else — so the same story pops only where it was tapped. */
 export const posterKey = (id: string, rung?: StoryPictures): string => (rung === "still" ? `still:${id}` : id);

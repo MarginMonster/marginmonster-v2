@@ -404,14 +404,15 @@ test("the words read: 4.5:1 or better on the dark — the page, under its light,
   //  the card's cream at its deepest there)
   const HEAD = over(CARD_FOOT, CARD_TOP, 0.25);
   const accents: [string, string, number][] = [];
-  // (2026-11-26: the STILL shelf's — a cool steel blue, apart from the other three — is held to the same sums; and the
-  //  ANIME shelf's, a warm cherry pink, the same day — its plate's tint .08, which is what keeps the line at 4.7 over it)
-  for (const key of ["told", "still", "anime", "acted", "sung"]) {
+  // (2026-11-26: the STILL shelf's steel blue and the ANIME shelf's cherry pink were held to the same sums while they were
+  //  rows of their own; since that evening the rows are Stories · Films · Music · Caught on Cam — THE ROWS — and the
+  //  camera's red is the fourth: its plate's tint .07, which keeps the line under its name at 4.7)
+  for (const key of ["told", "acted", "sung", "cam"]) {
     const m = new RegExp(`\\.fs-shelf\\.is-${key}\\{--shelf:(#[0-9A-F]{6});--shelf-soft:rgba\\(([\\d,]+),(\\.\\d+)\\);\\}`).exec(before);
     assert.ok(m && hexOf(m[2]) === m[1], `${key}: the plate is the accent's own colour`);
     accents.push([key, m[1], Number(m[3])]);
   }
-  assert.deepEqual(accents, [["told", "#A8741B", 0.1], ["still", "#3E6A8E", 0.09], ["anime", "#CA3254", 0.08], ["acted", "#0C7A46", 0.09], ["sung", "#6B4BC8", 0.09]]);
+  assert.deepEqual(accents, [["told", "#A8741B", 0.1], ["acted", "#0C7A46", 0.09], ["sung", "#6B4BC8", 0.09], ["cam", "#B83A28", 0.07]]);
   // THE TAG'S PLATE is solid now — the card's top cream under the accent's own tint — so the ticket's
   // engraving never runs behind its letters, and it reads exactly as it did
   assert.ok(ticket.includes(".fs-shelf-tag{background:linear-gradient(var(--shelf-soft),var(--shelf-soft)),#FFFEFA;}"));
@@ -455,6 +456,15 @@ test("the words read: 4.5:1 or better on the dark — the page, under its light,
   assert.ok(told >= 3.4 && told < 4.5, `the Stories' tag is ${told.toFixed(2)}`);
   // (each shelf's icon is white on its accent: a picture, 3:1)
   for (const [key, accent] of accents) assert.ok(contrast("#FFFFFF", accent) >= 3, `${key}: the icon on ${accent}`);
+  // THE ROWS' OWN WORDS IN COLOUR (2026-11-26, that evening): Caught on Cam's "✦ Only on EasyMode", in its line, is the
+  // page's deeper red — it reads where a line of the engraving runs under it, which the camera's own red does not — and a
+  // tile's tag is white on its row's colour, the Stories' a deeper gold (white on the shelf's own gold is about 4:1)
+  const [, camRed, camSoft] = accents.find(([k]) => k === "cam")!;
+  const camLine = under(camRed, camSoft, 12 + 17 * 1.15 + 1).ground;
+  assert.ok(before.includes(".fs-shelf.is-cam .fs-only{color:#A3271D;}") && contrast("#A3271D", camLine) >= 4.5 && contrast(camRed, camLine) < 4.5, `${contrast("#A3271D", camLine).toFixed(2)}`);
+  assert.ok(before.includes(".fs-shelf.is-told .fs-fmt-tag{background:#8C6014;}") && before.includes("background:var(--shelf,#0C7A46);color:#fff;"));
+  for (const bg of ["#8C6014", "#0C7A46", "#6B4BC8", "#B83A28"]) assert.ok(contrast("#FFFFFF", bg) >= 4.5, bg);
+  assert.ok(contrast("#FFFFFF", "#A8741B") < 4.5, "why the Stories' tag is the deeper gold");
   // (not one of the dark's pale colours would read on the cream: that is why none is said for a shelf any more)
   for (const pale of ["#FFFDF7", "#D8CFBA", "#E7C879"]) assert.ok(contrast(pale, CARD_TOP) < 1.7, pale);
 
@@ -634,20 +644,20 @@ test("each shelf is ONE row, swiped sideways, in both themes: 2.3 posters on a p
   // the tab order — and the element that was the grid is the row (no markup changed)
   // (2026-11-25: a poster says its movie CATEGORY — `card`, "Comedy" — and a screen reader is told its whole
   //  name, "Comedy Film", with its line: two shelves now carry the same word)
-  // (2026-11-26: the STILL shelf is in the same list — the told heroes again, each poster opening its hero on its
-  //  shelf's rung, its zoom key its shelf's (posterKey), chosen only while that rung is, "Still pictures" its note)
+  // (2026-11-26, that evening — THE ROWS: a row is ONE of the page's shelves again — Stories, Films, Music, Caught on Cam
+  //  — and its posters are FORMAT tiles: each its zoom key (the hero it opens on its rung: posterKey), its name, and its
+  //  one short line under it — the rows' rule gives every tile of a row the same height)
   for (const k of [
-    // (2026-11-26, THE WAYS: one way's row at a time — the owner's "A")
-    "{shelves.filter((sh) => sh.key !== \"still\").map((sh) => (",
-    "<section key={sh.key} className={`fs-shelf is-${sh.key}`} aria-labelledby={`fs-shelf-${sh.key}`}>",
-    "<div className={`fs-fmtgrid${anim === \"in\" ? \" throw\" : \"\"}`} role=\"tablist\" aria-label={t(sh.name)}>",
-    "{sh.heroes.map((h) => (",
-    "<button type=\"button\" role=\"tab\" key={h.id} className={`fs-fmt${zoomKey === posterKey(h.id, sh.rung) ? \" zoom\" : \"\"}${h.told === \"narrated\" ? \" is-told\" : \"\"}${guessKey === posterKey(h.id, sh.rung) ? \" is-guess\" : \"\"}`}\n                aria-selected={heroId === h.id && (!sh.rung || pictures === sh.rung)} aria-label={[t(h.name), h.kick ? t(h.kick) : \"\", sh.rung === \"still\" ? t(\"Still pictures\") : h.meta ? t(h.meta) : \"\"].filter(Boolean).join(\" · \")} onClick={() => enterFormat(h.id, sh.rung)}>",
-    "<span className=\"fs-fmt-label\"><b>{t(h.card)}</b></span>",
+    "{rows.map((row) => (",
+    "<section key={row.key} id={`fs-row-${row.key}`} className={`fs-shelf is-${row.key}${ringRow === row.key ? \" is-ring\" : \"\"}`} aria-labelledby={`fs-shelf-${row.key}`}>",
+    "<div className={`fs-fmtgrid${anim === \"in\" ? \" throw\" : \"\"}`}>",
+    "{row.tiles.map((w) => {",
+    "const zk = posterKey(tileHero(w), w.rung);",
+    "<button type=\"button\" key={w.key} data-tile={w.key} className={`fs-fmt fs-tile is-${w.key}${zoomKey === zk ? \" zoom\" : \"\"}${guessTile === w.key ? \" is-guess\" : \"\"}`}",
+    "<span className=\"fs-fmt-label\">{w.only ? <span className=\"fs-fmt-kick is-only\">✦ {t(\"Only on EasyMode\")}</span> : null}<b>{t(w.name)}</b></span>",
   ]) assert.equal(count(ui, k), 1, k);
-  // (…and nothing under a poster: the way's card says how it is told, once — "This has become repetitive", the owner)
-  assert.equal(count(ui, "className=\"fs-fmt-sub\""), 0);
-  const shelvesJsx = ui.slice(ui.indexOf("{shelves.filter((sh) => sh.key !== \"still\").map((sh) => ("), ui.indexOf("{entered && ("));
+  assert.equal(count(ui, "className=\"fs-fmt-sub\""), 1, "a tile's one short line");
+  const shelvesJsx = ui.slice(ui.indexOf("{rows.map((row) => ("), ui.indexOf("{entered && ("));
   // (2026-11-25: a wide screen's ARROWS sit beside a row that runs on — FS_SHELF_GO. They are for a mouse only:
   //  plain marks, hidden from a screen reader and out of the Tab order, and what moves a row is a CLICK on one —
   //  a function outside this markup. Nothing here moves a row by itself, and no poster leaves the Tab order.)
@@ -935,8 +945,8 @@ test("a shelf is a TICKET in both themes: the rosette engraved in its paper, a p
   assert.ok(!/fs-theater|data-theme/.test(ticket.replace(/\/\*[\s\S]*?\*\//g, "")));
   // ONE element was added for it — the engraving's layer, a picture only — the first thing in a shelf; the
   // shelf's heading, its row and every poster are the markup they were (the rows' test pins them)
-  // (…and the same layer opens Caught on Cam's row of cameras, a shelf too, since 2026-11-26: two in the markup, one per kind of row)
-  assert.equal(count(ui, "fs-shelf-wm"), 2);
+  // (…and since that evening's ROWS — Caught on Cam's cameras among them — every row is drawn by the one map: one in the markup)
+  assert.equal(count(ui, "fs-shelf-wm"), 1);
   assert.ok(ui.includes("<span className=\"fs-shelf-wm\" aria-hidden=\"true\" />\n              <header className=\"fs-shelf-h\">"));
   const body = (sel: string, media = "") => { const r = K.filter((x) => x.sel === sel && x.media === media); assert.equal(r.length, 1, `${media} ${sel}`); return r[0].body; };
   const MASKED = "@supports ((-webkit-mask-image:none) or (mask-image:none))";
@@ -957,7 +967,7 @@ test("a shelf is a TICKET in both themes: the rosette engraved in its paper, a p
   //     reading direction, so the lip is always the right-hand one)
   assert.equal(body(".fs-shelf-wm::after", MASKED), "z-index:-1;margin:1px -1px 0 0;background:#fff;opacity:.9;");
   assert.equal(body("[dir=rtl] .fs-shelf-wm::after", MASKED), "margin:1px 0 0 1px;");
-  for (const k of [".fs-shelf.is-told{--shelf:#A8741B;", ".fs-shelf.is-still{--shelf:#3E6A8E;", ".fs-shelf.is-anime{--shelf:#CA3254;", ".fs-shelf.is-acted{--shelf:#0C7A46;", ".fs-shelf.is-sung{--shelf:#6B4BC8;"]) assert.ok(before.includes(k), k);
+  for (const k of [".fs-shelf.is-told{--shelf:#A8741B;", ".fs-shelf.is-acted{--shelf:#0C7A46;", ".fs-shelf.is-sung{--shelf:#6B4BC8;", ".fs-shelf.is-cam{--shelf:#B83A28;"]) assert.ok(before.includes(k), k);
   //     LARGE — taller than the card it is in (140% of the card's height; 160% on a wide screen, where a card
   //     is four posters long) — and BLEEDING OFF A CORNER: its box is put AT the card's top far corner and
   //     moved half its own size out and up, so its hub is the corner itself and three quarters of it lie
