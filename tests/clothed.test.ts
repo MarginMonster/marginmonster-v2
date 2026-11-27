@@ -259,7 +259,7 @@ test("FANTASY KEEPS ITS OWN WORLD: everybody clothed, but never told its places 
   const staged = st.stagedTwoShot({ staging: "walk", setting: "a long timber hall", personA: "Wren", personB: "Oda", act: "Wren lifts the lantern", consistency: "Keep them distinct.", comp: "wide cinematic landscape composition", ownWorld: true });
   assert.ok(staged.includes(sp.DRESSED) && !staged.includes("TODAY"), "the staged master of a fantasy");
   assert.ok(read("app", "lib", "image-generation.server.ts").includes("comp, ownWorld: opts.ownWorld }) : \"\";"));
-  assert.ok(read("app", "lib", "film-dialogue.server.ts").includes("look: threat.look } : null, ownWorld: tmpl.ownWorld }));"));
+  assert.ok(read("app", "lib", "film-dialogue.server.ts").includes("look: threat.look, ...(plain ? { plain: true } : {}) } : null, ownWorld: tmpl.ownWorld }));"));
 });
 
 test("FOUND FOOTAGE: a take's scene, each moment's, and a house camera's — dressed words, looked at, drawn again clothes first, edited", () => {
@@ -285,14 +285,14 @@ test("FOUND FOOTAGE: a take's scene, each moment's, and a house camera's — dre
 test("ACTED FILMS: the thing's portrait, a sighting and the REVEAL all go through the one look — clothed, or dropped for the next editor", () => {
   const eng = read("app", "lib", "film-dialogue.server.ts");
   // one way of doing it: the local name is a thin call of keepClothed (no look, no edit of its own), and the job says it is at work
-  const fn = eng.slice(eng.indexOf("const clothedOrDropped = async (rel: string, ar: string): Promise<string | null> => {"), eng.indexOf("const sightOn = staged && horror && !cartoon && isTwoHander;"));
+  const fn = eng.slice(eng.indexOf("const clothedOrDropped = async (rel: string, ar: string): Promise<string | null> => {"), eng.indexOf("const sightOn = staged && (horror || plain) && !cartoon && isTwoHander;"));
   assert.ok(fn.includes("const kept = await keepClothed({ url: rel, ref: (u) => abs(u) || u, edit: (u, bare) => clothedEditOn(u, bare, ar), still: \"drop\", log: (l) => console.log(`[testmovie] ${l}`) });\n    await say(alive);\n    return kept;"));
   assert.ok(!eng.includes("unclothedPrompt()") && !eng.includes("clothedEdit(seen.who)"), "no second copy of the look");
   // the thing's portrait (a cast line, or the first figure its words put in view — threatFromWords) and the sighting
   assert.ok(eng.includes("img = (await clothedOrDropped(drawn, PORTRAIT_ASPECT)) || \"\";"));
   assert.ok(eng.includes("pic = drawn ? (await clothedOrDropped(drawn, aspect)) || \"\" : \"\";"));
   // THE REVEAL: looked at before it is used; dropped → the next editor of its ladder, else the fallback it always had
-  const reveal = eng.indexOf("if (!seedAbs && lastHorror && master?.url && stagingOf(master)) {");
+  const reveal = eng.indexOf("if (!seedAbs && lastReveal && master?.url && stagingOf(master)) {");
   const look = eng.indexOf("seedAbs = drawn ? abs(await clothedOrDropped(drawn, aspect)) : undefined;", reveal);
   assert.ok(reveal > 0 && look > reveal && look < eng.indexOf("if (seedAbs) { revealed = true;", reveal));
   assert.ok(eng.includes("if (!ask || seedAbs) break;"), "a dropped reveal is drawn by the next editor");

@@ -59,7 +59,7 @@ import { tellerVisual } from "./character-series";
 import { planShots, shotInWords, shotListBrief } from "./story-shots";
 import { dealFresh, freshBrief, freshKeys, usedBefore, type Fresh, type Used } from "./story-variety";
 // (2026-11-24) an acted film: every shot is something that HAPPENS, and the camera is dealt, not written
-import { AGES_FIT_RELATION, AGE_RULES, CAMERA_IS_DEALT, DONE_STAYS_DONE, HEARD_BEFORE_SAID, LINE_IN_EVERY_SHOT, LINE_IN_EVERY_SHOT_BUT_THE_LAST, ONE_TAKE, SEEN_AT_THE_END, SEEN_FROM_THE_FIRST, SEEN_WHEN_SEEN, TWO_ALWAYS, ageAsk, ageOf, castAgeProblem, eventIdeas, happensBrief, ownTitle, repairAges, storyThreat, takeAgeFix, titleAsk, wordless, SOME_SHOTS_SILENT } from "./acted-staging";
+import { AGES_FIT_RELATION, AGE_RULES, CAMERA_IS_DEALT, DONE_STAYS_DONE, HEARD_BEFORE_SAID, LINE_IN_EVERY_SHOT, LINE_IN_EVERY_SHOT_BUT_THE_LAST, ONE_TAKE, SEEN_AT_THE_END, SEEN_WHEN_SEEN, TWO_ALWAYS, ageAsk, ageOf, castAgeProblem, eventIdeas, happensBrief, ownTitle, repairAges, storyThreat, takeAgeFix, titleAsk, wordless, SOME_SHOTS_SILENT, FIGURE_AT_THE_END, FIGURE_SEEN, figureGenre } from "./acted-staging";
 // (2026-11-25) films up to five minutes: one limit for every story format, and a long script written in parts
 import { clampShots, maxShots, minShots, partBrief, planBrief, planSchema, scriptParts, takePlan, type FilmPlan, type FilmWay } from "./film-length";
 
@@ -905,9 +905,11 @@ export async function previewFilmTreatment(opts: {
       // (a horror film ends on something SEEN — said last, so it is read as the exception to the line above)
       // (…the FILM does: only the scene that ends a long one is told how it ends)
       (tmpl.key === "horror" ? `${SEEN_WHEN_SEEN}\n${ends ? `${SEEN_AT_THE_END}\n` : ""}` : "") +
-      // (…and in a thriller or a mystery, whoever is seen is there from a place's first shot — 2026-11-26: only a horror
-      //  film can draw somebody into a place later, so a culprit who walked in at the end was never drawn)
-      (tmpl.key === "thriller" || tmpl.key === "mystery" ? `${SEEN_FROM_THE_FIRST}\n` : "")
+      // (…and EVERY OTHER ACTED GENRE has the Horror Film's machinery for ONE person, its FIGURE — glimpsed where the two
+      //  see them, and the film may end on them: acted-staging.ts → FIGURE_SEEN, FIGURE_AT_THE_END. It replaces the
+      //  thriller's and mystery's SEEN_FROM_THE_FIRST of the same morning: anybody ELSE seen is still there from a place's
+      //  first shot. The owner, 2026-11-26: "a clone of the best section we have with genre changing prompt suggestions".)
+      (figureGenre(tmpl.key) ? `${FIGURE_SEEN}\n${ends ? `${FIGURE_AT_THE_END}\n` : ""}` : "")
     : tmpl.sung
     ? `\nReturn EXACTLY ${scenes} scenes. Each scene = a VISUAL (${tmpl.sceneHint}, featuring the artist/cast performing) and a CAPTION that is the SUNG LYRIC LINE for that beat — one short, catchy, singable line (<=10 words) that rhymes and flows with the others. Read in order the captions ARE the song's lyrics: give the whole thing a clear, repeating, sing-along HOOK${tmpl.childSafe ? " a toddler can sing along to" : ""}, like a real ${tmpl.childSafe ? "preschool nursery sing-along" : "pop song"}.\n${VISUAL_STANDS_ALONE}\n`
     : tmpl.narrated
@@ -990,6 +992,8 @@ export async function previewFilmTreatment(opts: {
       `\n${AGES_FIT_RELATION}` +
       genderLine +
       planBrief(way, { sizes: partSizes, ending, placesAsk: narrated ? PLACES_ARE : undefined, ...(lookWords ? { placeExample: whereEx } : {}) }) +
+      // (an acted genre's FIGURE is chosen with the cast, by the plan — acted-staging.ts → FIGURE_SEEN)
+      (!narrated && figureGenre(tmpl.key) ? `${FIGURE_SEEN}\n` : "") +
       (lookWords ? `Every place in "places" says this film's light and time of day in its own words — ${lookWords}.\n` : "") +
       freshLine +
       (tmpl.key === "horror" ? `${WHAT_FRIGHTENS}\n` : "") +
@@ -1010,11 +1014,14 @@ export async function previewFilmTreatment(opts: {
   //  "cast" entry, and the film draws its one picture from it: acted-staging.ts → storyThreat. Handed on as one of
   //  "THE TWO", every part would be told to put it in every shot: the werewolf beside the boy from the first shot,
   //  2026-11-24. So it is said apart.)
-  const thing = !narrated && one!.plan.cast.length > 2 ? storyThreat({ cast: one!.plan.cast }) : null;
+  // (…and in every other acted genre, its FIGURE — acted-staging.ts → FIGURE_SEEN: the third entry, after the two, said
+  //  apart the same way; never a horror film's, whose thing is read as it always was)
+  const figurePlan = !narrated && figureGenre(tmpl.key) && one!.plan.cast.length > 2;
+  const thing = !narrated && one!.plan.cast.length > 2 ? (figurePlan ? { entry: one!.plan.cast[2] } : storyThreat({ cast: one!.plan.cast })) : null;
   const two = thing ? one!.plan.cast.filter((e) => e !== thing.entry).join("; ") : chosen;
   const partCast = narrated
     ? `\nTHE CAST of the whole story is already chosen — ${chosen}. Return them as "cast" exactly as they are here. Call each of them by that exact name in every VISUAL they are in, never rename them, and give nobody else a name.${noSlop}${chosenThreat(threatNames, false)}`
-    : `\nTHE TWO who carry the whole film are already chosen — ${two}. Return them as "cast" exactly as they are here.${thing ? ` After them "cast" has the film's own threat, also exactly as it is here: ${thing.entry} — it is NOT one of the two, it never speaks, and it is in a VISUAL only where the rules below put it.` : ""} Every shot's VISUAL has these same two in it, called by these exact names — their looks are said HERE, once, and never repeated in a VISUAL.${noSlop}`;
+    : `\nTHE TWO who carry the whole film are already chosen — ${two}. Return them as "cast" exactly as they are here.${thing ? figurePlan ? ` After them "cast" has the film's own figure, also exactly as it is here: ${thing.entry} — they are NOT one of the two, they never speak, and they are in a VISUAL only where the rules below put them.` : ` After them "cast" has the film's own threat, also exactly as it is here: ${thing.entry} — it is NOT one of the two, it never speaks, and it is in a VISUAL only where the rules below put it.` : ""} Every shot's VISUAL has these same two in it, called by these exact names — their looks are said HERE, once, and never repeated in a VISUAL.${noSlop}`;
   // (a creature the maker chose as an acted film's threat is SEEN in the film's last shot — premise-rules.ts →
   //  chosenThreat — so only the scene that ends the film is told so; before it, it is heard and glimpsed)
   const partThreat = !actedThreat ? "" : ends ? threatBrief

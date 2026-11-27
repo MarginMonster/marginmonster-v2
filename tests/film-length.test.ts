@@ -492,9 +492,11 @@ test("A LONG ACTED FILM'S OWN THREAT, cast by its plan, is handed to each part a
   // three people, no threat among them: nothing is taken out (the text is then as it always was)
   assert.equal(storyThreat({ cast: [plan[0], plan[1], "Mara, their late mother's neighbour in her seventies"] }), null);
   const eng = engine();
-  assert.ok(eng.includes("const thing = !narrated && one!.plan.cast.length > 2 ? storyThreat({ cast: one!.plan.cast }) : null;"));
+  // (…and since 2026-11-26 every other acted genre's FIGURE — the third entry, said apart the same way: acted-figure.test.ts)
+  assert.ok(eng.includes("const figurePlan = !narrated && figureGenre(tmpl.key) && one!.plan.cast.length > 2;"));
+  assert.ok(eng.includes("const thing = !narrated && one!.plan.cast.length > 2 ? (figurePlan ? { entry: one!.plan.cast[2] } : storyThreat({ cast: one!.plan.cast })) : null;"));
   assert.ok(eng.includes("const two = thing ? one!.plan.cast.filter((e) => e !== thing.entry).join(\"; \") : chosen;"));
-  assert.ok(eng.includes("`\\nTHE TWO who carry the whole film are already chosen — ${two}. Return them as \"cast\" exactly as they are here.${thing ? ` After them \"cast\" has the film's own threat, also exactly as it is here: ${thing.entry} — it is NOT one of the two, it never speaks, and it is in a VISUAL only where the rules below put it.` : \"\"} Every shot's VISUAL has these same two in it,"));
+  assert.ok(eng.includes("`\\nTHE TWO who carry the whole film are already chosen — ${two}. Return them as \"cast\" exactly as they are here.${thing ? figurePlan ? ` After them \"cast\" has the film's own figure, also exactly as it is here: ${thing.entry} — they are NOT one of the two, they never speak, and they are in a VISUAL only where the rules below put them.` : ` After them \"cast\" has the film's own threat, also exactly as it is here: ${thing.entry} — it is NOT one of the two, it never speaks, and it is in a VISUAL only where the rules below put it.` : \"\"} Every shot's VISUAL has these same two in it,"));
 });
 
 test("A GENRE WHOSE WORLD IS ITS OWN is never told today's real world — not in a long film's plan, nor in any of its parts", () => {

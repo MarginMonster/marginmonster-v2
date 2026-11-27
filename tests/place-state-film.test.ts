@@ -21,7 +21,7 @@ test("what each scene does to its place is read off its own words, for a staged 
 test("the picture of a change: an edit of the shot's OWN start picture, looked at, checkpointed and read back after a restart", () => {
   // (never on the reveal's shot, drawn or not — review of S12: one whose thing would not come is `implied`, and ending it
   //  on the zipper drawn up opens the door on nothing)
-  const at = eng.indexOf("const placeChange = placeOn && !revealed && !lastHorror && !approvedFrames[i] ? changeAt(i) : null;");
+  const at = eng.indexOf("const placeChange = placeOn && !revealed && !lastReveal && !approvedFrames[i] ? changeAt(i) : null;");
   assert.ok(at > loopAt && at > eng.indexOf("if (!seedAbs) throw new Error(`[testmovie] scene ${i + 1}: no seed frame`);", loopAt), "after the shot's seed is settled — whatever seeds it");
   assert.ok(eng.includes("const changing = !!placeChange && changesState(placeBefore, placeChange);"), "only what is not already so");
   // nano-banana-pro, then Seedream 4.5, on the shot's own start picture (flux-kontext-pro left the door open: not asked)
@@ -85,8 +85,9 @@ test("the place as it now is: every later picture there grows out of the change,
   assert.ok(eng.includes("if (placeLines) playRules = { ...playRules, steady: `${playRules.steady} ${placeLines}` };"));
   assert.ok(eng.indexOf("if (placeLines) playRules") < eng.indexOf("const fitted = fitClipPrompt({ voice: silent ? NOBODY_SPEAKS : voiceLine, voiceDesc: silent ? \"\" : voiceDesc, ...playRules });"), "said before the prompt is fitted");
   // the reveal at the cloth, the sighting as a shadow — while the tent is shut
-  assert.ok(eng.includes("const cloth = placeOn && (clothPlace(whereAt[i], eventAt(i)) || shutCloth(placeBefore));"));
-  assert.ok(eng.includes("const sightShadow = placeOn && shutCloth(placeBefore);") && eng.includes("const ref = theThing && !sightShadow ? thingRef() : null;"));
+  // (a horror film's — a genre's FIGURE is a person seen plainly, never a shadow on cloth: `plain`, 2026-11-26)
+  assert.ok(eng.includes("const cloth = !plain && placeOn && (clothPlace(whereAt[i], eventAt(i)) || shutCloth(placeBefore));"));
+  assert.ok(eng.includes("const sightShadow = !plain && placeOn && shutCloth(placeBefore);") &&eng.includes("const ref = theThing && !sightShadow ? thingRef() : null;"));
   // the piece says which shots changed their place
   assert.ok(eng.includes("...(Object.keys(changes).length ? { changes: Object.keys(changes).map(Number).sort((a, b) => a - b) } : {}),"));
 });

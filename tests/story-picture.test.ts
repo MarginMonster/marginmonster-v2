@@ -162,7 +162,7 @@ test("a horror cast does not grin: the format's own line reaches the narrated pi
   assert.ok(read("app", "lib", "narrated-story.server.ts").includes("Style: ${tmpl.sceneHint}.${tmpl.faceMood ? ` ${tmpl.faceMood}` : \"\"}${cam ? ` ${cameraLine(cam, aspect)}` : \"\"} ${[...notes, ...(withPlace ? placeNotes : [])].join(\" \")}"));
   // (…the film's THING by its own picture rides after it since 2026-11-25 — tests/acted-sighting.test.ts — and the
   //  genre's own world after that: tests/clothed.test.ts)
-  assert.ok(read("app", "lib", "film-dialogue.server.ts").includes("action, mood: tmpl.faceMood, setting: nightSetting(cleanSetting(where), opts.topic, action), style: twoStyle, aspect, thing: thingIn && threat ? { url: abs(threat.img) || threat.img, name: threat.name, look: threat.look } : null, ownWorld: tmpl.ownWorld }));"));
+  assert.ok(read("app", "lib", "film-dialogue.server.ts").includes("action, mood: tmpl.faceMood, setting: nightSetting(cleanSetting(where), opts.topic, action), style: twoStyle, aspect, thing: thingIn && threat ? { url: abs(threat.img) || threat.img, name: threat.name, look: threat.look, ...(plain ? { plain: true } : {}) } : null, ownWorld: tmpl.ownWorld }));"));
   const img = read("app", "lib", "image-generation.server.ts");
   assert.ok(img.includes("const mood = (opts.mood || \"\").replace(/\\s+/g, \" \").trim().slice(0, 160);"));
   assert.ok(img.includes("${moment}${mood ? ` ${mood}` : \"\"} ${consistencyNote}"));

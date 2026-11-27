@@ -31,7 +31,7 @@ test("the two-shot is told what the scene shows, inside the same framing", () =>
   //  thing is added by the reveal — acted-staging.ts → revealPicture)
   // (…with the story's own description of anybody else it names: the woman in the lake came out as a swimmer)
   // (…and, since 2026-11-25, whether the film's THING is in view there, so its own picture rides along — acted-sighting.test.ts)
-  assert.ok(eng.includes("i === 0 ? abs(approvedFrames[0]) : undefined, lastHorror && tr === \"location\" ? undefined : withLooks(scene.visual), thingHere)"), "the engine passes the scene's picture");
+  assert.ok(eng.includes("i === 0 ? abs(approvedFrames[0]) : undefined, lastReveal && tr === \"location\" ? undefined : withLooks(scene.visual), thingHere)"), "the engine passes the scene's picture");
 });
 
 test("a film's loudness is read from ffmpeg's own report", () => {
