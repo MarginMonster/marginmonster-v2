@@ -48,7 +48,7 @@ test("THE FOUR WAYS ENTER DIRECTLY: Narrated Video, Narrated Pictures, Acted Fil
   }
   // the tap: the tile's hero — its genre already picked — on the tile's rung, into its builder (enterFormat)
   assert.equal(count(ui, "onClick={() => openTile(w)}"), 1);
-  assert.ok(ui.includes("const openTile = (w: HomeTile) => { setRingRow(null); enterFormat(heroOfTile(w, tileGuess), w.rung); };"));
+  assert.ok(ui.includes("const openTile = (w: HomeTile) => { setRingRow(null); enterFormat(tileHero(w), w.rung); };"));
   // and NO row of genre posters renders for them, nor for anything else: the home's markup never lists a way's heroes
   const home = between(ui, "{rows.map((row) => (", "{entered && (");
   assert.ok(!/heroes\.map|h\.card/.test(home), "no genre on the home");
@@ -237,7 +237,7 @@ test("RUN: with a script or a storyboard on the page, another genre ASKS FIRST �
     const calls: [string, unknown][] = [];
     const rec = (name: string) => (v?: unknown) => { calls.push([name, v]); };
     const orArm = run<(key: string, wipes: boolean, go: () => void) => void>(orArmSrc, "orArm", { storyHasWork, wipeArm, setWipeArm: rec("arm") });
-    const pickGenre = run<(id: string) => void>(pickSrc, "pickGenre", { heroId, orArm, setWipeArm: rec("arm"), setStoryCard: rec("storyCard"), switchGenre: rec("switch") });
+    const pickGenre = run<(id: string) => void>(pickSrc, "pickGenre", { heroId, writing: false, seedBusy: false, orArm, setWipeArm: rec("arm"), setStoryCard: rec("storyCard"), switchGenre: rec("switch") });
     return { pickGenre, calls };
   };
   // a script on the page, nothing armed: the first tap only ARMS — nothing is thrown away

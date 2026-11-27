@@ -652,7 +652,7 @@ test("each shelf is ONE row, swiped sideways, in both themes: 2.3 posters on a p
     "<section key={row.key} id={`fs-row-${row.key}`} className={`fs-shelf is-${row.key}${ringRow === row.key ? \" is-ring\" : \"\"}`} aria-labelledby={`fs-shelf-${row.key}`}>",
     "<div className={`fs-fmtgrid${anim === \"in\" ? \" throw\" : \"\"}`}>",
     "{row.tiles.map((w) => {",
-    "const zk = posterKey(heroOfTile(w, tileGuess), w.rung);",
+    "const zk = posterKey(tileHero(w), w.rung);",
     "<button type=\"button\" key={w.key} data-tile={w.key} className={`fs-fmt fs-tile is-${w.key}${zoomKey === zk ? \" zoom\" : \"\"}${guessTile === w.key ? \" is-guess\" : \"\"}`}",
     "<span className=\"fs-fmt-label\">{w.only ? <span className=\"fs-fmt-kick is-only\">✦ {t(\"Only on EasyMode\")}</span> : null}<b>{t(w.name)}</b></span>",
   ]) assert.equal(count(ui, k), 1, k);

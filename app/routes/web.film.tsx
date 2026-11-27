@@ -2807,6 +2807,8 @@ export default function FilmStudio() {
   /** A genre's tile. With a script or a storyboard on the page it ASKS FIRST, the page's own "tap again" (orArm — as a new
    *  length does): the first tap says what it would do, the second does it. The genre already picked closes the panel. */
   const pickGenre = (id: string) => {
+    // (never while a script or its pictures are being made: the old genre's would land under the new one)
+    if (writing || seedBusy) return;
     if (id === heroId) { setWipeArm(""); setStoryCard(null); return; }
     orArm(`genre:${id}`, true, () => switchGenre(id));
   };
@@ -2990,7 +2992,10 @@ export default function FilmStudio() {
   // (…and a tile tapped with an idea in the box opens THAT genre: the guess where it falls in the tile's way, else the same
   //  genre in this one — film-heroes.ts → heroOfTile)
   const tileGuess = idea ? guess : null;
-  const openTile = (w: HomeTile) => { setRingRow(null); enterFormat(heroOfTile(w, tileGuess), w.rung); };
+  // (a tile whose builder already holds the member's own genre re-opens THAT one — their pick and their work kept, never
+  //  replaced by the first genre or a guess: review of the genre step, 2026-11-26)
+  const tileHero = (w: HomeTile): string => (!lyricOn && w.heroes.some((h) => h.id === heroId) ? heroId : heroOfTile(w, tileGuess));
+  const openTile = (w: HomeTile) => { setRingRow(null); enterFormat(tileHero(w), w.rung); };
   const starters: HeroStarter[] = dealHeroStarters(ways, d.day);
   const showGuess = () => {
     setRingRow(null);
@@ -4414,7 +4419,7 @@ export default function FilmStudio() {
                 under it; a screen reader hears its whole line. A tile of genres opens the one the guide box's idea names, else
                 its first (heroOfTile) — and its zoom key is that hero on the tile's rung (posterKey). */}
             {row.tiles.map((w) => {
-              const zk = posterKey(heroOfTile(w, tileGuess), w.rung);
+              const zk = posterKey(tileHero(w), w.rung);
               return (
               <button type="button" key={w.key} data-tile={w.key} className={`fs-fmt fs-tile is-${w.key}${zoomKey === zk ? " zoom" : ""}${guessTile === w.key ? " is-guess" : ""}`}
                 aria-label={[t(w.name), t(w.line), w.tag ? t(w.tag) : "", w.only ? t("Only on EasyMode") : ""].filter(Boolean).join(" · ")} onClick={() => openTile(w)}>

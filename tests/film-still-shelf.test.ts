@@ -117,8 +117,8 @@ test("the page: Narrated Pictures is a TILE of the Stories row — it opens its 
   // it opens the very Stories Narrated Video does — each on the STILL rung: its zoom key says which tile it was
   assert.deepEqual(still.heroes, stories.tiles[0].heroes);
   assert.equal(posterKey(still.heroes[0].id, still.rung), "still:shortstory");
-  assert.ok(page.includes("const openTile = (w: HomeTile) => { setRingRow(null); enterFormat(heroOfTile(w, tileGuess), w.rung); };"));
-  assert.ok(block.includes("const zk = posterKey(heroOfTile(w, tileGuess), w.rung);"));
+  assert.ok(page.includes("const openTile = (w: HomeTile) => { setRingRow(null); enterFormat(tileHero(w), w.rung); };"));
+  assert.ok(block.includes("const zk = posterKey(tileHero(w), w.rung);"));
   // no moving loop: its picture is the fantasy story's poster, which has none — LoopCover has no <video> for it at all
   assert.deepEqual(still.cover, { media: "fantasystory" });
   assert.ok(!LOOP_MEDIA.includes("fantasystory"));

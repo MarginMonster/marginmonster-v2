@@ -104,7 +104,7 @@ test("the home shows a tile per FORMAT, and opening one sets the format AND how 
   assert.ok(grid.includes("aria-label={[t(w.name), t(w.line), w.tag ? t(w.tag) : \"\", w.only ? t(\"Only on EasyMode\") : \"\"].filter(Boolean).join(\" · \")}"));
   assert.ok(!grid.includes("h.card") && !ui.includes("{sh.heroes.map((h) => ("), "no genre poster on the home");
   // one tap: the tile's hero — the genre the guide box's idea names, else its first — on the tile's rung
-  assert.ok(ui.includes("const openTile = (w: HomeTile) => { setRingRow(null); enterFormat(heroOfTile(w, tileGuess), w.rung); };"));
+  assert.ok(ui.includes("const openTile = (w: HomeTile) => { setRingRow(null); enterFormat(tileHero(w), w.rung); };"));
   assert.ok(!ui.includes("{d.templates.map((x) => {\n              const m = FMT["), "the grid is no longer one poster per template");
   const sw = ui.slice(ui.indexOf("const switchHero = (id: string) => {"), ui.indexOf("const switchHero = (id: string) => {") + 1100);
   assert.ok(sw.includes("const openNarrated = !!nt?.dialogue && h.told === \"narrated\" && (d.narratable || []).includes(h.tmpl);"));
