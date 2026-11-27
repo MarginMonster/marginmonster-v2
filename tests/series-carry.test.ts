@@ -361,14 +361,15 @@ test("wiring: Part N casts the carried people, draws a shared place from its pic
   // THE SAME THING — S7's own cast-threat path, after the maker's own
   assert.ok(eng.includes("const chosen = castThreat(castActors) || carriedThing;"));
   assert.ok(eng.includes("const t = carriedThreat(carry.threat, own);"));
-  assert.ok(eng.includes("if (castActors.some((c) => !!c.faceUrl && isCreature(c) && !talks(c.name))) return null;"), "a creature the maker cast wins");
+  // (in a horror film — a genre's FIGURE is never a creature guessed from the cast: `plain`, 2026-11-26)
+  assert.ok(eng.includes("if (!plain && castActors.some((c) => !!c.faceUrl && isCreature(c) && !talks(c.name))) return null;"), "a creature the maker cast wins");
   // IT OPENS WHERE IT ENDED — only a first shot not made yet, no frame the maker approved, the film's own shape, read sides
   assert.ok(eng.includes("if (carry?.lastFrame && isTwoHander && !clips.length && !approvedFrames[0] && opensWhereItEnded({ visual: scenesArr[0]?.visual, where: whereAt[0] }, carry)) {"));
   assert.ok(eng.includes("if (shape && Math.abs(shape - AW / AH) / (AW / AH) < 0.03) {"));
   assert.ok(eng.includes("openFrame = (await removeLetterbox(carry.lastFrame)) || \"\";"), "letterbox removed");
   const seed = eng.indexOf("let seedAbs = abs(approvedFrames[i]);", loop);
   const opened = eng.indexOf("const opened = !seedAbs && i === 0 && !!openFrame && !!master?.url && openLeft !== null && openLeft === master.aOnLeft;", loop);
-  assert.ok(opened > seed && opened < eng.indexOf("if (!seedAbs && lastHorror && master?.url && stagingOf(master)) {", loop), "before every other seed");
+  assert.ok(opened > seed && opened < eng.indexOf("if (!seedAbs && lastReveal && master?.url && stagingOf(master)) {", loop), "before every other seed");
   assert.ok(eng.includes("if (opened) { seedAbs = abs(openFrame);"));
   assert.ok(eng.indexOf("if (opened) chainStaging = null;") > eng.indexOf("if (!chained) chainStaging = approvedFrames[i] || !master?.url || (tr === \"angle\" && !sighted) ? null : stagingOf(master);"), "the last frame is no staged picture");
 });

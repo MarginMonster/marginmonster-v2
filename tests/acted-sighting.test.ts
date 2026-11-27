@@ -281,12 +281,13 @@ test("the engine: the thing's one picture before the first shot, the sighting's 
   const loop = eng.indexOf("for (let i = clips.length; i < treatment.scenes.length; i++) {");
   // THE THING, found or drawn ONCE, before the first shot — the maker's cast threat first; a horror film's chosen creature
   // no longer needs the last scene to name it; else the script's own, whose portrait is drawn, looked at and kept
-  const thingAt = eng.indexOf("const sightOn = staged && horror && !cartoon && isTwoHander;");
+  // (…and since 2026-11-26 every acted genre's FIGURE on the same machinery — `plain`: tests/acted-figure.test.ts)
+  const thingAt = eng.indexOf("const sightOn = staged && (horror || plain) && !cartoon && isTwoHander;");
   assert.ok(thingAt > 0 && thingAt < loop, "before the shots");
   // (…never one of the two who talk: a cast threat the script gave lines to is not the thing — review, 2026-11-25)
   assert.ok(eng.includes("const speaks = (c: { name: string }): boolean => [spkA, spkB].some((s) => !!s && nameTok(s) === nameTok(c.name));"));
-  assert.ok(eng.includes("const named = (chosen && !speaks(chosen) ? chosen : null) || castActors.find((c) => !!c.faceUrl && isCreature(c) && !speaks(c));"));
-  assert.ok(eng.includes("const own = storyThreat({ cast: treatment.cast, speakers: [spkA, spkB], last: scenesArr[scenesArr.length - 1]?.visual })"));
+  assert.ok(eng.includes("const named = (chosen && !speaks(chosen) ? chosen : null) || (plain ? undefined : castActors.find((c) => !!c.faceUrl && isCreature(c) && !speaks(c)));"));
+  assert.ok(eng.includes("const own = plain ? ownFigure() : storyThreat({ cast: treatment.cast, speakers: [spkA, spkB], last: scenesArr[scenesArr.length - 1]?.visual })"));
   // (…and when the script gave its thing no cast line — the ninth lake film, live 2026-11-25 — the first figure its words
   //  put in view, else the maker's own idea: the film never goes without its thing because the writer forgot a line)
   assert.ok(eng.includes("|| threatFromWords({ visuals: scenesArr.map((s) => s.visual), said: scenesArr.map((s) => s.caption), idea: opts.topic, speakers: [spkA, spkB], cast: treatment.cast, names: peopleNames });"));
@@ -295,7 +296,7 @@ test("the engine: the thing's one picture before the first shot, the sighting's 
   assert.ok(eng.includes('const peopleNames = castActors.filter((c) => c.role !== "threat").map((c) => c.name);'));
   assert.ok(!eng.includes("castActors.map((c) => c.name)"), "no list of names with the thing in it");
   assert.equal(heardIn("A voice calls their names softly from the water.", ["Mara", "Jonah"])?.unseen, true);
-  assert.ok(eng.includes("for (const model of kept ? [] : STORY_LADDER) {") && eng.includes("storyPictureInput(model, { prompt: threatPortrait(own.entry, tmpl.sceneHint), refs: [], aspect: PORTRAIT_ASPECT })"), "the told stories' portrait recipe and ladder");
+  assert.ok(eng.includes("for (const model of kept ? [] : STORY_LADDER) {") && eng.includes("storyPictureInput(model, { prompt: plain ? figurePortrait(own.entry, tmpl.sceneHint) : threatPortrait(own.entry, tmpl.sceneHint), refs: [], aspect: PORTRAIT_ASPECT })"), "the told stories' portrait recipe and ladder");
   assert.ok(eng.includes("img = (await clothedOrDropped(drawn, PORTRAIT_ASPECT)) || \"\";"), "looked at for an unclothed figure");
   assert.ok(eng.includes("if (!kept) await ckpt({ ckThreat: JSON.stringify(threat) });"), "kept: a restarted film does not draw it twice");
   assert.ok(eng.includes("k.from === \"story\" && k.entry === own.entry && onDisk(k.img)"), "…and a kept one is only taken for the same thing, still on disk");
@@ -308,11 +309,11 @@ test("the engine: the thing's one picture before the first shot, the sighting's 
   assert.ok(eng.includes("const r = JSON.parse(resume.ckSightings ?? (await keptOnJob(\"ckSightings\")) ?? \"null\");"));
   // THE SIGHTING: after the reveal (which owns the last shot), before the seed branches; on the reveal's editor ladder,
   // from the place AS IT NOW IS, the thing's own picture second where it is the film's thing
-  const reveal = eng.indexOf("if (!seedAbs && lastHorror && master?.url && stagingOf(master)) {", loop);
-  const sight = eng.indexOf("if (!seedAbs && sightOn && !lastHorror && master?.url && stagingOf(master)) {", loop);
+  const reveal = eng.indexOf("if (!seedAbs && lastReveal && master?.url && stagingOf(master)) {", loop);
+  const sight = eng.indexOf("if (!seedAbs && sightOn && !lastReveal && master?.url && stagingOf(master)) {", loop);
   const branches = eng.indexOf("if (!seedAbs && master?.url) {", loop);
   assert.ok(reveal > loop && sight > reveal && branches > sight);
-  assert.ok(eng.includes("const s = sightingOf({ moment: eventAt(i), startedFrom: startedFrom(i, tr), speakers: [spkA, spkB], cast: thingCast, names: peopleNames, last: lastHorror, cartoon, approved: !!approvedFrames[i] });"));
+  assert.ok(eng.includes("const s = sightingOf({ moment: eventAt(i), startedFrom: startedFrom(i, tr), speakers: [spkA, spkB], cast: thingCast, names: peopleNames, last: lastReveal, cartoon, approved: !!approvedFrames[i] });"));
   assert.ok(eng.includes("const base = abs(shownAt(i) || master.url);"));
   const pro = eng.indexOf("[\"google/nano-banana-pro\", { prompt: ask, image_input: [base, ...(ref ? [ref.url] : [])], aspect_ratio: aspect, output_format: \"jpg\", resolution: \"2K\" }],", sight);
   const kontext = eng.indexOf("[\"black-forest-labs/flux-kontext-pro\", { prompt: askOne, input_image: base, aspect_ratio: aspect, output_format: \"jpg\", output_quality: 92 }],", sight);
@@ -328,17 +329,17 @@ test("the engine: the thing's one picture before the first shot, the sighting's 
   assert.ok(eng.includes("if (i > 0 && !chained && (tr === \"location\" || revealed || !!sighted)) hardSeams.add(i);"));
   assert.ok(eng.includes("(tr === \"angle\" && !sighted) ? null : stagingOf(master);"));
   assert.ok(eng.includes("&& !implied && !revealed && !sighted ? heardIn("));
-  assert.equal(eng.split("sighted: !!sighted, sight: sighted?.who, shadow: sightedShadow, cloth });").length - 1, 2, "said to a talking shot and to one nobody speaks in");
+  assert.equal(eng.split("sighted: !!sighted, sight: sighted?.who, shadow: sightedShadow, cloth, plain, figure: threat?.name });").length - 1, 2, "said to a talking shot and to one nobody speaks in");
   // what was seen stays seen: a new angle or a re-anchor in that place grows out of the place AS IT NOW IS
   assert.equal(eng.split("abs(shownAt(i) || master.url)!, [faceFor(spkA), faceFor(spkB)]").length - 1, 2);
   // a place whose first scene has the thing in view is drawn with its picture; the first picture that showed it is kept
-  assert.ok(eng.includes("const thingHere = !masters[locKeyAt(i)]?.url && thingInMaster(i, lastHorror);"));
+  assert.ok(eng.includes("const thingHere = !masters[locKeyAt(i)]?.url && thingInMaster(i, lastReveal);"));
   assert.ok(eng.includes("if (thingHere && master?.url && !firstShown) firstShown = { url: master.url, words: scene.visual || \"\" };"));
   // (never a shadow on the cloth — S12)
   assert.ok(eng.includes("if (!firstShown && !sightings[i]?.shadow && isTheThing(s.entry, s.who)) firstShown = { url: pic, words: s.words };"));
   // (…and which figure IS the thing: its cast line by its NAME, or one with no line that its words do not make somebody
   //  else or a shadow — couldBeThing; review, 2026-11-25)
-  assert.ok(eng.includes("const isTheThing = (entry: string, who = \"\"): boolean => (!entry ? couldBeThing(who, thingWords) : !!threatEntry && lineName(entry) === lineName(threatEntry));"));
+  assert.ok(eng.includes("const isTheThing = (entry: string, who = \"\"): boolean => (!entry ? !plain && couldBeThing(who, thingWords) : !!threatEntry && lineName(entry) === lineName(threatEntry));"));
   assert.ok(eng.includes("const theThing = isTheThing(s.entry, s.who);") && eng.includes("return !!f && isTheThing(f.entry, f.who);") && eng.includes("if (sightings[j] && !sightings[j].shadow && isTheThing(sightings[j].entry, sightings[j].who))"));
   // THE REVEAL from the thing's picture: its portrait, else the picture that first showed it
   assert.ok(eng.includes("const thingRef = (): { url: string; kind: ThingRef } | null => (threat ? { url: abs(threat.img) || threat.img, kind: threat.creature ? \"creature\" : \"figure\" } : firstShown ? { url: abs(firstShown.url) || firstShown.url, kind: \"scene\" } : null);"));
@@ -361,11 +362,12 @@ test("a place whose first scene has the thing in view is drawn with its picture,
   // the master's whole prompt: image-generation passes it — in a STAGED picture only (the close two-shot's own prompt is
   // pinned letter for letter in acted-staging.test.ts) — and keeps its clothed and night looks exactly as they were
   const ig = read("app", "lib", "image-generation.server.ts");
-  assert.ok(ig.includes("const thingNote = opts.thing && refNo(opts.thing.url) ? thingBound({ name: opts.thing.name, refNo: refNo(opts.thing.url), look: opts.thing.look }) : \"\";"));
+  // (…a genre's FIGURE bound in plain words, horror's as it was — 2026-11-26, tests/acted-figure.test.ts)
+  assert.ok(ig.includes("const thingNote = opts.thing && refNo(opts.thing.url) ? thingBound({ name: opts.thing.name, refNo: refNo(opts.thing.url), look: opts.thing.look, ...(opts.thing.plain ? { plain: true } : {}) }) : \"\";"));
   assert.ok(ig.includes("const refs = [opts.roomRefUrl, opts.faceA, opts.faceB, opts.staging ? opts.thing?.url : null].filter((u): u is string => !!u).slice(0, 4);"));
   // (…and the genre's own world after it, stream S8 2026-11-25: tests/clothed.test.ts)
   assert.ok(ig.includes("roomNote, faceNote, thingNote, comp, ownWorld: opts.ownWorld })") && !ig.includes("${faceNote}${thingNote}"));
-  assert.ok(ig.includes("action?: string; /** THE FILM'S THING") && ig.includes("thing?: { url: string; name: string; look?: string } | null;"));
+  assert.ok(ig.includes("action?: string; /** THE FILM'S THING") && ig.includes("thing?: { url: string; name: string; look?: string; /** a genre's FIGURE (not horror): bound in plain words — thingBound */ plain?: boolean } | null;"));
   // (the clothed look is the one every film picture has since 2026-11-25 — clothed.server.ts → keepClothed, the same steps)
   assert.ok(ig.includes("url = (await keepClothed({") && ig.includes("if (!cartoon && NIGHT_SAID.test(`${setting} ${action}`)) {"), "the clothed and the night looks, as they were");
 });
