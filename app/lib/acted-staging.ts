@@ -1607,6 +1607,11 @@ export const TWO_ALWAYS = "ALWAYS THE SAME TWO — both are in every shot. If th
  *  live site with it, one ended on a shot with no line and one on a screamed one.) Every shot of an acted
  *  film has a line; the one exception is the last shot of a horror film, which has none — see below. */
 export const LINE_IN_EVERY_SHOT = "EVERY shot has a line: a CAPTION is never left empty.";
+/** …and a film is not all talk (2026-11-26 — the owner: "Movies need no dialogue scene capabilities similar to music video
+ *  with just scripted acting like 'actor walks up the stairs'" · "because a real movie or short show there are some scenes
+ *  that there isn't dialogue"). A wordless shot is filmed as one: the engine reads an empty CAPTION as nobody speaking
+ *  (acted-staging.ts → wordless; film-dialogue.server.ts → silent: "nobody speaks in it — 5 s of what happens"). */
+export const SOME_SHOTS_SILENT = "Most shots have a line — but a real film is not all talk. A shot MAY have NO line when what we SEE carries the moment: one of the two climbs the stairs, eases a door shut, finds the thing on the table, stares out of the window. For such a shot leave its CAPTION EMPTY (\"\") and make its VISUAL that ONE clear action, done by one of the two, with both still in the picture. At most one shot in three is wordless, never two wordless shots in a row, and never the first shot.";
 export const LINE_IN_EVERY_SHOT_BUT_THE_LAST = "EVERY shot has a line, with ONE exception: the LAST shot of this film has none (THE LAST SHOT, below). No other CAPTION is ever left empty.";
 
 /** A SOUND IN A SHOT, for the writer — (a), (b) and (c) of "A SOUND THEY HEAR" above. The film he watched had

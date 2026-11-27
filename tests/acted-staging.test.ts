@@ -597,7 +597,7 @@ test("the writer is told which shot may have no line: only a horror film's last"
   // said at the end of what a CAPTION is — every acted film; the exception for a horror film only (and, since a film
   // can be written in parts, 2026-11-25, only to what writes its END: a scene in the middle of a long one has a line
   // in every shot)
-  assert.ok(engine.includes("one of the two reports it (\\\"He says he can't thank us enough!\\\"). ${tmpl.key === \"horror\" && ends ? LINE_IN_EVERY_SHOT_BUT_THE_LAST : LINE_IN_EVERY_SHOT}\\n` +"));
+  assert.ok(engine.includes("one of the two reports it (\\\"He says he can't thank us enough!\\\"). ${tmpl.key === \"horror\" ? (ends ? LINE_IN_EVERY_SHOT_BUT_THE_LAST : LINE_IN_EVERY_SHOT) : SOME_SHOTS_SILENT}\\n` +"));
   // a line the writer marks "(silence)" or "—" is not kept as a line to be spoken or drawn
   assert.ok(engine.includes("caption: s.caption && !(acted && wordless(s.caption)) ? dropOrgEndorsementPossessive(s.caption) : undefined,"));
 });
@@ -1709,4 +1709,12 @@ test("TWENTY-SEVEN SHOTS JOINED IN PARTS come out whole — and frame for frame 
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("A FILM IS NOT ALL TALK (2026-11-26 — the owner: \"a real movie or short show there are some scenes that there isn't dialogue\"): outside Horror, a shot may be wordless", async () => {
+  const { SOME_SHOTS_SILENT, wordless } = await import("../app/lib/acted-staging.ts");
+  assert.ok(SOME_SHOTS_SILENT.includes("leave its CAPTION EMPTY") && SOME_SHOTS_SILENT.includes("At most one shot in three is wordless, never two wordless shots in a row, and never the first shot."));
+  // the engine reads an empty line as nobody speaking — the same reading the shot is filmed by
+  assert.equal(wordless(""), true);
+  assert.equal(wordless("MARA: We have to go now, before anyone sees the door open."), false);
 });
