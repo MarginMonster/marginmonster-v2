@@ -992,7 +992,7 @@ test("the last shot of a horror film: the SAME place, the thing BARELY seen and 
   // (…and LOOKED at before it is used, as every film picture is: clothed, or dropped for the next editor — 2026-11-25, S8)
   assert.ok(eng.includes("try { const drawn = await removeLetterbox(await persistRemote(await repRun(model, input, 180_000), \"jpg\")); seedAbs = drawn ? abs(await clothedOrDropped(drawn, aspect)) : undefined; }"));
   assert.ok(eng.includes("const implied = lastReveal && !revealed && !approvedFrames[i];"));
-  assert.ok(eng.includes("playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastReveal, drawn: revealed, creature: revealedCreature, outdoors, seen: revealSeen, implied, face: scared, sighted: !!sighted, sight: sighted?.who, shadow: sightedShadow, cloth, plain, figure: threat?.name });"));
+  assert.ok(eng.includes("playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastReveal, drawn: revealed, creature: revealedCreature, outdoors, seen: revealSeen, implied, face: scared, keepTwo: !horror, sighted: !!sighted, sight: sighted?.who, shadow: sightedShadow, cloth, plain, figure: threat?.name });"));
   assert.ok(eng.includes("others: !turnB && otherName && oSide ? [{ name: otherName, side: oSide }] : [], heard: !!heard, reveal: lastReveal, drawn: revealed, creature: revealedCreature, outdoors, seen: revealSeen, implied, sighted: !!sighted, sight: sighted?.who, shadow: sightedShadow, cloth, plain, figure: threat?.name });"));
 });
 
@@ -1504,7 +1504,7 @@ test("OUT OF DOORS NOTHING IS BUILT INTO THE PLACE (\"She Smiles From the Shallo
   // (…seen too when the thing's own picture rides along — its portrait, or the picture that first showed it, 2026-11-25)
   assert.ok(eng.includes("const outdoors = openAirPlace(whereAt[i]);") && eng.includes("revealSeen = !!seen || (!!ref && !creatureRef);"));
   // (…and since S12 whether a sighting is a shadow on the cloth, and whether the reveal is at the cloth)
-  assert.ok(eng.includes("creature: revealedCreature, outdoors, seen: revealSeen, implied, face: scared, sighted: !!sighted, sight: sighted?.who, shadow: sightedShadow, cloth, plain, figure: threat?.name });") && eng.includes("creature: revealedCreature, outdoors, seen: revealSeen, implied, sighted: !!sighted, sight: sighted?.who, shadow: sightedShadow, cloth, plain, figure: threat?.name });"));
+  assert.ok(eng.includes("creature: revealedCreature, outdoors, seen: revealSeen, implied, face: scared, keepTwo: !horror, sighted: !!sighted, sight: sighted?.who, shadow: sightedShadow, cloth, plain, figure: threat?.name });") && eng.includes("creature: revealedCreature, outdoors, seen: revealSeen, implied, sighted: !!sighted, sight: sighted?.who, shadow: sightedShadow, cloth, plain, figure: threat?.name });"));
 });
 
 test("A NIGHT FILM'S PLACES ARE AT NIGHT (the lake film: its idea said 3am, its first shot said only 'inside the tent', and the tent was drawn at dusk)", async () => {

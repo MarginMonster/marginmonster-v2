@@ -1837,7 +1837,7 @@ export async function generateTestMovie(opts: {
       const unseen = staged && !!heardIn(eventAt(i), [spkA, spkB, ...peopleNames])?.unseen;
       const scared = staged ? faceNote({ horror, visual: scene.visual, speaker: spkA, other: spkB, mood: tmpl.faceMood }) : "";
       try {
-        playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastReveal, drawn: revealed, creature: revealedCreature, outdoors, seen: revealSeen, implied, face: scared, sighted: !!sighted, sight: sighted?.who, shadow: sightedShadow, cloth, plain, figure: threat?.name });
+        playRules = silentRules(rules, { staging: chainStaging, event: eventAt(i), eventMax: i === treatment.scenes.length - 1 ? EVENT_MAX_LAST : undefined, sides, unseen, reveal: lastReveal, drawn: revealed, creature: revealedCreature, outdoors, seen: revealSeen, implied, face: scared, keepTwo: !horror, sighted: !!sighted, sight: sighted?.who, shadow: sightedShadow, cloth, plain, figure: threat?.name });
       } catch (e) {
         // (never a shot lost to its words: it is a held, quiet beat — and still told that nobody speaks)
         console.error(`[testmovie] shot ${i + 1}: the wordless shot's rules were not built — it is told to hold: ${e instanceof Error ? e.message.slice(0, 140) : e}`);
@@ -1903,6 +1903,9 @@ export async function generateTestMovie(opts: {
     shotSeeds.push(seedAbs); shotPrompts.push(prompt); shotDurs.push(clipSecs); shotChained.push(chained); shotStaged.push(chainStaging); shotEnds.push(endImage || null);
     // Advance the seamless chain: the trimmed clip's ACTUAL last frame seeds the next.
     prevFrameUrl = (await extractLastFrame(outPath)) || undefined;
+    // (never out of a WORDLESS shot of a film that is not horror: what it ended on may not hold the two at all, so the
+    //  next shot starts again from its place's own picture, the two as the film first showed them)
+    if (silent && !horror && master?.url) prevFrameUrl = master.url;
     // (the shot is FINISHED, and is never paid for again: its clip, the frame the next one grows out of, and what
     //  it was — in one write, so that a restart never finds a clip without its record)
     await ckpt({ ckClips: clips, ckLastStill: prevFrameUrl, ckShots: shotsKept() });

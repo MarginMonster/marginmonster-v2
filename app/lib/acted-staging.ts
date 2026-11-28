@@ -518,7 +518,9 @@ const unquoted = (s: string): string => s.replace(/["“”«»„‟‹›‘�
  *  where they are, the camera does not move; `implied` = …whose thing could not be drawn into its picture: the
  *  scene's words are not said, and the two react to something never seen (REVEAL_UNSEEN_REACT); `face` = who
  *  must not smile (faceNote) — every one of them in words with no quotation mark in them either. */
-export function silentRules<T extends ClipNotes>(base: T, o: { staging?: unknown; event?: string | null; eventMax?: number; sides?: ReadonlyArray<{ name: string; side: string }>; unseen?: boolean; reveal?: boolean; drawn?: boolean; creature?: boolean; outdoors?: boolean; seen?: boolean; implied?: boolean; face?: string | null; /** a SIGHTING this film drew (stagedRules → sighted) */ sighted?: boolean; sight?: string | null; /** …only its SHADOW on the shut tent's cloth; the drawn reveal in the cloth (stagedRules) */ shadow?: boolean; cloth?: boolean; /** a film that is NOT horror: its FIGURE, in plain words; and the figure's name (stagedRules) */ plain?: boolean; figure?: string | null } = {}): T {
+/** A wordless shot keeps its two people: one take of THEM doing it — never a cut away to the thing. */
+export const KEEP_TWO = "Both of them stay in the picture for the whole shot, as they stand now: one take, no cut away, no close-up of a thing, nothing written shown large.";
+export function silentRules<T extends ClipNotes>(base: T, o: { staging?: unknown; event?: string | null; eventMax?: number; sides?: ReadonlyArray<{ name: string; side: string }>; unseen?: boolean; reveal?: boolean; drawn?: boolean; creature?: boolean; outdoors?: boolean; seen?: boolean; implied?: boolean; face?: string | null; /** a SIGHTING this film drew (stagedRules → sighted) */ sighted?: boolean; sight?: string | null; /** …only its SHADOW on the shut tent's cloth; the drawn reveal in the cloth (stagedRules) */ shadow?: boolean; cloth?: boolean; /** a film that is NOT horror: its FIGURE, in plain words; and the figure's name (stagedRules) */ plain?: boolean; figure?: string | null; /** a wordless shot of a film that is not horror: the two stay in it (KEEP_TWO) */ keepTwo?: boolean } = {}): T {
   const spec = isActedStaging(o.staging) ? ACTED_STAGINGS[o.staging] : null;
   const said = o.implied ? "" : clipEvent(o.event, o.eventMax && o.eventMax > 0 ? o.eventMax : EVENT_MAX);
   const drawn = !!o.reveal && !!o.drawn && !!said;
@@ -544,13 +546,16 @@ export function silentRules<T extends ClipNotes>(base: T, o: { staging?: unknown
   const rest = event ? "Nothing else" : "Nothing";
   const alive = /background stays/.test(base.look) ? " The background stays gently alive." : "";
   const travels = drawn || sighted ? undefined : spec?.camera;
+  // (2026-11-28, a Thriller test with our cast: its wordless shot cut away to a newspaper filling the frame, printed in
+  //  gibberish, nobody in it — and the next shot grew out of that frame: another train, another man)
+  const two = o.keepTwo && !drawn && !sighted ? ` ${KEEP_TWO}` : "";
   const lock = (note: string): string => (travels ? lockOf(note).replace(/\bbackground\b/g, "place") : lockOf(note));
   const camera = (travels ? base.steady.replace(CAMERA_LOCKED, travels) : base.steady).replace(/\s*(?:The ONLY audio is|Keep ONLY the sung vocal)[\s\S]*$/, "").trim();
   return {
     ...base,
-    look: `${lock(base.look)} ${move} ${does}${alive} ${rest} new enters and no new object appears; anything held keeps its exact size and shape.`,
-    lookTight: `${lock(base.lookTight)} ${move} ${does} ${rest} new enters; held things keep their size and shape.`,
-    lookShort: `${lock(base.lookShort)} ${move} ${does}`,
+    look: `${lock(base.look)} ${move} ${does}${two}${alive} ${rest} new enters and no new object appears; anything held keeps its exact size and shape.`,
+    lookTight: `${lock(base.lookTight)} ${move} ${does}${two} ${rest} new enters; held things keep their size and shape.`,
+    lookShort: `${lock(base.lookShort)} ${move} ${does}${two}`,
     style: base.style.replace(/[,;]\s*clean\b[\s\S]*$/, ".").trim(),
     steady: `${camera} ${SILENT_SOUND}`.trim(),
     noText: base.noText.replace(/\s*never show the spoken words as text;?/, ""),
