@@ -1195,6 +1195,8 @@ export async function generateTestMovie(opts: {
   // would need to be in the same positions to avoid a time jump vibe. Transitions like this feel cinematic and are okay,
   // just have to be done right"). A cut to another camera is drawn from the LAST FRAME of the shot before it, not from
   // the place's first picture, and told so.
+  // (2026-11-28: Mei stood up while saying "I'll just stay seated until we pass that station")
+  const DO_WHAT_IS_SAID = "Nobody does the opposite of what is being said: whoever says they will stay stays, whoever is seated stays seated unless the scene has them rise.";
   const SAME_INSTANT = "The reference picture is this very instant seen from the other camera: every person is in exactly the same spot, pose and posture as in it (whoever sits is still seated, whoever stands still stands, the same hands holding the same things), on the same side of the frame, and what is outside the windows runs the same way. Nothing has moved; only the camera has.";
   const ANCHOR_ANGLES = [
     "a slightly tighter two-shot",
@@ -1807,7 +1809,7 @@ export async function generateTestMovie(opts: {
     const face = staged && !silent ? faceNote({ horror, tone, visual: scene.visual, speaker, other: turnB ? turnB.speaker : otherName, mood: tmpl.faceMood }) : "";
     const deliver = `${tone
       ? `Deliver it ${tone} — put that exact emotion and energy into the voice, expressively, NEVER flat or monotone.`
-      : `Deliver it with the REAL emotion the words carry — an angry line sounds angry, a threat sounds menacing, hurt shows as hurt — with natural intonation and emphasis, NEVER flat or monotone.`}${face ? ` ${face}` : ""}`;
+      : `Deliver it with the REAL emotion the words carry — an angry line sounds angry, a threat sounds menacing, hurt shows as hurt — with natural intonation and emphasis, NEVER flat or monotone.`}${face ? ` ${face}` : ""}${!horror && !silent ? ` ${DO_WHAT_IS_SAID}` : ""}`;
     // A SOUND THEY HEAR (acted-staging.ts → heardIn). When this shot's scene is a sound — a knock, footsteps, a
     // voice — the shot OPENS on it, heard alone, and its line answers it (heardTalk): the owner's knocking film
     // had "Tell me you heard that too" a whole shot before the knock was heard. Its sound rule lets that sound

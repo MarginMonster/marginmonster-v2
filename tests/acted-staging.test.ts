@@ -836,7 +836,7 @@ test("nobody smiles at what frightens them — said plainly, unless the script m
   // the clip is told it: a talking shot in its delivery, a shot nobody speaks in in its rules — behind the one switch
   const eng = read("app", "lib", "film-dialogue.server.ts");
   assert.ok(eng.includes("const face = staged && !silent ? faceNote({ horror, tone, visual: scene.visual, speaker, other: turnB ? turnB.speaker : otherName, mood: tmpl.faceMood }) : \"\";"));
-  assert.ok(eng.includes("NEVER flat or monotone.`}${face ? ` ${face}` : \"\"}`;"));
+  assert.ok(eng.includes("NEVER flat or monotone.`}${face ? ` ${face}` : \"\"}${!horror && !silent ? ` ${DO_WHAT_IS_SAID}` : \"\"}`;"));
   assert.ok(eng.includes("const scared = staged ? faceNote({ horror, visual: scene.visual, speaker: spkA, other: spkB, mood: tmpl.faceMood }) : \"\";"));
   assert.ok(eng.includes("const staged = process.env.ACTED_STAGING !== \"off\";") && eng.includes("const horror = tmpl.key === \"horror\";"));
 });
