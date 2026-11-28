@@ -1196,7 +1196,7 @@ export async function generateTestMovie(opts: {
   // just have to be done right"). A cut to another camera is drawn from the LAST FRAME of the shot before it, not from
   // the place's first picture, and told so.
   // (2026-11-28: Mei stood up while saying "I'll just stay seated until we pass that station")
-  const DO_WHAT_IS_SAID = "Nobody does the opposite of what is being said: whoever says they will stay stays, whoever is seated stays seated unless the scene has them rise.";
+  const DO_WHAT_IS_SAID = "Nobody does the opposite of what is being said: whoever says they will stay stays, whoever is seated stays seated unless the scene has them rise. Both stay in the picture until the line is finished: nobody leaves the frame while it is being said.";
   const SAME_INSTANT = "The reference picture is this very instant seen from the other camera: every person is in exactly the same spot, pose and posture as in it (whoever sits is still seated, whoever stands still stands, the same hands holding the same things), on the same side of the frame, and what is outside the windows runs the same way. Nothing has moved; only the camera has.";
   const ANCHOR_ANGLES = [
     "a slightly tighter two-shot",
