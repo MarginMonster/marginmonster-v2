@@ -783,17 +783,14 @@ export function faceNote(o: { horror?: boolean; tone?: string | null; visual?: s
   };
   // (A GENRE'S OWN FACES reached the master picture only — said to the clip too, unless the mood forbids a smile and the
   //  line is said warmly or smiling, or the scene's words have the speaker smiling)
+  // READ THE ROOM (2026-11-28 — the owner: "there will be happy scenes in some thrillers, just like scary things in some
+  // comedies … kind of like a read the room for our writer"). Outside horror a clip's faces follow the LINE, not the genre:
+  // the writer already says how each line is said (its tone), and that — nothing more — is what the faces are told. A
+  // thriller's Mei grinned through "the headline said an accident there"; a blanket "nobody smiles" would have killed a
+  // thriller's one happy scene just the same.
   if (!o.horror && !afraid) {
-    const full = oneLine(o.mood).replace(/["“”«»]/g, "");
-    // (to a CLIP, only what nobody does — "Nobody smiles or poses." The look said before it, "set and out of breath", went
-    //  into the clip's VOICE too: a panting line with dead air, what the line-length check exists to stop — review of
-    //  item 9, 2026-11-26. The master picture is still told the whole mood.)
-    const rest = full.includes(" — ") ? full.split(" — ").slice(1).join(" — ").trim() : full;
-    const mood = rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : "";
-    const noSmile = /\b(?:smil|grin|laugh)/i.test(mood);
-    // (…and never "nobody smiles" over a scene whose words have ANYBODY smiling — "Jonah grins as Mara slides the envelope
-    //  across the desk" is the clip's own event)
-    return !mood || (noSmile && (WARM.test(tone) || SMILE.test(tone) || SMILE.test(visual))) ? "" : mood;
+    const said = tone.replace(/["“”«»]/g, "").replace(/[.\s]+$/, "");
+    return said ? `Both faces fit this moment, which is ${said}: nobody wears an expression that fights it.` : "";
   }
   if (o.horror && WARM.test(tone) && !afraid) return "";
   const speaker = oneLine(o.speaker);

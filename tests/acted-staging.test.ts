@@ -816,7 +816,7 @@ test("nobody smiles at what frightens them — said plainly, unless the script m
   assert.equal(faceNote({ horror: true, tone: "", speaker: "Dagny", other: "Ylva" }), "Neither Dagny nor Ylva smiles at any moment: both faces show fear.", "no tone: frightened, in a horror film");
   // any other film: a frightened line only, and only its speaker
   assert.equal(faceNote({ tone: "scared, voice shaking", speaker: "Pip", other: "Rosa" }), "Pip does not smile at any moment: the face shows fear.");
-  assert.equal(faceNote({ tone: "warmly, with a laugh", speaker: "Pip", other: "Rosa" }), "");
+  assert.equal(faceNote({ tone: "warmly, with a laugh", speaker: "Pip", other: "Rosa" }), "Both faces fit this moment, which is warmly, with a laugh: nobody wears an expression that fights it.");
   assert.equal(faceNote({ speaker: "Pip", other: "Rosa" }), "");
   assert.equal(faceNote({ horror: true }), "Nobody smiles at any moment: every face shows fear.");
   for (const f of [faceNote({ horror: true, speaker: "Dagny's", other: "Ylva" }), faceNote({ horror: true })]) assert.ok(quoteFree(f), f);
@@ -824,26 +824,15 @@ test("nobody smiles at what frightens them — said plainly, unless the script m
   // "coldly, with quiet menace" could be grinned through — unless the line is said warmly or smiling, or the scene's
   // words have the speaker smiling, where the mood forbids a smile
   const THRILL = "Everybody in it looks watchful or under strain — nobody smiles, grins or laughs.";
-  const COMEDY = "Everybody in it is completely serious about what they are doing — nobody mugs, winks or looks at the camera.";
-  // (…a CLIP is told only what nobody does — the look before the dash ("set and out of breath") went into the voice too:
-  //  review of item 9, 2026-11-26)
-  const THRILL_CLIP = "Nobody smiles, grins or laughs.";
-  const COMEDY_CLIP = "Nobody mugs, winks or looks at the camera.";
-  assert.equal(faceNote({ tone: "coldly, with quiet menace", speaker: "Mara", other: "Jonah", mood: THRILL }), THRILL_CLIP);
-  assert.equal(faceNote({ tone: "warmly", speaker: "Mara", other: "Jonah", mood: THRILL }), "");
-  assert.equal(faceNote({ tone: "flatly", visual: "Mara smiles as she sets the cake down.", speaker: "Mara", other: "Jonah", mood: THRILL }), "");
-  assert.equal(faceNote({ tone: "warmly, with a laugh", speaker: "Pip", other: "Rosa", mood: COMEDY }), COMEDY_CLIP, "a comedy's own faces forbid no smile");
-  assert.equal(faceNote({ visual: "Pip lifts the vase.", speaker: "Pip", other: "Rosa", mood: COMEDY }), COMEDY_CLIP, "a wordless shot too");
-  // (…never "nobody smiles" over a scene whose words have ANYBODY smiling — the other one too — nor over a smirk)
-  assert.equal(faceNote({ tone: "coldly", visual: "Jonah grins as Mara slides the envelope across the desk.", speaker: "Mara", other: "Jonah", mood: THRILL }), "");
-  assert.equal(faceNote({ tone: "with a cruel smirk", speaker: "Mara", other: "Jonah", mood: THRILL }), "");
-  assert.equal(faceNote({ tone: "evenly", visual: "Mara turns the clue over; Jonah laughs, then stops.", speaker: "Mara", other: "Jonah", mood: "Everybody in it looks curious or guarded — nobody grins or laughs." }), "");
-  // (…and Action's "out of breath" never reaches the clip)
-  assert.equal(faceNote({ tone: "urgently", speaker: "Kai", other: "Rosa", mood: "Everybody in it looks set and out of breath — nobody smiles or poses." }), "Nobody smiles or poses.");
+  // READ THE ROOM (2026-11-28 — the owner: "there will be happy scenes in some thrillers, just like scary things in some
+  // comedies"): outside horror the faces follow the LINE's own tone, whatever the genre's mood says
+  assert.equal(faceNote({ tone: "tense, urgent", speaker: "Mei", other: "Omar", mood: THRILL }), "Both faces fit this moment, which is tense, urgent: nobody wears an expression that fights it.");
+  assert.equal(faceNote({ tone: "warmly, with a laugh.", speaker: "Mei", other: "Omar", mood: THRILL }), "Both faces fit this moment, which is warmly, with a laugh: nobody wears an expression that fights it.", "a thriller's happy scene stays happy");
+  assert.equal(faceNote({ visual: "Pip lifts the vase.", speaker: "Pip", other: "Rosa", mood: THRILL }), "", "no tone, nothing said: no blanket rule");
   assert.equal(faceNote({ tone: "scared, voice shaking", speaker: "Pip", other: "Rosa", mood: THRILL }), "Pip does not smile at any moment: the face shows fear.", "a frightened line is still told its fear");
   assert.equal(faceNote({ horror: true, tone: "quietly", speaker: "Ylva", other: "Dagny", mood: THRILL }), faceNote({ horror: true, tone: "quietly", speaker: "Ylva", other: "Dagny" }), "a horror film as it was");
   assert.equal(faceNote({ horror: true, tone: "softly, fond and a little nostalgic", speaker: "Dagny", other: "Ylva", mood: THRILL }), "");
-  assert.ok(quoteFree(faceNote({ tone: "coldly", speaker: "Mara", mood: "Everybody “watchful” — nobody smiles." })), "it goes into silent shots too");
+  assert.ok(quoteFree(faceNote({ tone: "coldly, “flat”", speaker: "Mara" })), "it goes into silent shots too");
   // the clip is told it: a talking shot in its delivery, a shot nobody speaks in in its rules — behind the one switch
   const eng = read("app", "lib", "film-dialogue.server.ts");
   assert.ok(eng.includes("const face = staged && !silent ? faceNote({ horror, tone, visual: scene.visual, speaker, other: turnB ? turnB.speaker : otherName, mood: tmpl.faceMood }) : \"\";"));

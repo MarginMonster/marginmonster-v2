@@ -30,7 +30,7 @@ import crypto from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { db } from "../db.server";
 import { persistRemote, renderCreativeSeed, renderStyledSeed, renderStyledSeedMulti, renderSceneSeedChained, renderSideBySideTwoShot, repRun } from "./image-generation.server";
-import { AVATAR_VOICES, isPersonalVoice } from "./avatar-voice-catalog";
+import { AVATAR_VOICES, isPersonalVoice, voicesForCharacter } from "./avatar-voice-catalog";
 import { characterVoice, isCharacterVoice } from "./character-voices";
 import { chainClipVoice } from "./character-voice.server";
 import { ensureVoiceModel, revoiceClip } from "./singing-voice.server";
@@ -723,6 +723,19 @@ export async function generateTestMovie(opts: {
   //  would not draw — that character is drawn new, as one the writer brought in; its voice still comes)
   const carriedCast = (carry?.cast || []).map((c) => (c.faceUrl && c.faceUrl.startsWith("/renders/") && !fs.existsSync(path.join(RENDERS(), path.basename(c.faceUrl))) ? { ...c, faceUrl: null } : c));
   const castActors = castWithCarry((opts.cast || []).filter((c) => c && c.name && c.name.trim()), carriedCast, { labels: treatment.scenes.map((s) => (wordless(s.caption) ? "" : splitExchange(s.caption || "").find((t) => t.speaker)?.speaker || "")), castLines: treatment.cast });
+  // AN ACTOR OF OURS KEEPS ONE VOICE (2026-11-28 — the owner, of a Thriller with OMAR and MEI: "We need to make sure actor
+  // voices carry over"). A chosen face with no voice of its own was voiced by the video model, anew in every shot. Each is
+  // given ONE catalog voice of their gender for the whole film — never the other's — and its shots are re-voiced with it,
+  // as a voice the maker picked is (castVoiceOf).
+  const autoVoiced = new Set<string>();
+  for (const c of castActors as Array<{ name: string; faceUrl?: string | null; voiceId?: string | null }>) {
+    if (!c.faceUrl || c.voiceId) continue;
+    const g = (opts.castGenders || []).find((x) => firstName(x.name) === firstName(c.name))?.gender;
+    if (g !== "m" && g !== "f") continue;
+    const pick = voicesForCharacter(g, "adult").find((v) => !autoVoiced.has(v) && !castActors.some((o) => o.voiceId === v));
+    if (pick) { c.voiceId = pick; autoVoiced.add(pick); }
+  }
+  if (autoVoiced.size) console.log(`[testmovie] our actors' voices for this film: ${[...autoVoiced].join(", ")}`);
   // THE FILM'S PEOPLE, BY NAME — never its thing (the monster row's review, 2026-11-25): a drawn threat posted as a cast
   // entry named "the woman in the lake" made heardIn read "the", "in", "woman" and "lake" as people's names, and "a voice
   // calls their names softly from the water" came out SEEN. Every list of names the staging reads is the people's.
@@ -1098,7 +1111,7 @@ export async function generateTestMovie(opts: {
     // A PERFORMED character voice is not re-voiced this way: the trainer learns a voice from the stock
     // speech model, which has no such voice. It is described to the video model instead (voiceDescFor)
     // and a creature's chain is laid over its lines (below).
-    return v && !v.startsWith("ttv-") && !isCharacterVoice(v) && (opts.lockVoices || isPersonalVoice(v)) ? v : null;
+    return v && !v.startsWith("ttv-") && !isCharacterVoice(v) && (opts.lockVoices || autoVoiced.has(v) || isPersonalVoice(v)) ? v : null;
   };
   /** The voice to put on shot i, or null: only clips where ONE person speaks (re-voicing an exchange
    *  would give both people the same voice). */
@@ -1905,7 +1918,19 @@ export async function generateTestMovie(opts: {
     prevFrameUrl = (await extractLastFrame(outPath)) || undefined;
     // (never out of a WORDLESS shot of a film that is not horror: what it ended on may not hold the two at all, so the
     //  next shot starts again from its place's own picture, the two as the film first showed them)
-    if (silent && !horror && master?.url) prevFrameUrl = master.url;
+    // (2026-11-28, the owner, of the cut that made: "a pretty rough transition" · "Transitions MUST be perfect" — so the
+    //  chain is kept whenever the wordless shot's last frame still shows BOTH of the two; only a frame that lost one of
+    //  them sends the next shot back to its place's own picture)
+    if (silent && !horror && master?.url && prevFrameUrl) {
+      let both = false;
+      try {
+        const { anthropicVision } = await import("./anthropic.server");
+        const ans = (await anthropicVision(`Person A is: ${bibleFor(spkA)}. Person B is: ${bibleFor(spkB)}. Are BOTH of them clearly visible in this image, each with their face in view? Answer YES or NO and nothing else.`, [abs(prevFrameUrl)!], { maxTokens: 4 })) || "";
+        both = ans.trim().toUpperCase().startsWith("YES");
+      } catch { both = false; }
+      console.log(`[testmovie] shot ${i + 1}: wordless — its last frame ${both ? "still shows the two: the next shot grows out of it" : "lost one of the two: the next shot starts from the place's own picture"}`);
+      if (!both) prevFrameUrl = master.url;
+    }
     // (the shot is FINISHED, and is never paid for again: its clip, the frame the next one grows out of, and what
     //  it was — in one write, so that a restart never finds a clip without its record)
     await ckpt({ ckClips: clips, ckLastStill: prevFrameUrl, ckShots: shotsKept() });
