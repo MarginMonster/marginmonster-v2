@@ -75,7 +75,7 @@ test("the place as it now is: every later picture there grows out of the change,
   // …so a re-anchor, a new angle, a sighting and THE REVEAL grow out of it (the reveal used the pristine master)
   assert.ok(eng.includes("const revealBase = abs(shownAt(i) || master.url);"));
   assert.ok(!eng.includes("image_input: [abs(master.url)") && !eng.includes("input_image: abs(master.url)"), "no editor is handed the pristine master any more");
-  assert.equal(eng.split("abs(shownAt(i) || master.url)!, [faceFor(spkA), faceFor(spkB)]").length - 1, 2);
+  assert.equal(eng.split("abs(prevFrameUrl || shownAt(i) || master.url)!, [faceFor(spkA), faceFor(spkB)]").length - 1, 2);
   // (…and a re-anchor that will not come falls back to the place as it now is, never the pristine master — review of S12)
   assert.ok(eng.includes("seedAbs = abs(reangled) || abs(shownAt(i) || master.url); sinceAnchor = 0; softSeams.add(i);"));
   assert.ok(!eng.includes("seedAbs = abs(reangled) || abs(master.url);"));

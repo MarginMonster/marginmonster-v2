@@ -331,7 +331,7 @@ test("the engine: the thing's one picture before the first shot, the sighting's 
   assert.ok(eng.includes("&& !implied && !revealed && !sighted ? heardIn("));
   assert.equal(eng.split("sighted: !!sighted, sight: sighted?.who, shadow: sightedShadow, cloth, plain, figure: threat?.name });").length - 1, 2, "said to a talking shot and to one nobody speaks in");
   // what was seen stays seen: a new angle or a re-anchor in that place grows out of the place AS IT NOW IS
-  assert.equal(eng.split("abs(shownAt(i) || master.url)!, [faceFor(spkA), faceFor(spkB)]").length - 1, 2);
+  assert.equal(eng.split("abs(prevFrameUrl || shownAt(i) || master.url)!, [faceFor(spkA), faceFor(spkB)]").length - 1, 2);
   // a place whose first scene has the thing in view is drawn with its picture; the first picture that showed it is kept
   assert.ok(eng.includes("const thingHere = !masters[locKeyAt(i)]?.url && thingInMaster(i, lastReveal);"));
   assert.ok(eng.includes("if (thingHere && master?.url && !firstShown) firstShown = { url: master.url, words: scene.visual || \"\" };"));

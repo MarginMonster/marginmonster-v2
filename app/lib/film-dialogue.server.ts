@@ -1191,6 +1191,11 @@ export async function generateTestMovie(opts: {
   //  changed scene and direction - obvious goof", "a scene cut where Omar is suddenly standing". A film of up to eight shots
   //  in one place is now ONE unbroken chain, each shot grown out of the last one's last frame.)
   const ANCHOR_EVERY = 8;
+  // A NEW ANGLE IS THE SAME INSTANT (2026-11-28 — the owner: "Even if it does write a different angle for scene the actors
+  // would need to be in the same positions to avoid a time jump vibe. Transitions like this feel cinematic and are okay,
+  // just have to be done right"). A cut to another camera is drawn from the LAST FRAME of the shot before it, not from
+  // the place's first picture, and told so.
+  const SAME_INSTANT = "The reference picture is this very instant seen from the other camera: every person is in exactly the same spot, pose and posture as in it (whoever sits is still seated, whoever stands still stands, the same hands holding the same things), on the same side of the frame, and what is outside the windows runs the same way. Nothing has moved; only the camera has.";
   const ANCHOR_ANGLES = [
     "a slightly tighter two-shot",
     "a medium two-shot from a subtly lower angle",
@@ -1663,8 +1668,8 @@ export async function generateTestMovie(opts: {
       } else if (tr === "angle") {
         // (…of the place AS IT NOW IS: what a sighting there drew stays seen — shownAt)
         const reangled = await removeLetterbox(await renderSceneSeedChained(
-          `${whereAt[i]}. A ${shotAt[i]} of the same scene — the identical room, lighting, wardrobe and people, only the camera angle changes.${keptSo} ${NO_TEXT}`,
-          abs(shownAt(i) || master.url)!, [faceFor(spkA), faceFor(spkB)].filter((u): u is string => !!u), aspect,
+          `${whereAt[i]}. A ${shotAt[i]} of the same scene — the identical room, lighting, wardrobe and people, only the camera angle changes.${prevFrameUrl ? ` ${SAME_INSTANT}` : ""}${keptSo} ${NO_TEXT}`,
+          abs(prevFrameUrl || shownAt(i) || master.url)!, [faceFor(spkA), faceFor(spkB)].filter((u): u is string => !!u), aspect,
         ));
         seedAbs = abs(reangled) || abs(prevFrameUrl) || abs(master.url); sinceAnchor = 0; softSeams.add(i);
       } else if (sinceAnchor >= ANCHOR_EVERY) {
@@ -1683,11 +1688,11 @@ export async function generateTestMovie(opts: {
         // (a moment that is a sound from out of sight is HEARD, not drawn — acted-staging.ts → HEARD_NOT_DRAWN)
         const unheard = now && heardIn(eventAt(i), [spkA, spkB, ...peopleNames])?.unseen ? ` ${HEARD_NOT_DRAWN}` : "";
         const reangled = await removeLetterbox(await renderSceneSeedChained(
-          now
+          now && !prevFrameUrl
             ? `${whereAt[i]}. ${ang} of the same scene — the identical room, lighting, wardrobe and the same two people on the same sides of the frame, ONLY the camera angle changes. At this moment: ${now}${unheard}${keptSo} ${NO_TEXT}`
-            : `${whereAt[i]}. ${ang} of the same scene — the identical room, lighting, wardrobe and the same two people in the same positions, ONLY the camera angle changes.${keptSo} ${NO_TEXT}`,
+            : `${whereAt[i]}. ${ang} of the same scene — the identical room, lighting, wardrobe and the same two people in the same positions, ONLY the camera angle changes.${prevFrameUrl ? ` ${SAME_INSTANT}` : ""}${keptSo} ${NO_TEXT}`,
           // (from the place AS IT NOW IS: a re-anchor after a sighting keeps what was seen — shownAt)
-          abs(shownAt(i) || master.url)!, [faceFor(spkA), faceFor(spkB)].filter((u): u is string => !!u), aspect,
+          abs(prevFrameUrl || shownAt(i) || master.url)!, [faceFor(spkA), faceFor(spkB)].filter((u): u is string => !!u), aspect,
         ));
         // (a re-anchor that will not come falls back to the place AS IT NOW IS — never the pristine master, where the door
         //  the story zipped shut is open again: review of S12)
