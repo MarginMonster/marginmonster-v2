@@ -55,7 +55,10 @@ export const LEAD_HOLD = 0.2;
 /** …then the rest of its lead-in is squeezed toward this length… */
 export const LEAD_TARGET = 0.15;
 /** …but never played faster than this (a turn of the head still has to read as a turn of the head). */
-export const LEAD_MAX_SPEED = 3;
+// (1.25, not 3 — 2026-11-28, the owner, of films whose every shot now has something HAPPEN in it: "there are a few spots
+//  where they travel in fast motion like something's wrong". At 3x a walk before a line was a scurry; a quarter faster is
+//  not seen.)
+export const LEAD_MAX_SPEED = 1.25;
 /** Keep this much after the last word — a breath, not a pause. (The next shot is seeded from a frame
  *  0.2 s before the end, so this also leaves the speaker time to close their mouth before that frame.) */
 export const TAIL_KEEP = 0.45;

@@ -55,9 +55,10 @@ test("a shot that CONTINUES the last one keeps its opening frames — the lead-i
   assert.equal(plan.retime!.hold, LEAD_HOLD);
   assert.ok(Math.abs(plan.retime!.leadEnd - (1.220522 - 0.12)) < 1e-6);
   assert.ok(plan.retime!.speed > 1 && plan.retime!.speed <= LEAD_MAX_SPEED);
-  // 1.1 s of waiting becomes about half a second: the dissolve's 0.2 s at normal speed + the rest 3× faster
+  // (2026-11-28: a quarter faster at most — at 3× whoever moved in the lead-in moved in fast motion, the owner's "like
+  //  something's wrong"; 1.1 s of waiting is now a little under a second)
   const leadIn = plan.retime!.hold + (plan.retime!.leadEnd - plan.retime!.hold) / plan.retime!.speed;
-  assert.ok(leadIn > 0.3 && leadIn < 0.6, `lead-in ${leadIn.toFixed(2)} s`);
+  assert.ok(leadIn > 0.8 && leadIn < 1.1 && plan.retime!.speed <= 1.25, `lead-in ${leadIn.toFixed(2)} s`);
 });
 
 test("a pause in the MIDDLE of a line is not mistaken for the end of the shot", () => {
@@ -72,7 +73,7 @@ test("the planned length adds up", () => {
   const b = planClipTrim(parseSilences(SHOT2), SHOT2_DUR, { chained: true });
   const squeezed = (b.retime!.leadEnd - b.retime!.hold) * (1 - 1 / b.retime!.speed);
   assert.ok(Math.abs(plannedSeconds(b) - (SHOT2_DUR - squeezed)) < 1e-9);
-  assert.ok(plannedSeconds(b) < SHOT2_DUR - 0.5);
+  assert.ok(plannedSeconds(b) < SHOT2_DUR);
 });
 
 test("a short lead-in on a continuing shot is left alone", () => {
@@ -170,7 +171,7 @@ test("a sound the transcriber didn't write down (a growl, a laugh) is never cut"
 test("a continuing shot plays its word-found lead-in fast instead of cutting it", () => {
   const plan = planFromWords(WATCH_WORDS, WATCH_QUIET, WATCH_DUR, { chained: true });
   assert.ok(plan && plan.cutHead === 0 && plan.retime, "never cut — re-timed");
-  assert.ok(planShift(plan!) > 1.0, "and the line arrives over a second sooner");
+  assert.ok(planShift(plan!) > 0.1, "and the line arrives a little sooner");
 });
 
 test("words → quiet runs: before the first word, between words, after the last", () => {
