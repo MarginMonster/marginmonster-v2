@@ -171,7 +171,7 @@ test("no pipeline sends a character voice to a speech model that does not know i
   // Films: a character voice is described to the video model and its chain laid over the line — it is
   // never handed to the voice-conversion trainer, which only knows stock and cloned voices.
   const film = read("app/lib/film-dialogue.server.ts");
-  assert.match(film, /!isCharacterVoice\(v\) && \(opts\.lockVoices \|\| autoVoiced\.has\(v\) \|\| isPersonalVoice\(v\)\)/, "films: character voices stay out of the re-voice trainer");
+  assert.match(film, /!isCharacterVoice\(v\) && !autoVoiced\.has\(v\) && \(opts\.lockVoices \|\| isPersonalVoice\(v\)\)/, "films: character voices stay out of the re-voice trainer");
   assert.match(film, /characterVoice\(a\.voiceId\)/, "films: the character's voice is described to the video model");
   assert.match(film, /chainClipVoice\(/, "films: a creature's chain is laid over its own lines");
   // Saving a voice: the three places an id is checked all accept a character voice.

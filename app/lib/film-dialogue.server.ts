@@ -1111,7 +1111,7 @@ export async function generateTestMovie(opts: {
     // A PERFORMED character voice is not re-voiced this way: the trainer learns a voice from the stock
     // speech model, which has no such voice. It is described to the video model instead (voiceDescFor)
     // and a creature's chain is laid over its lines (below).
-    return v && !v.startsWith("ttv-") && !isCharacterVoice(v) && (opts.lockVoices || autoVoiced.has(v) || isPersonalVoice(v)) ? v : null;
+    return v && !v.startsWith("ttv-") && !isCharacterVoice(v) && !autoVoiced.has(v) && (opts.lockVoices || isPersonalVoice(v)) ? v : null;
   };
   /** The voice to put on shot i, or null: only clips where ONE person speaks (re-voicing an exchange
    *  would give both people the same voice). */
@@ -1187,7 +1187,10 @@ export async function generateTestMovie(opts: {
   // ANGLE change, so the drift-reset reads as a deliberate cut to a new camera rather than a
   // snap back to the same frame. softSeams = clip indices whose seam-before is a reframe
   // (location / angle / re-anchor) → the assembler gives those a longer, softer dissolve.
-  const ANCHOR_EVERY = 3;
+  // (8, not 3 — 2026-11-28, the owner, of a five-shot Thriller whose fifth shot was re-drawn from a new angle: "the background
+  //  changed scene and direction - obvious goof", "a scene cut where Omar is suddenly standing". A film of up to eight shots
+  //  in one place is now ONE unbroken chain, each shot grown out of the last one's last frame.)
+  const ANCHOR_EVERY = 8;
   const ANCHOR_ANGLES = [
     "a slightly tighter two-shot",
     "a medium two-shot from a subtly lower angle",
