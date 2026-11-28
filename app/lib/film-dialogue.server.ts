@@ -730,7 +730,7 @@ export async function generateTestMovie(opts: {
   const autoVoiced = new Set<string>();
   for (const c of castActors as Array<{ name: string; faceUrl?: string | null; voiceId?: string | null }>) {
     if (!c.faceUrl || c.voiceId) continue;
-    const g = (opts.castGenders || []).find((x) => firstName(x.name) === firstName(c.name))?.gender;
+    const g = (opts.castGenders || []).find((x) => nameTok(x.name) === nameTok(c.name))?.gender;
     if (g !== "m" && g !== "f") continue;
     const pick = voicesForCharacter(g, "adult").find((v) => !autoVoiced.has(v) && !castActors.some((o) => o.voiceId === v));
     if (pick) { c.voiceId = pick; autoVoiced.add(pick); }
