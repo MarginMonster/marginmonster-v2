@@ -61,9 +61,9 @@ test("a creature the maker chose plays the idea's threat — in an acted film it
 
 test("the writer is given all of it — the idea's rules right after the idea, and the idea whole", () => {
   const eng = read("app", "lib", "film-engine.server.ts");
-  assert.ok(eng.includes("import { HORROR_SAFETY, IDEA_CHECK, IDEA_MAX, PREMISE_WINS, REAL_WORLD, STORY_SAFETY, chosenThreat } from \"./premise-rules\";"));
-  assert.ok(eng.includes("\"${topic.slice(0, IDEA_MAX)}\". Tell EXACTLY this") && eng.includes("${storyFormat ? `${PREMISE_WINS}\\n` : \"\"}"), "said right after the idea, in every story format");
-  assert.ok(eng.includes("    ? HORROR_SAFETY\n    : STORY_SAFETY;") || eng.includes("    ? HORROR_SAFETY\r\n    : STORY_SAFETY;"));
+  assert.ok(eng.includes("import { HORROR_SAFETY, IDEA_CHECK, IDEA_CHECK_PLAIN, IDEA_MAX, PREMISE_WINS, PREMISE_WINS_PLAIN, REAL_WORLD, REAL_WORLD_PLAIN, STORY_SAFETY, STORY_SAFETY_PLAIN, chosenThreat, frightens } from \"./premise-rules\";"));
+  assert.ok(eng.includes("\"${topic.slice(0, IDEA_MAX)}\". Tell EXACTLY this") && eng.includes("${storyFormat ? `${plainWords ? PREMISE_WINS_PLAIN : PREMISE_WINS}\\n` : \"\"}"), "said right after the idea, in every story format");
+  assert.ok(eng.includes("    ? HORROR_SAFETY\n    : plainWords ? STORY_SAFETY_PLAIN : STORY_SAFETY;") || eng.includes("    ? HORROR_SAFETY\r\n    : plainWords ? STORY_SAFETY_PLAIN : STORY_SAFETY;"));
   assert.ok(!eng.includes("CAST ONLY ADULTS") && !eng.includes("recast any such role as an adult"));
   // a chosen creature in a horror idea: by its look; an acted film's two are then the idea's own people
   // (…the look read WITHOUT the tag of what they always have, since 2026-11-26 — character-mark.ts: a hero's "mask with
@@ -86,7 +86,7 @@ test("the writer is given all of it — the idea's rules right after the idea, a
   assert.ok(eng.includes("const kept = cast.filter((e) => !threatNames.some((n) => named(e) === n.trim().toLowerCase()));") && eng.includes("cast.splice(0, cast.length, ...kept);"));
   // THE IDEA IS CHECKED LAST OF ALL (the second live preview still ended on the away-mother "never left")
   assert.ok(IDEA_CHECK.startsWith("LAST, BEFORE YOU ANSWER: read your story against the idea once more") && IDEA_CHECK.includes("nothing it said made untrue by your ending"));
-  assert.ok(eng.includes("(storyFormat && topic ? `\\n${IDEA_CHECK}` : \"\");"));
+  assert.ok(eng.includes("(storyFormat && topic ? `\\n${plainWords ? IDEA_CHECK_PLAIN : IDEA_CHECK}` : \"\");"));
   assert.ok(eng.includes("a twist that leaves every fact of the idea TRUE"));
   // an acted film goes where the idea goes
   assert.ok(eng.includes("but when the IDEA moves them (\"he ran to his parents' room\"), that IS such a move: the shots that come after it are in the new place"));
@@ -154,7 +154,7 @@ test("today's real world: a house is an ordinary modern home, never a fairytale 
   // (2026-11-25, the genres became movie categories: a FANTASY keeps its own world too — said to one, "no castle,
   //  no lone stone cottage, no cabin" forbids the genre. film-genres.ts → ownWorld; every other grown-up story is
   //  told it exactly as before.)
-  assert.ok(eng.includes("(storyFormat && !tmpl.childSafe && !tmpl.ownWorld ? `${REAL_WORLD}\\n` : \"\") +"), "a children's cartoon keeps its own world, and so does a fantasy");
+  assert.ok(eng.includes("(storyFormat && !tmpl.childSafe && !tmpl.ownWorld ? `${plainWords ? REAL_WORLD_PLAIN : REAL_WORLD}\\n` : \"\") +"), "a children's cartoon keeps its own world, and so does a fantasy");
   const genres = await import("../app/lib/film-genres.ts");
   assert.deepEqual(genres.GENRE_FILMS.filter((g) => g.ownWorld).map((g) => g.key), ["fantasy"], "and no other genre");
   // …and in an acted film, the idea's move happens BEFORE the last shot (its reveal is drawn into that place)

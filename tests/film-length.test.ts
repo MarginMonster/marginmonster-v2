@@ -502,9 +502,9 @@ test("A LONG ACTED FILM'S OWN THREAT, cast by its plan, is handed to each part a
 test("A GENRE WHOSE WORLD IS ITS OWN is never told today's real world — not in a long film's plan, nor in any of its parts", () => {
   const eng = engine();
   // the whole-film brief (film-genres.ts → ownWorld) — and the plan's and every part's, the same rule
-  assert.ok(eng.includes("(storyFormat && !tmpl.childSafe && !tmpl.ownWorld ? `${REAL_WORLD}\\n` : \"\") +"));
-  assert.equal(eng.split("(!tmpl.childSafe && !tmpl.ownWorld ? `${REAL_WORLD}\\n` : \"\") +").length - 1, 2, "the plan and the part");
-  assert.ok(!eng.includes("(!tmpl.childSafe ? `${REAL_WORLD}\\n` : \"\") +"));
+  assert.ok(eng.includes("(storyFormat && !tmpl.childSafe && !tmpl.ownWorld ? `${plainWords ? REAL_WORLD_PLAIN : REAL_WORLD}\\n` : \"\") +"));
+  assert.equal(eng.split("(!tmpl.childSafe && !tmpl.ownWorld ? `${plainWords ? REAL_WORLD_PLAIN : REAL_WORLD}\\n` : \"\") +").length - 1, 2, "the plan and the part");
+  assert.ok(!eng.includes("(!tmpl.childSafe ? `${plainWords ? REAL_WORLD_PLAIN : REAL_WORLD}\\n` : \"\") +"));
 });
 
 test("A LONG FILM HOLDS ITS LANE: the worker does not start the next film beside one that is two hours into its work", () => {

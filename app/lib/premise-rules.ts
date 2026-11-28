@@ -43,6 +43,19 @@ export const IDEA_CHECK =
 export const REAL_WORLD =
   "IT IS TODAY'S REAL WORLD unless the idea says otherwise: places look the way real people live in them now — a house is an ordinary modern home of the kind real families in the story's own country live in today (painted walls, an ordinary front door, ordinary rectangular windows, electric lights, ordinary furniture), a street is a real street. Never a storybook or fairytale place — no lone stone cottage, no round porthole window, no hobbit door, no castle, no gothic mansion, no cabin in the woods — unless the idea itself names one. Every picture should look like a photograph of a real place — so SAY it in the words the pictures are drawn from: a home's look names today's materials (painted siding or plaster walls, an ordinary front door, rectangular windows), because a picture model left to guess builds a frightening story's house of rough old stone.";
 
+/* THE SAME RULES WITHOUT HORROR'S EXAMPLES (2026-11-26 — the owner: "Review the horror prompt and see if there is any
+ * 'horror' words in the prompt to assure comedy wouldn't get a twisted turn"). The Comedy writer's prompt, captured whole,
+ * carried "a dark shadow", "a ghost lady", "a werewolf, a demon, a monster", "a twist", "a frightening story", "the threat",
+ * "deep in the dark", "blood" — every one from these shared rules' examples. A genre that is not a frightening one gets
+ * the SAME rule in plain words; Horror, Thriller and Mystery keep theirs exactly (frightens(), below). */
+export const FRIGHTENING_GENRES: ReadonlySet<string> = new Set(["horror", "thriller", "mystery"]);
+export const frightens = (tmplKey: string | null | undefined): boolean => FRIGHTENING_GENRES.has(String(tmplKey || ""));
+export const PREMISE_WINS_PLAIN = PREMISE_WINS
+  .replace("Whatever it says the threat is, the threat is exactly that — \"a dark shadow\" stays a shadow, \"a ghost lady\" stays a ghost woman — never turned into a werewolf, a demon, a monster or anything it did not name.", "Whatever it says the trouble is, the trouble is exactly that — never swapped for something it did not name.")
+  .replace("a twist may come only AFTER its last event", "a surprise may come only AFTER its last event");
+export const IDEA_CHECK_PLAIN = IDEA_CHECK.replace("the threat as it named it", "the trouble as it named it");
+export const REAL_WORLD_PLAIN = REAL_WORLD.replace("a frightening story's house of rough old stone", "a story's house of rough old stone");
+
 /** Children in a story: they stay children, and nothing happens to them. */
 export const CHILDREN_STAY =
   "CHILDREN STAY CHILDREN — a child, a boy or a girl in the idea is that age in the story and in every picture: never a teenager, never a grown-up. A child in a frightening story is NEVER HURT — the fear is suspense: they hear it, see it, hide, run, lock a door, call for help, and they are safe. Nothing grabs, touches, wounds, takes or kills a child, and the threat is never close to one: it is outside a window or a door, at the far end of a hall, deep in the dark, or only heard. In a story with a child in it there is no blood, no violence and nothing graphic — not even in how a child looks: no scraped or bloody knees, no bruise, no bandage, no torn clothes. When the idea has no child in it, its people are grown-ups.";
@@ -54,6 +67,11 @@ export const HORROR_SAFETY =
 /** Every other story format's safety line (a children's format has its own). */
 export const STORY_SAFETY =
   `SAFETY: keep it general and true — invent NO statistics, prices, claims, reviews, ratings or endorsements; no defamation or real named people; nothing adult or unsafe. ${CHILDREN_STAY}`;
+/** …the same limits for a genre that is not a frightening one, with no fear, threat, dark or blood in its words */
+export const CHILDREN_STAY_PLAIN =
+  "CHILDREN STAY CHILDREN — a child, a boy or a girl in the idea is that age in the story and in every picture: never a teenager, never a grown-up. Nothing harms a child, and nothing about a child is graphic — not a scrape, a bruise, a bandage or a torn sleeve. When the idea has no child in it, its people are grown-ups.";
+export const STORY_SAFETY_PLAIN =
+  `SAFETY: keep it general and true — invent NO statistics, prices, claims, reviews, ratings or endorsements; no defamation or real named people; nothing adult or unsafe. ${CHILDREN_STAY_PLAIN}`;
 
 /** A creature the maker CHOSE for a horror story or film, when the idea calls the threat something else ("a dark
  *  shadow under the old tree", "a voice"): the creature IS that threat, and is seen only the way the idea sees

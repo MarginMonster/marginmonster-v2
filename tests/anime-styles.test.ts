@@ -213,10 +213,10 @@ test("THE WIRING: each style a template after the categories, told to its own br
   // whatever the story's world — the REAL_WORLD lines themselves as they were
   const drawnLine = "(tmpl.drawn ? `${DRAWN_WORLD}\\n` : \"\") +";
   assert.equal(count(eng, drawnLine), 3);
-  assert.ok(eng.includes("    (storyFormat && !tmpl.childSafe && !tmpl.ownWorld ? `${REAL_WORLD}\\n` : \"\") +\n    " + drawnLine));
-  assert.equal(count(eng, "(!tmpl.childSafe && !tmpl.ownWorld ? `${REAL_WORLD}\\n` : \"\") +\n"), 2);
-  assert.equal(count(eng, "      (!tmpl.childSafe && !tmpl.ownWorld ? `${REAL_WORLD}\\n` : \"\") +\n      " + drawnLine), 1, "the plan");
-  assert.equal(count(eng, "\n    (!tmpl.childSafe && !tmpl.ownWorld ? `${REAL_WORLD}\\n` : \"\") +\n    " + drawnLine), 1, "a part");
+  assert.ok(eng.includes("    (storyFormat && !tmpl.childSafe && !tmpl.ownWorld ? `${plainWords ? REAL_WORLD_PLAIN : REAL_WORLD}\\n` : \"\") +\n    " + drawnLine));
+  assert.equal(count(eng, "(!tmpl.childSafe && !tmpl.ownWorld ? `${plainWords ? REAL_WORLD_PLAIN : REAL_WORLD}\\n` : \"\") +\n"), 2);
+  assert.equal(count(eng, "      (!tmpl.childSafe && !tmpl.ownWorld ? `${plainWords ? REAL_WORLD_PLAIN : REAL_WORLD}\\n` : \"\") +\n      " + drawnLine), 1, "the plan");
+  assert.equal(count(eng, "\n    (!tmpl.childSafe && !tmpl.ownWorld ? `${plainWords ? REAL_WORLD_PLAIN : REAL_WORLD}\\n` : \"\") +\n    " + drawnLine), 1, "a part");
   // what it tells the writer
   assert.ok(DRAWN_WORLD.startsWith("THIS STORY IS DRAWN: every picture is one frame of a hand-drawn 2D anime film"));
   assert.ok(DRAWN_WORLD.includes("A VISUAL never says photo, photograph, photorealistic, lens, live-action or 3D."));

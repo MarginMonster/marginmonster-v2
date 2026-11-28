@@ -51,7 +51,7 @@ import { WHAT_FRIGHTENS, inheritPlaces, keepGuess, placeNamed, placesAsk, takePl
 // PROPS & MOVES (2026-11-26, SPEC-S16): what a told story's characters always have, their moves — and nobody else's character
 import { ORIGINAL_CAST, castMoves, dealMarkThings, franchiseIn, markForFormat, markLead, markOf, markWriter, normalizeCastEntry, peelMark, scrubFranchise, setMarkIn, withMark } from "./character-mark";
 import { castEntry, sameCharacter } from "./story-picture";
-import { HORROR_SAFETY, IDEA_CHECK, IDEA_MAX, PREMISE_WINS, REAL_WORLD, STORY_SAFETY, chosenThreat } from "./premise-rules";
+import { HORROR_SAFETY, IDEA_CHECK, IDEA_CHECK_PLAIN, IDEA_MAX, PREMISE_WINS, PREMISE_WINS_PLAIN, REAL_WORLD, REAL_WORLD_PLAIN, STORY_SAFETY, STORY_SAFETY_PLAIN, chosenThreat, frightens } from "./premise-rules";
 import { DRAMA_BRIEF, GENRE_FILMS, backdropsOf, genreLook, genreTemplate, nudgeFor, startLine } from "./film-genres";
 // (2026-11-26) the anime maker: six drawn styles, each a told template of its own
 import { ANIME_STYLES, DRAWN_WORLD, animeBrief, animeTemplate } from "./anime-styles";
@@ -59,7 +59,7 @@ import { tellerVisual } from "./character-series";
 import { planShots, shotInWords, shotListBrief } from "./story-shots";
 import { dealFresh, freshBrief, freshKeys, usedBefore, type Fresh, type Used } from "./story-variety";
 // (2026-11-24) an acted film: every shot is something that HAPPENS, and the camera is dealt, not written
-import { AGES_FIT_RELATION, AGE_RULES, CAMERA_IS_DEALT, DONE_STAYS_DONE, HEARD_BEFORE_SAID, LINE_IN_EVERY_SHOT, LINE_IN_EVERY_SHOT_BUT_THE_LAST, ONE_TAKE, SEEN_AT_THE_END, SEEN_WHEN_SEEN, TWO_ALWAYS, ageAsk, ageOf, castAgeProblem, eventIdeas, happensBrief, ownTitle, repairAges, storyThreat, takeAgeFix, titleAsk, wordless, SOME_SHOTS_SILENT, FIGURE_AT_THE_END, FIGURE_SEEN, figureGenre } from "./acted-staging";
+import { AGES_FIT_RELATION, AGE_RULES, CAMERA_IS_DEALT, DONE_STAYS_DONE, HEARD_BEFORE_SAID, LINE_IN_EVERY_SHOT, LINE_IN_EVERY_SHOT_BUT_THE_LAST, ONE_TAKE, SEEN_AT_THE_END, SEEN_WHEN_SEEN, TWO_ALWAYS, ageAsk, ageOf, castAgeProblem, eventIdeas, happensBrief, ownTitle, repairAges, storyThreat, takeAgeFix, titleAsk, wordless, SOME_SHOTS_SILENT, HEARD_BEFORE_SAID_PLAIN, DONE_STAYS_DONE_PLAIN, FIGURE_AT_THE_END, FIGURE_SEEN, figureGenre } from "./acted-staging";
 // (2026-11-25) films up to five minutes: one limit for every story format, and a long script written in parts
 import { clampShots, maxShots, minShots, partBrief, planBrief, planSchema, scriptParts, takePlan, type FilmPlan, type FilmWay } from "./film-length";
 
@@ -586,6 +586,9 @@ export async function previewFilmTreatment(opts: {
   //  weapon in a children's story, no move in a horror one. An ACTED writer never sees a tag: acted props are later
   //  (S16d), and a tag in an acted entry would reach acted pictures unpeeled.)
   const markFmt = { childSafe: !!tmpl.childSafe, horror: tmpl.key === "horror" };
+  // (a genre that is not a frightening one is given the shared rules in plain words — no ghost, threat, dark or twist in
+  //  their examples: premise-rules.ts → frightens, 2026-11-26, the owner: "assure comedy wouldn't get a twisted turn")
+  const plainWords = !frightens(tmpl.key);
   // (…and the picked names are never scrubbed out of ANYTHING — the idea, a look, the writer's answer: a member's own
   //  "Gojo" in the answer's cast and scenes would come back "a sorcerer", match no picked face, and be drawn in no scene.
   //  Review of S16a, 2026-11-26: character-mark.ts → kept)
@@ -895,11 +898,11 @@ export async function previewFilmTreatment(opts: {
       `${TWO_ALWAYS}\n` +
       // (a sound comes FIRST, in the shot whose line answers it; heard from out of sight, it is made by nothing
       //  on screen; and what is said about it is what is heard — the owner's knocking film, 2026-11-24)
-      `${HEARD_BEFORE_SAID}\n` +
+      `${plainWords ? HEARD_BEFORE_SAID_PLAIN : HEARD_BEFORE_SAID}\n` +
       // (what is DONE to a place stays done, said in so many words — the owner, 2026-11-25, of the tent films: "the writer
       //  may need to be more deliberate on what it's telling the ai to do … they never actually zipped the tent doors up";
       //  the film draws what a VISUAL says was done, and keeps it: acted-staging.ts, place-state.ts)
-      `${DONE_STAYS_DONE}\n` +
+      `${plainWords ? DONE_STAYS_DONE_PLAIN : DONE_STAYS_DONE}\n` +
       // (…and so is its place: a scene of a long film is told where it is set — film-length.ts → partBrief)
       (one ? "" : `Keep the WHOLE conversation in ONE location unless the story genuinely moves the SAME characters somewhere else — only then start a NEW "where" (a real scene change; everyone is present in the new place). Prefer one flowing location over cutting between places — but when the IDEA moves them ("he ran to his parents' room"), that IS such a move: the shots that come after it are in the new place — and the move happens BEFORE the last shot, never in it: the last shot is in the same place as the shot before it (THE LAST SHOT, below).\n`) +
       // (a horror film ends on something SEEN — said last, so it is read as the exception to the line above)
@@ -921,7 +924,7 @@ export async function previewFilmTreatment(opts: {
     ? `SAFETY: this is for very young children — keep it 100% wholesome and G-rated: happy, gentle and safe. NOTHING scary, sad, violent, adult or unsafe; no real named people or brands; invent no claims.`
     : tmpl.key === "horror"
     ? HORROR_SAFETY
-    : STORY_SAFETY;
+    : plainWords ? STORY_SAFETY_PLAIN : STORY_SAFETY;
   // The template brief says "a full ~2-minute MUSIC VIDEO … across several vivid settings" — say what a
   // short cut actually is, so the brief doesn't fight the hook-sized lyric budget above.
   const brief = tmpl.lipSyncSinger && shortCut
@@ -930,7 +933,7 @@ export async function previewFilmTreatment(opts: {
     : tmpl.brief;
   // (the idea, as its writer is handed it — a whole film's below, and a long film's PLAN; a dealt starter with it)
   const ideaLine = topic
-      ? `${series ? "WHAT HAPPENS IN THIS EPISODE" : "THEME / what it's about"}: "${topic.slice(0, IDEA_MAX)}". Tell EXACTLY this — stay faithful to what is described and build the story around it; do NOT swap in a different premise or pad it with extra characters, settings or events the user did not ask for.\n${nudged ? startLine(nudged, castChosen.some((c) => !threatNames.includes(c.name)), threatNames.length > 0) : ""}${storyFormat ? `${PREMISE_WINS}\n` : ""}`
+      ? `${series ? "WHAT HAPPENS IN THIS EPISODE" : "THEME / what it's about"}: "${topic.slice(0, IDEA_MAX)}". Tell EXACTLY this — stay faithful to what is described and build the story around it; do NOT swap in a different premise or pad it with extra characters, settings or events the user did not ask for.\n${nudged ? startLine(nudged, castChosen.some((c) => !threatNames.includes(c.name)), threatNames.length > 0) : ""}${storyFormat ? `${plainWords ? PREMISE_WINS_PLAIN : PREMISE_WINS}\n` : ""}`
       : series ? `Decide what happens next in this episode.\n` : `Pick a fun, broadly-appealing theme.\n`;
   const prompt =
     `Write ${brief}.\n` +
@@ -965,12 +968,12 @@ export async function previewFilmTreatment(opts: {
     // (…and right after it, A DRAWN STORY — an anime style, whatever its world — is told what that rule means for it:
     //  "look like a photograph of a real place" is a real place's shapes and materials, said in words; the picture is
     //  drawn, and no VISUAL asks for a photograph — anime-styles.ts → DRAWN_WORLD, 2026-11-26)
-    (storyFormat && !tmpl.childSafe && !tmpl.ownWorld ? `${REAL_WORLD}\n` : "") +
+    (storyFormat && !tmpl.childSafe && !tmpl.ownWorld ? `${plainWords ? REAL_WORLD_PLAIN : REAL_WORLD}\n` : "") +
     (tmpl.drawn ? `${DRAWN_WORLD}\n` : "") +
     `Also give musicMood (a short phrase for the backing track) and a short title.${langLine}\n` +
     safetyLine +
     // (the idea checked last of all — premise-rules.ts → IDEA_CHECK)
-    (storyFormat && topic ? `\n${IDEA_CHECK}` : "");
+    (storyFormat && topic ? `\n${plainWords ? IDEA_CHECK_PLAIN : IDEA_CHECK}` : "");
   if (!part) return prompt;
   // A LONG FILM (film-length.ts → A LONG SCRIPT IS WRITTEN IN PARTS). Its PLAN is asked for with everything a whole
   // film's writer is told about the idea, the cast and the world — the idea is kept, and checked, THERE — and what
@@ -999,11 +1002,11 @@ export async function previewFilmTreatment(opts: {
       (tmpl.key === "horror" ? `${WHAT_FRIGHTENS}\n` : "") +
       // (a genre whose world is its own is never told today's real world — not in its plan either: film-genres.ts → ownWorld)
       // (…and a drawn story's plan is told it is drawn, as its whole is: DRAWN_WORLD)
-      (!tmpl.childSafe && !tmpl.ownWorld ? `${REAL_WORLD}\n` : "") +
+      (!tmpl.childSafe && !tmpl.ownWorld ? `${plainWords ? REAL_WORLD_PLAIN : REAL_WORLD}\n` : "") +
       (tmpl.drawn ? `${DRAWN_WORLD}\n` : "") +
       `Also give musicMood (a short phrase for the backing track) and a short title.${langLine}\n` +
       safetyLine +
-      (topic ? `\n${IDEA_CHECK}` : "")
+      (topic ? `\n${plainWords ? IDEA_CHECK_PLAIN : IDEA_CHECK}` : "")
     );
   }
   // ONE PART OF IT: where it stands in the plan, the cast the plan chose, and then the brief every film is written
@@ -1043,7 +1046,7 @@ export async function previewFilmTreatment(opts: {
     (tmpl.key === "horror" ? `${WHAT_FRIGHTENS}\n` : "") +
     // (…nor in any of its parts: a Fantasy told "no castle" in scene 4 of 9 is the genre forbidden halfway through)
     // (…and every part of a drawn story is told it is drawn: DRAWN_WORLD)
-    (!tmpl.childSafe && !tmpl.ownWorld ? `${REAL_WORLD}\n` : "") +
+    (!tmpl.childSafe && !tmpl.ownWorld ? `${plainWords ? REAL_WORLD_PLAIN : REAL_WORLD}\n` : "") +
     (tmpl.drawn ? `${DRAWN_WORLD}\n` : "") +
     `Also give musicMood (a short phrase for the backing track) and a short title.${langLine}\n` +
     safetyLine

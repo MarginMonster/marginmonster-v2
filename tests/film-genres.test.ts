@@ -278,7 +278,7 @@ test("the fallback is in the one place every unwritten film comes through, and t
   // said right after the theme, before the rule that holds a story to its idea
   // (only the chosen PEOPLE make the cast the starter's people: a horror's chosen creature is its THREAT — told,
   //  it is still in castChosen, so it is taken out here; review, 2026-11-25)
-  assert.ok(fn.includes("events the user did not ask for.\\n${nudged ? startLine(nudged, castChosen.some((c) => !threatNames.includes(c.name)), threatNames.length > 0) : \"\"}${storyFormat ? `${PREMISE_WINS}\\n` : \"\"}`"));
+  assert.ok(fn.includes("events the user did not ask for.\\n${nudged ? startLine(nudged, castChosen.some((c) => !threatNames.includes(c.name)), threatNames.length > 0) : \"\"}${storyFormat ? `${plainWords ? PREMISE_WINS_PLAIN : PREMISE_WINS}\\n` : \"\"}`"));
   assert.ok(fn.indexOf("const threatNames = ") < fn.indexOf("startLine(nudged"));
   // the starter rides back on the treatment, for the page to show
   assert.ok(fn.includes("return { title: outTitle, scenes: list, ...(nudged ? { nudge: nudged.nudge } : {}),"));
@@ -372,7 +372,7 @@ test("a genre is a promise about what happens and how it ends — and a look tha
   // is not told it — and is asked to SAY each place as what it is there, because the pictures are drawn from the words.
   assert.deepEqual(GENRE_FILMS.filter((g) => g.ownWorld).map((g) => g.key), ["fantasy"]);
   for (const text of [by.fantasy.brief, by.fantasy.narrated]) assert.ok(text.includes("old world of its own, before engines and electricity") && text.includes("stone, timber, thatch and firelight"));
-  assert.ok(read("app", "lib", "film-engine.server.ts").includes("(storyFormat && !tmpl.childSafe && !tmpl.ownWorld ? `${REAL_WORLD}\\n` : \"\") +"));
+  assert.ok(read("app", "lib", "film-engine.server.ts").includes("(storyFormat && !tmpl.childSafe && !tmpl.ownWorld ? `${plainWords ? REAL_WORLD_PLAIN : REAL_WORLD}\\n` : \"\") +"));
   // the faces: a thriller's cast does not grin, a comedy's does not wink; a romance may smile
   assert.deepEqual(GENRE_FILMS.filter((g) => g.faceMood).map((g) => g.key), ["comedy", "thriller", "action", "mystery"]);
   // DRAMA, sharpened: one relationship, a choice that costs, small actions, a decision and not a speech

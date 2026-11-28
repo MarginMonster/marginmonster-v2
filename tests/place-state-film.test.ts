@@ -106,8 +106,8 @@ const SHUT_TENT = "The tent door is zipped completely shut — the two flaps joi
 test("the writer's constant is in the acted brief — and an episode is told the place as the last one left it", () => {
   const brief = read("app/lib/film-engine.server.ts");
   assert.ok(brief.includes("import { AGES_FIT_RELATION, AGE_RULES, CAMERA_IS_DEALT, DONE_STAYS_DONE, HEARD_BEFORE_SAID,"));
-  const heard = brief.indexOf("`${HEARD_BEFORE_SAID}\\n` +");
-  const done = brief.indexOf("`${DONE_STAYS_DONE}\\n` +");
+  const heard = brief.indexOf("`${plainWords ? HEARD_BEFORE_SAID_PLAIN : HEARD_BEFORE_SAID}\\n` +");
+  const done = brief.indexOf("`${plainWords ? DONE_STAYS_DONE_PLAIN : DONE_STAYS_DONE}\\n` +");
   assert.ok(heard > 0 && done > heard && done < brief.indexOf("(tmpl.key === \"horror\" ? `${SEEN_WHEN_SEEN}"), "said to every acted film, whole or one part of a long one");
   // the last moment of Part 1 carries what it did to the tent: shut
   const last = lastMomentOf(PART1)!;

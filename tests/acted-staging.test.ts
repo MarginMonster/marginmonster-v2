@@ -787,7 +787,7 @@ test("the writer: a sound comes before any word about it, what is heard is not s
   // said to EVERY acted film (a knock at the door is not only a horror film's), after the two always being there
   const engine = read("app", "lib", "film-engine.server.ts");
   const two = engine.indexOf("`${TWO_ALWAYS}\\n` +");
-  const heard = engine.indexOf("`${HEARD_BEFORE_SAID}\\n` +");
+  const heard = engine.indexOf("`${plainWords ? HEARD_BEFORE_SAID_PLAIN : HEARD_BEFORE_SAID}\\n` +");
   // (THE LAST SHOT said only to what writes the film's end — 2026-11-25, a film can be written in parts)
   const seen = engine.indexOf("(tmpl.key === \"horror\" ? `${SEEN_WHEN_SEEN}\\n${ends ? `${SEEN_AT_THE_END}\\n` : \"\"}` : \"\")");
   assert.ok(two > 0 && heard > two && seen > heard);
